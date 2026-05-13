@@ -86,6 +86,7 @@
     "切换模式": { "zh-TW": "切換模式", en: "Switch Mode", fr: "Changer de mode", ja: "モード切替", ko: "모드 전환", es: "Cambiar modo" },
     "管理控制台": { "zh-TW": "管理控制台", en: "Admin Console", fr: "Console admin", ja: "管理コンソール", ko: "관리 콘솔", es: "Consola admin" },
     "登录账户": { "zh-TW": "登入帳戶", en: "Sign In", fr: "Connexion", ja: "ログイン", ko: "로그인", es: "Iniciar sesión" },
+    "登录方式": { "zh-TW": "登入方式", en: "Sign-In Method", fr: "Méthode de connexion", ja: "ログイン方法", ko: "로그인 방식", es: "Método de acceso" },
     "账户菜单": { "zh-TW": "帳戶選單", en: "Account Menu", fr: "Menu du compte", ja: "アカウントメニュー", ko: "계정 메뉴", es: "Menú de cuenta" },
     "我的订单": { "zh-TW": "我的訂單", en: "My Orders", fr: "Mes commandes", ja: "注文履歴", ko: "내 주문", es: "Mis pedidos" },
     "语言选择": { "zh-TW": "語言選擇", en: "Language", fr: "Langue", ja: "言語", ko: "언어", es: "Idioma" },
@@ -125,13 +126,20 @@
     "登录 IMPULSE": { "zh-TW": "登入 IMPULSE", en: "Sign In to IMPULSE", fr: "Connexion à IMPULSE", ja: "IMPULSE にログイン", ko: "IMPULSE 로그인", es: "Iniciar sesión en IMPULSE" },
     "注册 IMPULSE": { "zh-TW": "註冊 IMPULSE", en: "Register for IMPULSE", fr: "Inscription à IMPULSE", ja: "IMPULSE に登録", ko: "IMPULSE 가입", es: "Registrarse en IMPULSE" },
     "用户名": { "zh-TW": "使用者名稱", en: "Username", fr: "Nom d'utilisateur", ja: "ユーザー名", ko: "사용자 이름", es: "Usuario" },
+    "用户名或邮箱": { "zh-TW": "使用者名稱或電子郵件", en: "Username or Email", fr: "Nom d'utilisateur ou e-mail", ja: "ユーザー名またはメール", ko: "사용자 이름 또는 이메일", es: "Usuario o correo" },
+    "账号或邮箱": { "zh-TW": "帳號或電子郵件", en: "Username or Email", fr: "Nom d'utilisateur ou e-mail", ja: "ユーザー名またはメール", ko: "사용자 이름 또는 이메일", es: "Usuario o correo" },
     "邮箱": { "zh-TW": "電子郵件", en: "Email", fr: "E-mail", ja: "メール", ko: "이메일", es: "Correo electrónico" },
     "邮箱验证码": { "zh-TW": "電子郵件驗證碼", en: "Email Code", fr: "Code e-mail", ja: "メール認証コード", ko: "이메일 인증 코드", es: "Código de email" },
     "6 位验证码": { "zh-TW": "6 位驗證碼", en: "6-digit code", fr: "Code à 6 chiffres", ja: "6桁コード", ko: "6자리 코드", es: "Código de 6 dígitos" },
     "发送验证码": { "zh-TW": "發送驗證碼", en: "Send Code", fr: "Envoyer le code", ja: "コード送信", ko: "인증 코드 보내기", es: "Enviar código" },
+    "账户密码登录": { "zh-TW": "帳號密碼登入", en: "Password Sign-In", fr: "Connexion par mot de passe", ja: "パスワードログイン", ko: "비밀번호 로그인", es: "Acceso con contraseña" },
+    "邮箱验证码登录": { "zh-TW": "電子郵件驗證碼登入", en: "Email Code Sign-In", fr: "Connexion par code e-mail", ja: "メールコードログイン", ko: "이메일 코드 로그인", es: "Acceso con código" },
     "邮箱安全登录": { "zh-TW": "電子郵件安全登入", en: "Secure Email Sign-In", fr: "Connexion sécurisée par e-mail", ja: "メール安全ログイン", ko: "이메일 보안 로그인", es: "Inicio seguro por email" },
     "创建安全账户": { "zh-TW": "建立安全帳戶", en: "Create Secure Account", fr: "Créer un compte sécurisé", ja: "安全なアカウント作成", ko: "보안 계정 만들기", es: "Crear cuenta segura" },
     "需要邮箱验证码完成身份确认。": { "zh-TW": "需要電子郵件驗證碼完成身分確認。", en: "An email code is required to verify your identity.", fr: "Un code e-mail est requis pour confirmer votre identité.", ja: "本人確認にはメールコードが必要です。", ko: "본인 확인을 위해 이메일 코드가 필요합니다.", es: "Se requiere un código de email para verificar tu identidad." },
+    "使用用户名或邮箱和密码登录。": { "zh-TW": "使用使用者名稱或電子郵件與密碼登入。", en: "Sign in with your username or email and password.", fr: "Connectez-vous avec votre nom d'utilisateur ou e-mail et votre mot de passe.", ja: "ユーザー名またはメールとパスワードでログインします。", ko: "사용자 이름 또는 이메일과 비밀번호로 로그인하세요.", es: "Inicia sesión con usuario o correo y contraseña." },
+    "使用邮箱和 6 位验证码登录。": { "zh-TW": "使用電子郵件和 6 位驗證碼登入。", en: "Sign in with your email and a 6-digit code.", fr: "Connectez-vous avec votre e-mail et un code à 6 chiffres.", ja: "メールと6桁コードでログインします。", ko: "이메일과 6자리 코드로 로그인하세요.", es: "Inicia sesión con email y un código de 6 dígitos." },
+    "可以使用账户密码登录，也可以切换为邮箱验证码登录。": { "zh-TW": "可以使用帳號密碼登入，也可以切換為電子郵件驗證碼登入。", en: "Use a password, or switch to email code sign-in.", fr: "Utilisez un mot de passe ou passez au code e-mail.", ja: "パスワード、またはメールコードでログインできます。", ko: "비밀번호로 로그인하거나 이메일 코드 로그인으로 전환할 수 있습니다.", es: "Usa contraseña o cambia al código por email." },
     "使用邮箱、密码和 6 位邮件验证码进入账户。": { "zh-TW": "使用電子郵件、密碼和 6 位郵件驗證碼進入帳戶。", en: "Use email, password, and a 6-digit email code to enter your account.", fr: "Utilisez e-mail, mot de passe et code à 6 chiffres.", ja: "メール、パスワード、6桁コードでログインします。", ko: "이메일, 비밀번호, 6자리 인증 코드로 로그인합니다.", es: "Usa email, contraseña y código de 6 dígitos." },
     "注册后将使用邮箱作为唯一登录凭证。": { "zh-TW": "註冊後將使用電子郵件作為唯一登入憑證。", en: "After registration, email is your login credential.", fr: "Après inscription, l'e-mail servira d'identifiant.", ja: "登録後はメールがログイン資格情報になります。", ko: "가입 후 이메일이 로그인 정보가 됩니다.", es: "Tras registrarte, el email será tu credencial." },
     "密码": { "zh-TW": "密碼", en: "Password", fr: "Mot de passe", ja: "パスワード", ko: "비밀번호", es: "Contraseña" },
@@ -1504,6 +1512,52 @@
       Data.log("用户登录", user.username);
       return { ok: true };
     },
+    ensureUserAvailable(user) {
+      const profile = Data.profileByUsername(user.username);
+      if (profile?.deleted) {
+        return { ok: false, message: "该账户已注销。" };
+      }
+      if (isBanned(profile)) {
+        return { ok: false, message: `该账户已被封禁至 ${formatFullDate(profile.bannedUntil)}。` };
+      }
+      return { ok: true };
+    },
+    loginByPassword(identity, password) {
+      const trimmedIdentity = String(identity || "").trim();
+      if (!trimmedIdentity || !password) {
+        return { ok: false, message: "请输入账号或邮箱和密码。" };
+      }
+      const user = isEmail(trimmedIdentity)
+        ? Data.findUserByEmail(trimmedIdentity)
+        : Data.findUser(trimmedIdentity);
+      if (!user || user.password !== password) {
+        return { ok: false, message: "账号或密码不正确。" };
+      }
+      const availability = this.ensureUserAvailable(user);
+      if (!availability.ok) {
+        return availability;
+      }
+      return this.start(user);
+    },
+    loginByEmailCode(email, code) {
+      const normalizedEmail = normalizeEmail(email);
+      if (!isEmail(normalizedEmail)) {
+        return { ok: false, message: "请输入有效邮箱。" };
+      }
+      const user = Data.findUserByEmail(normalizedEmail);
+      if (!user) {
+        return { ok: false, message: "该邮箱未注册。" };
+      }
+      const verified = Verification.verify("login", normalizedEmail, code);
+      if (!verified.ok) {
+        return verified;
+      }
+      const availability = this.ensureUserAvailable(user);
+      if (!availability.ok) {
+        return availability;
+      }
+      return this.start(user);
+    },
     login(email, password, code) {
       const normalizedEmail = normalizeEmail(email);
       if (!isEmail(normalizedEmail)) {
@@ -1517,12 +1571,9 @@
       if (!verified.ok) {
         return verified;
       }
-      const profile = Data.profileByUsername(user.username);
-      if (profile?.deleted) {
-        return { ok: false, message: "该账户已注销。" };
-      }
-      if (isBanned(profile)) {
-        return { ok: false, message: `该账户已被封禁至 ${formatFullDate(profile.bannedUntil)}。` };
+      const availability = this.ensureUserAvailable(user);
+      if (!availability.ok) {
+        return availability;
       }
       return this.start(user);
     },
@@ -2776,11 +2827,14 @@
   const Auth = {
     open(initialMode = "login") {
       let mode = initialMode;
+      let loginMethod = "password";
       const render = () => {
         const isLogin = mode === "login";
+        const isEmailCodeLogin = isLogin && loginMethod === "email";
         const message = h("p", { className: "form-message" });
         const codeHint = h("p", { className: "auth-code-hint" });
         const emailInput = h("input", { name: "email", type: "email", autocomplete: "email", placeholder: "name@example.com", required: true });
+        const identityInput = h("input", { name: "identity", type: "text", autocomplete: "username", placeholder: "用户名或邮箱", required: true });
         const codeInput = h("input", { name: "code", type: "text", inputmode: "numeric", autocomplete: "one-time-code", maxlength: "6", pattern: "[0-9]{6}", placeholder: "6 位验证码", required: true });
         const sendCodeButton = h("button", { className: "button button-ghost button-small", type: "button" }, icon("fa-regular fa-envelope"), "发送验证码");
 
@@ -2806,22 +2860,57 @@
 
         sendCodeButton.addEventListener("click", sendCode);
 
+        const introTitle = isLogin
+          ? (isEmailCodeLogin ? "邮箱验证码登录" : "账户密码登录")
+          : "创建安全账户";
+        const introText = isLogin
+          ? (isEmailCodeLogin ? "使用邮箱和 6 位验证码登录。" : "使用用户名或邮箱和密码登录。")
+          : "需要邮箱验证码完成身份确认。";
+        const methodTabs = isLogin ? h("div", { className: "auth-methods", role: "tablist", ariaLabel: "登录方式" },
+          h("button", {
+            className: `auth-method ${loginMethod === "password" ? "active" : ""}`,
+            type: "button",
+            onClick: () => { loginMethod = "password"; render(); }
+          }, icon("fa-solid fa-key"), h("span", { text: "账户密码登录" })),
+          h("button", {
+            className: `auth-method ${loginMethod === "email" ? "active" : ""}`,
+            type: "button",
+            onClick: () => { loginMethod = "email"; render(); }
+          }, icon("fa-regular fa-envelope"), h("span", { text: "邮箱验证码登录" }))
+        ) : null;
+        const verificationField = h("label", { className: "field" }, "邮箱验证码",
+          h("div", { className: "verify-row" }, codeInput, sendCodeButton)
+        );
+        const authFields = isLogin
+          ? (isEmailCodeLogin
+            ? [
+                h("label", { className: "field" }, "邮箱", emailInput),
+                verificationField,
+                codeHint
+              ]
+            : [
+                h("label", { className: "field" }, "账号或邮箱", identityInput),
+                h("label", { className: "field" }, "密码", h("input", { name: "password", type: "password", autocomplete: "current-password", required: true }))
+              ])
+          : [
+              h("label", { className: "field" }, "邮箱", emailInput),
+              h("label", { className: "field" }, "用户名", h("input", { name: "username", type: "text", autocomplete: "username", required: true })),
+              h("label", { className: "field" }, "密码", h("input", { name: "password", type: "password", autocomplete: "new-password", required: true })),
+              h("label", { className: "field" }, "确认密码", h("input", { name: "confirmPassword", type: "password", autocomplete: "new-password", required: true })),
+              verificationField,
+              codeHint
+            ];
+
         const form = h("form", { className: "form-stack auth-form" },
           h("div", { className: "auth-intro" },
             h("div", { className: "auth-mark" }, icon("fa-solid fa-shield-halved")),
             h("div", {},
-              h("strong", { text: isLogin ? "邮箱安全登录" : "创建安全账户" }),
-              h("span", { text: "需要邮箱验证码完成身份确认。" })
+              h("strong", { text: introTitle }),
+              h("span", { text: introText })
             )
           ),
-          h("label", { className: "field" }, "邮箱", emailInput),
-          isLogin ? null : h("label", { className: "field" }, "用户名", h("input", { name: "username", type: "text", autocomplete: "username", required: true })),
-          h("label", { className: "field" }, "密码", h("input", { name: "password", type: "password", autocomplete: isLogin ? "current-password" : "new-password", required: true })),
-          isLogin ? null : h("label", { className: "field" }, "确认密码", h("input", { name: "confirmPassword", type: "password", autocomplete: "new-password", required: true })),
-          h("label", { className: "field" }, "邮箱验证码",
-            h("div", { className: "verify-row" }, codeInput, sendCodeButton)
-          ),
-          codeHint,
+          methodTabs,
+          authFields,
           message,
           h("button", { className: "button button-primary button-full", type: "submit" }, isLogin ? "登录" : "注册并登录")
         );
@@ -2830,7 +2919,9 @@
           event.preventDefault();
           const values = Object.fromEntries(new FormData(form).entries());
           const result = isLogin
-            ? Session.login(values.email, values.password, values.code)
+            ? (isEmailCodeLogin
+                ? Session.loginByEmailCode(values.email, values.code)
+                : Session.loginByPassword(values.identity, values.password))
             : Session.register(values.username, values.email, values.password, values.confirmPassword, values.code);
           if (!result.ok) {
             message.textContent = result.message;
@@ -2844,7 +2935,7 @@
         const card = h("div", { className: "modal-card auth-card slide-up" },
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
           h("h2", { text: isLogin ? "登录 IMPULSE" : "注册 IMPULSE" }),
-          h("p", { className: "auth-subtitle", text: isLogin ? "使用邮箱、密码和 6 位邮件验证码进入账户。" : "注册后将使用邮箱作为唯一登录凭证。" }),
+          h("p", { className: "auth-subtitle", text: isLogin ? "可以使用账户密码登录，也可以切换为邮箱验证码登录。" : "注册后将使用邮箱作为唯一登录凭证。" }),
           h("div", { className: "tabs" },
             h("button", { className: `tab ${isLogin ? "active" : ""}`, type: "button", onClick: () => { mode = "login"; render(); } }, "登录"),
             h("button", { className: `tab ${!isLogin ? "active" : ""}`, type: "button", onClick: () => { mode = "register"; render(); } }, "注册")

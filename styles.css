@@ -861,6 +861,40 @@ button.admin-table-row:hover {
   box-shadow: 0 10px 20px rgba(16, 24, 40, 0.12);
 }
 
+.auth-methods {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.auth-method {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 10px 12px;
+  color: #475467;
+  border: 1px solid #d0d5dd;
+  border-radius: var(--radius);
+  background: #ffffff;
+  font-weight: 850;
+  text-align: center;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.auth-method:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.1);
+}
+
+.auth-method.active {
+  color: var(--button-text);
+  border-color: rgba(37, 117, 252, 0.42);
+  background: var(--card-gradient);
+  box-shadow: 0 14px 28px rgba(37, 117, 252, 0.16);
+}
+
 .verify-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1481,6 +1515,10 @@ body {
   }
 
   .language-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-methods {
     grid-template-columns: 1fr;
   }
 
