@@ -163,6 +163,19 @@ function storageType() {
   return IsVercel ? "temporary-file" : "file";
 }
 
+function canUseClientSnapshot() {
+  return !hasKvStorage();
+}
+
+function hydrateTemporaryDb(db, snapshot, actor = "CLIENT") {
+  if (!canUseClientSnapshot() || !snapshot || typeof snapshot !== "object") {
+    return db;
+  }
+  const imported = importSnapshot(db, snapshot);
+  log(imported, "临时状态同步", "从客户端快照补齐临时后端状态", actor);
+  return imported;
+}
+
 async function readDb() {
   const kv = await kvRequest("get", [DbKey]);
   if (kv) {
@@ -781,6 +794,7 @@ async function handleAction(action, payload = {}, request = {}) {
     if (!request.user) {
       return { ok: false, message: "请先登录" };
     }
+    db = hydrateTemporaryDb(db, payload.snapshot, request.user.username);
     const profileId = payload.profileId;
     const profile = db.profiles.find((item) => item.id === profileId);
     if (!profile) {
@@ -802,7 +816,8 @@ async function handleAction(action, payload = {}, request = {}) {
     if (!request.user) {
       return { ok: false, message: "请先登录" };
     }
-    const result = createOrderOnBackend(db, payload, request.user);
+    db = hydrateTemporaryDb(db, payload.snapshot, request.user.username);
+    const result = createOrderOnBackend(db, payload.order || payload, request.user);
     if (!result.ok) {
       return result;
     }

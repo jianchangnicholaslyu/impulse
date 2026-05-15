@@ -86,10 +86,25 @@
 
   const DevelopmentRecords = [
     {
+      version: "v0.11.1",
+      releasedAt: "2026-05-15",
+      nameI18n: localizedPair("Checkout State Sync Hotfix", "下单状态同步热修复"),
+      statusI18n: localizedPair("Current production build", "当前生产版本"),
+      summaryI18n: localizedPair(
+        "Fixes checkout failures when Vercel temporary storage does not yet have the customer's local profile and balance.",
+        "修复 Vercel 临时存储未同步顾客本地资料和余额时导致的下单失败。"
+      ),
+      itemsI18n: [
+        localizedPair("Sends a safe frontend snapshot with recharge and checkout requests when persistent KV is not configured.", "在未配置持久化 KV 时，充值和下单请求会携带安全的前端快照作为兜底。"),
+        localizedPair("The backend imports the snapshot before state-dependent mutations only in non-KV mode.", "后端仅在非 KV 模式下，在依赖状态的变更前导入快照。"),
+        localizedPair("Checkout errors now show the backend's specific message instead of only a generic failure.", "下单失败时优先显示后端具体原因，不再只显示泛化失败。")
+      ]
+    },
+    {
       version: "v0.11.0",
       releasedAt: "2026-05-15",
       nameI18n: localizedPair("Versioned Release Log", "版本化开发日志"),
-      statusI18n: localizedPair("Current production build", "当前生产版本"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
       summaryI18n: localizedPair(
         "Adds a visible current-version entry and an admin-only development log from the avatar menu.",
         "在头像菜单加入当前版本入口，并为管理员加入开发日志。"
@@ -1446,10 +1461,10 @@
       return result;
     },
     async adjustFunds(profileId, amountPoints, reason, meta = {}) {
-      return this.applyMutationResult(await this.request("adjustFunds", { profileId, amountPoints, reason, meta }));
+      return this.applyMutationResult(await this.request("adjustFunds", { profileId, amountPoints, reason, meta, snapshot: this.snapshot() }));
     },
     async createOrder(payload) {
-      return this.applyMutationResult(await this.request("createOrder", payload));
+      return this.applyMutationResult(await this.request("createOrder", { order: payload, snapshot: this.snapshot() }));
     },
     async updateOrderStatus(orderId, status) {
       return this.applyMutationResult(await this.request("updateOrderStatus", { orderId, status }));
@@ -4467,9 +4482,9 @@
           if (!result.ok) {
             if (result.reason === "insufficient") {
               window.setTimeout(() => this.openRecharge(latestProfile, price - Number(result.balance || 0)), 0);
-              return { error: "余额不足，请先充值。" };
+              return { error: result.message || "余额不足，请先充值。" };
             }
-            return { error: "订单创建失败，请稍后重试。" };
+            return { error: result.message || "订单创建失败，请稍后重试。" };
           }
           UI.toast("提交成功", type === "reservation" ? "预约已进入待处理。" : "订单已进入待处理。");
           Router.go("account");
