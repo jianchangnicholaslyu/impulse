@@ -1,8 +1,11 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
+const os = require("node:os");
 const path = require("node:path");
 
-const DataFile = path.join(process.cwd(), ".data", "impulse-db.json");
+const IsVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const DataDir = process.env.IMPULSE_DATA_DIR || (IsVercel ? path.join(os.tmpdir(), "impulse-data") : path.join(process.cwd(), ".data"));
+const DataFile = path.join(DataDir, "impulse-db.json");
 const DbKey = process.env.BACKEND_DB_KEY || "impulse:db";
 const EmailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SessionMaxAgeMs = 30 * 24 * 60 * 60 * 1000;
@@ -147,6 +150,17 @@ async function kvRequest(command, args = []) {
     throw new Error(`KV ${command} failed: ${response.status}`);
   }
   return response.json();
+}
+
+function hasKvStorage() {
+  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+}
+
+function storageType() {
+  if (hasKvStorage()) {
+    return "kv";
+  }
+  return IsVercel ? "temporary-file" : "file";
 }
 
 async function readDb() {
@@ -572,7 +586,7 @@ async function handleAction(action, payload = {}, request = {}) {
   let db = await readDb();
 
   if (action === "health") {
-    return { ok: true, storage: process.env.KV_REST_API_URL ? "kv" : "file", hasEmail: Boolean(process.env.RESEND_API_KEY && (process.env.MAIL_FROM || process.env.RESEND_FROM)) };
+    return { ok: true, storage: storageType(), hasEmail: Boolean(process.env.RESEND_API_KEY && (process.env.MAIL_FROM || process.env.RESEND_FROM)) };
   }
 
   if (action === "bootstrap") {
@@ -581,7 +595,7 @@ async function handleAction(action, payload = {}, request = {}) {
       log(db, "后端初始化", "从前端快照导入初始数据");
       await writeDb(db);
     }
-    return { ok: true, snapshot: sanitizeSnapshot(db), backend: { storage: process.env.KV_REST_API_URL ? "kv" : "file" } };
+    return { ok: true, snapshot: sanitizeSnapshot(db), backend: { storage: storageType() } };
   }
 
   if (action === "saveSnapshot") {
