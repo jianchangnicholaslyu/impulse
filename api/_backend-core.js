@@ -603,7 +603,7 @@ async function handleAction(action, payload = {}, request = {}) {
   }
 
   if (action === "bootstrap") {
-    if (!db.categories.length && payload.snapshot) {
+    if (payload.snapshot && (canUseClientSnapshot() || !db.categories.length)) {
       db = importSnapshot(db, payload.snapshot);
       log(db, "后端初始化", "从前端快照导入初始数据");
       await writeDb(db);

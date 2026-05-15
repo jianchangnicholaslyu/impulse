@@ -86,10 +86,25 @@
 
   const DevelopmentRecords = [
     {
+      version: "v0.11.2",
+      releasedAt: "2026-05-15",
+      nameI18n: localizedPair("Non-Destructive Data Sync", "非破坏性数据同步"),
+      statusI18n: localizedPair("Current production build", "当前生产版本"),
+      summaryI18n: localizedPair(
+        "Protects existing local accounts, balances, orders, chats, and logs from being overwritten by incomplete temporary backend snapshots after updates.",
+        "保护更新前已有的本地账户、余额、订单、聊天和日志，避免被不完整的临时后端快照覆盖。"
+      ),
+      itemsI18n: [
+        localizedPair("Temporary backend snapshots now merge into local data instead of replacing it.", "临时后端快照现在会合并进本地数据，而不是直接覆盖。"),
+        localizedPair("Local-only users and profiles are preserved across deployments and hotfixes.", "部署和热补丁后会保留本地已有用户和资料。"),
+        localizedPair("Persistent KV storage remains the recommended production source of truth.", "正式生产环境仍建议使用持久化 KV 作为数据源。")
+      ]
+    },
+    {
       version: "v0.11.1",
       releasedAt: "2026-05-15",
       nameI18n: localizedPair("Checkout State Sync Hotfix", "下单状态同步热修复"),
-      statusI18n: localizedPair("Current production build", "当前生产版本"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
       summaryI18n: localizedPair(
         "Fixes checkout failures when Vercel temporary storage does not yet have the customer's local profile and balance.",
         "修复 Vercel 临时存储未同步顾客本地资料和余额时导致的下单失败。"
@@ -1354,6 +1369,7 @@
     bootstrapped: false,
     online: false,
     hydrating: false,
+    storage: "unknown",
     syncTimer: null,
     managedKeys: new Set([Keys.users, Keys.profiles, Keys.categories, Keys.games, Keys.products, Keys.orders, Keys.orderChats, Keys.ledger, Keys.adminLogs]),
     token() {
@@ -1379,21 +1395,66 @@
         adminLogs: Storage.get(Keys.adminLogs, [])
       };
     },
-    hydrate(snapshot) {
+    mergeArrayBy(localItems = [], remoteItems = [], keyFn) {
+      const merged = new Map();
+      (Array.isArray(localItems) ? localItems : []).forEach((item) => {
+        const key = keyFn(item);
+        if (key) merged.set(key, item);
+      });
+      (Array.isArray(remoteItems) ? remoteItems : []).forEach((item) => {
+        const key = keyFn(item);
+        if (key) merged.set(key, { ...(merged.get(key) || {}), ...item });
+      });
+      return Array.from(merged.values());
+    },
+    mergeRecordLists(localRecord = {}, remoteRecord = {}) {
+      const result = { ...(localRecord || {}) };
+      Object.entries(remoteRecord || {}).forEach(([key, remoteList]) => {
+        const localList = Array.isArray(result[key]) ? result[key] : [];
+        result[key] = this.mergeArrayBy(localList, remoteList, (item) => item?.id || `${item?.title || ""}:${item?.createdAt || ""}`);
+      });
+      return result;
+    },
+    mergeChats(localChats = {}, remoteChats = {}) {
+      const result = { ...(localChats || {}) };
+      Object.entries(remoteChats || {}).forEach(([orderId, messages]) => {
+        result[orderId] = this.mergeArrayBy(result[orderId] || [], messages, (item) => item?.id || `${item?.sender || ""}:${item?.createdAt || ""}:${item?.text || ""}`);
+      });
+      return result;
+    },
+    mergeSnapshot(remoteSnapshot) {
+      const local = this.snapshot();
+      return {
+        users: this.mergeArrayBy(local.users, remoteSnapshot.users, (item) => normalize(item?.username || item?.email)),
+        profiles: this.mergeArrayBy(local.profiles, remoteSnapshot.profiles, (item) => item?.id || normalize(item?.username)),
+        categories: this.mergeArrayBy(local.categories, remoteSnapshot.categories, (item) => item?.id),
+        games: this.mergeRecordLists(local.games, remoteSnapshot.games),
+        products: this.mergeRecordLists(local.products, remoteSnapshot.products),
+        orders: this.mergeArrayBy(local.orders, remoteSnapshot.orders, (item) => item?.id),
+        orderChats: this.mergeChats(local.orderChats, remoteSnapshot.orderChats),
+        ledger: this.mergeArrayBy(local.ledger, remoteSnapshot.ledger, (item) => item?.id),
+        adminLogs: this.mergeArrayBy(local.adminLogs, remoteSnapshot.adminLogs, (item) => item?.id)
+      };
+    },
+    shouldPreserveLocal() {
+      return this.storage === "temporary-file" || this.storage === "unknown";
+    },
+    hydrate(snapshot, options = {}) {
       if (!snapshot || typeof snapshot !== "object") {
         return;
       }
+      const nextSnapshot = options.preserveLocal ? this.mergeSnapshot(snapshot) : snapshot;
       this.hydrating = true;
       try {
-        if (Array.isArray(snapshot.users)) Storage.set(Keys.users, snapshot.users);
-        if (Array.isArray(snapshot.profiles)) Storage.set(Keys.profiles, snapshot.profiles);
-        if (Array.isArray(snapshot.categories)) Storage.set(Keys.categories, snapshot.categories);
-        if (snapshot.games && typeof snapshot.games === "object") Storage.set(Keys.games, snapshot.games);
-        if (snapshot.products && typeof snapshot.products === "object") Storage.set(Keys.products, snapshot.products);
-        if (Array.isArray(snapshot.orders)) Storage.set(Keys.orders, snapshot.orders);
-        if (snapshot.orderChats && typeof snapshot.orderChats === "object") Storage.set(Keys.orderChats, snapshot.orderChats);
-        if (Array.isArray(snapshot.ledger)) Storage.set(Keys.ledger, snapshot.ledger);
-        if (Array.isArray(snapshot.adminLogs)) Storage.set(Keys.adminLogs, snapshot.adminLogs);
+        if (Array.isArray(nextSnapshot.users)) Storage.set(Keys.users, nextSnapshot.users);
+        if (Array.isArray(nextSnapshot.profiles)) Storage.set(Keys.profiles, nextSnapshot.profiles);
+        if (Array.isArray(nextSnapshot.categories)) Storage.set(Keys.categories, nextSnapshot.categories);
+        if (nextSnapshot.games && typeof nextSnapshot.games === "object") Storage.set(Keys.games, nextSnapshot.games);
+        if (nextSnapshot.products && typeof nextSnapshot.products === "object") Storage.set(Keys.products, nextSnapshot.products);
+        if (Array.isArray(nextSnapshot.orders)) Storage.set(Keys.orders, nextSnapshot.orders);
+        if (nextSnapshot.orderChats && typeof nextSnapshot.orderChats === "object") Storage.set(Keys.orderChats, nextSnapshot.orderChats);
+        if (Array.isArray(nextSnapshot.ledger)) Storage.set(Keys.ledger, nextSnapshot.ledger);
+        if (Array.isArray(nextSnapshot.adminLogs)) Storage.set(Keys.adminLogs, nextSnapshot.adminLogs);
       } finally {
         this.hydrating = false;
       }
@@ -1410,6 +1471,9 @@
         });
         const result = await response.json().catch(() => ({}));
         this.online = response.ok || Boolean(result && result.message);
+        if (result?.backend?.storage) {
+          this.storage = result.backend.storage;
+        }
         return { ...result, httpOk: response.ok };
       } catch (error) {
         this.online = false;
@@ -1420,7 +1484,7 @@
       const result = await this.request("bootstrap", { snapshot: this.snapshot() });
       this.bootstrapped = true;
       if (result.ok && result.snapshot) {
-        this.hydrate(result.snapshot);
+        this.hydrate(result.snapshot, { preserveLocal: this.shouldPreserveLocal() });
         return true;
       }
       return false;
@@ -1456,7 +1520,7 @@
     },
     applyMutationResult(result) {
       if (result?.ok && result.snapshot) {
-        this.hydrate(result.snapshot);
+        this.hydrate(result.snapshot, { preserveLocal: this.shouldPreserveLocal() });
       }
       return result;
     },
@@ -1486,7 +1550,7 @@
         this.setToken(result.token);
       }
       if (result.snapshot) {
-        this.hydrate(result.snapshot);
+        this.hydrate(result.snapshot, { preserveLocal: this.shouldPreserveLocal() });
       }
       if (result.user) {
         Session.start(result.user, { skipBackendLog: true });
