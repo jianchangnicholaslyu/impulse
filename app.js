@@ -86,10 +86,25 @@
 
   const DevelopmentRecords = [
     {
+      version: "v0.12.1",
+      releasedAt: "2026-05-16",
+      nameI18n: localizedPair("Bootstrap Preservation Hotfix", "启动数据保护热修复"),
+      statusI18n: localizedPair("Current production build", "当前生产版本"),
+      summaryI18n: localizedPair(
+        "Ensures existing browser-local accounts and orders are merged into Supabase during app startup instead of being overwritten by an already-initialized database.",
+        "确保启动网站时会把浏览器本地已有账号和订单合并进 Supabase，避免被已初始化数据库覆盖。"
+      ),
+      itemsI18n: [
+        localizedPair("Bootstrap now performs a non-destructive snapshot merge for persistent storage.", "启动流程现在会对持久化存储执行非破坏性快照合并。"),
+        localizedPair("Older browser-local accounts can be carried into Supabase after the database is connected.", "数据库接通后，旧浏览器本地账号也能被带入 Supabase。"),
+        localizedPair("This hotfix reduces data-loss risk during the transition from localStorage to Supabase.", "该热补丁降低从 localStorage 迁移到 Supabase 时的数据丢失风险。")
+      ]
+    },
+    {
       version: "v0.12.0",
       releasedAt: "2026-05-15",
       nameI18n: localizedPair("Supabase Persistence", "Supabase 持久化"),
-      statusI18n: localizedPair("Current production build", "当前生产版本"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
       summaryI18n: localizedPair(
         "Adds Supabase Postgres as the primary persistent backend store while keeping KV and local file fallbacks.",
         "新增 Supabase Postgres 作为主要持久化后端存储，同时保留 KV 和本地文件兜底。"
