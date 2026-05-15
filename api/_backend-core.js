@@ -7,6 +7,7 @@ const IsVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_N
 const DataDir = process.env.IMPULSE_DATA_DIR || (IsVercel ? path.join(os.tmpdir(), "impulse-data") : path.join(process.cwd(), ".data"));
 const DataFile = path.join(DataDir, "impulse-db.json");
 const DbKey = process.env.BACKEND_DB_KEY || "impulse:db";
+const SupabaseTablePattern = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 const EmailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SessionMaxAgeMs = 30 * 24 * 60 * 60 * 1000;
 const VerificationMaxAgeMs = 10 * 60 * 1000;
@@ -152,11 +153,81 @@ async function kvRequest(command, args = []) {
   return response.json();
 }
 
+function supabaseUrl() {
+  return String(process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+}
+
+function supabaseKey() {
+  return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || "";
+}
+
+function supabaseTable() {
+  const table = process.env.SUPABASE_STATE_TABLE || "impulse_state";
+  if (!SupabaseTablePattern.test(table)) {
+    throw new Error("SUPABASE_STATE_TABLE must contain only letters, numbers, and underscores, and cannot start with a number.");
+  }
+  return table;
+}
+
+function hasSupabaseStorage() {
+  return Boolean(supabaseUrl() && supabaseKey());
+}
+
+async function supabaseRequest(pathname, options = {}) {
+  const response = await fetch(`${supabaseUrl()}${pathname}`, {
+    ...options,
+    headers: {
+      apikey: supabaseKey(),
+      Authorization: `Bearer ${supabaseKey()}`,
+      ...(options.headers || {})
+    }
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Supabase request failed: ${response.status}${detail ? ` ${detail}` : ""}`);
+  }
+  if (response.status === 204) {
+    return null;
+  }
+  return response.json().catch(() => null);
+}
+
+async function readSupabaseDb() {
+  const table = supabaseTable();
+  const id = encodeURIComponent(DbKey);
+  const rows = await supabaseRequest(`/rest/v1/${table}?id=eq.${id}&select=data`, {
+    headers: { Accept: "application/json" }
+  });
+  const data = Array.isArray(rows) && rows[0]?.data ? rows[0].data : null;
+  return data ? normalizeDb(data) : emptyDb();
+}
+
+async function writeSupabaseDb(db) {
+  const table = supabaseTable();
+  const normalized = normalizeDb(db);
+  await supabaseRequest(`/rest/v1/${table}?on_conflict=id`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates,return=minimal"
+    },
+    body: JSON.stringify({
+      id: DbKey,
+      data: normalized,
+      updated_at: nowIso()
+    })
+  });
+  return normalized;
+}
+
 function hasKvStorage() {
   return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 }
 
 function storageType() {
+  if (hasSupabaseStorage()) {
+    return "supabase";
+  }
   if (hasKvStorage()) {
     return "kv";
   }
@@ -164,7 +235,7 @@ function storageType() {
 }
 
 function canUseClientSnapshot() {
-  return !hasKvStorage();
+  return !hasSupabaseStorage() && !hasKvStorage();
 }
 
 function hydrateTemporaryDb(db, snapshot, actor = "CLIENT") {
@@ -177,6 +248,9 @@ function hydrateTemporaryDb(db, snapshot, actor = "CLIENT") {
 }
 
 async function readDb() {
+  if (hasSupabaseStorage()) {
+    return readSupabaseDb();
+  }
   const kv = await kvRequest("get", [DbKey]);
   if (kv) {
     return kv.result ? normalizeDb(JSON.parse(kv.result)) : emptyDb();
@@ -191,6 +265,9 @@ async function readDb() {
 
 async function writeDb(db) {
   const normalized = normalizeDb(db);
+  if (hasSupabaseStorage()) {
+    return writeSupabaseDb(normalized);
+  }
   const payload = JSON.stringify(normalized);
   const kv = await kvRequest("set", [DbKey, payload]);
   if (kv) {
@@ -296,28 +373,54 @@ function ensureProfiles(db) {
   db.profiles = next;
 }
 
-function importSnapshot(db, snapshot = {}) {
-  const incomingUsers = Array.isArray(snapshot.users) && snapshot.users.length ? snapshot.users : db.users;
-  const existingUsers = new Map(db.users.map((user) => [normalize(user.username), user]));
-  const mergedUsers = incomingUsers.map((user) => {
-    const existing = existingUsers.get(normalize(user.username)) || {};
-    return {
-      ...existing,
-      ...user,
-      passwordHash: user.passwordHash || existing.passwordHash || (user.password ? hashPassword(user.password) : "")
-    };
+function mergeArrayBy(existingItems = [], incomingItems = [], keyFn, mergeFn = (existing, incoming) => ({ ...existing, ...incoming })) {
+  const merged = new Map();
+  (Array.isArray(existingItems) ? existingItems : []).forEach((item) => {
+    const key = keyFn(item);
+    if (key) {
+      merged.set(key, item);
+    }
   });
+  (Array.isArray(incomingItems) ? incomingItems : []).forEach((item) => {
+    const key = keyFn(item);
+    if (key) {
+      merged.set(key, mergeFn(merged.get(key) || {}, item));
+    }
+  });
+  return Array.from(merged.values());
+}
+
+function mergeRecordLists(existingRecord = {}, incomingRecord = {}, keyFn) {
+  const result = { ...(existingRecord || {}) };
+  Object.entries(incomingRecord || {}).forEach(([key, incomingItems]) => {
+    result[key] = mergeArrayBy(result[key] || [], incomingItems, keyFn);
+  });
+  return result;
+}
+
+function mergeChatRecords(existingChats = {}, incomingChats = {}) {
+  return mergeRecordLists(existingChats, incomingChats, (message) => (
+    message?.id || `${message?.sender || ""}:${message?.createdAt || ""}:${message?.text || ""}`
+  ));
+}
+
+function importSnapshot(db, snapshot = {}) {
+  const mergedUsers = mergeArrayBy(db.users, snapshot.users, (user) => normalize(user?.username || user?.email), (existing, user) => ({
+    ...existing,
+    ...user,
+    passwordHash: user.passwordHash || existing.passwordHash || (user.password ? hashPassword(user.password) : "")
+  }));
   const imported = normalizeDb({
     ...db,
     users: mergedUsers,
-    profiles: Array.isArray(snapshot.profiles) && snapshot.profiles.length ? snapshot.profiles : db.profiles,
-    categories: Array.isArray(snapshot.categories) && snapshot.categories.length ? snapshot.categories : db.categories,
-    games: snapshot.games && typeof snapshot.games === "object" ? snapshot.games : db.games,
-    products: snapshot.products && typeof snapshot.products === "object" ? snapshot.products : db.products,
-    orders: Array.isArray(snapshot.orders) ? snapshot.orders : db.orders,
-    orderChats: snapshot.orderChats && typeof snapshot.orderChats === "object" ? snapshot.orderChats : db.orderChats,
-    ledger: Array.isArray(snapshot.ledger) ? snapshot.ledger : db.ledger,
-    adminLogs: Array.isArray(snapshot.adminLogs) ? snapshot.adminLogs : db.adminLogs
+    profiles: mergeArrayBy(db.profiles, snapshot.profiles, (profile) => profile?.id || normalize(profile?.username)),
+    categories: mergeArrayBy(db.categories, snapshot.categories, (category) => category?.id),
+    games: mergeRecordLists(db.games, snapshot.games, (game) => game?.id),
+    products: mergeRecordLists(db.products, snapshot.products, (product) => product?.id),
+    orders: mergeArrayBy(db.orders, snapshot.orders, (order) => order?.id),
+    orderChats: mergeChatRecords(db.orderChats, snapshot.orderChats),
+    ledger: mergeArrayBy(db.ledger, snapshot.ledger, (entry) => entry?.id),
+    adminLogs: mergeArrayBy(db.adminLogs, snapshot.adminLogs, (entry) => entry?.id)
   });
   return imported;
 }

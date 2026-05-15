@@ -86,10 +86,25 @@
 
   const DevelopmentRecords = [
     {
+      version: "v0.12.0",
+      releasedAt: "2026-05-15",
+      nameI18n: localizedPair("Supabase Persistence", "Supabase 持久化"),
+      statusI18n: localizedPair("Current production build", "当前生产版本"),
+      summaryI18n: localizedPair(
+        "Adds Supabase Postgres as the primary persistent backend store while keeping KV and local file fallbacks.",
+        "新增 Supabase Postgres 作为主要持久化后端存储，同时保留 KV 和本地文件兜底。"
+      ),
+      itemsI18n: [
+        localizedPair("Backend storage now uses Supabase first when server-side environment variables are configured.", "配置服务端环境变量后，后端会优先使用 Supabase 存储。"),
+        localizedPair("Added a Supabase SQL setup script and deployment guide.", "新增 Supabase SQL 建表脚本和部署说明。"),
+        localizedPair("Snapshot imports now merge existing records to avoid accidental account and order loss.", "快照导入改为合并已有记录，避免误删账户和订单。")
+      ]
+    },
+    {
       version: "v0.11.2",
       releasedAt: "2026-05-15",
       nameI18n: localizedPair("Non-Destructive Data Sync", "非破坏性数据同步"),
-      statusI18n: localizedPair("Current production build", "当前生产版本"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
       summaryI18n: localizedPair(
         "Protects existing local accounts, balances, orders, chats, and logs from being overwritten by incomplete temporary backend snapshots after updates.",
         "保护更新前已有的本地账户、余额、订单、聊天和日志，避免被不完整的临时后端快照覆盖。"
