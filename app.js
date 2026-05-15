@@ -13,6 +13,7 @@
     adminLogs: "adminLogs",
     currentUser: "currentUser",
     currentMode: "currentMode",
+    backendToken: "backendToken",
     language: "siteLanguage",
     staffLog: "staffLog",
     dataVersion: "impulseDataVersion"
@@ -54,11 +55,204 @@
   const ReturnRefundRate = 0.25;
   const ReturnWindowMs = 60 * 60 * 1000;
   const OnlineWindowMs = 5 * 60 * 1000;
+  const UserIdPattern = /^\d{18}$/;
+  const DefaultLanguage = "en";
+  const LocalLanguageCodes = ["en", "zh-CN"];
+  const LocalContentLanguageCodes = ["en", "zh-CN"];
+  const ContentTextFields = ["title", "description", "platform", "duration", "badge"];
+  const GenderOptions = [
+    { value: "unset", label: "未设置" },
+    { value: "female", label: "女" },
+    { value: "male", label: "男" },
+    { value: "nonbinary", label: "非二元" },
+    { value: "private", label: "保密" }
+  ];
+  const EmailNoticeTypes = [
+    { key: "rechargeSuccess", label: "充值成功", subject: "Recharge successful" },
+    { key: "orderSuccess", label: "下单成功", subject: "Order placed successfully" },
+    { key: "orderAccepted", label: "接单成功", subject: "Your order has been accepted" },
+    { key: "serviceReminder", label: "服务提醒", subject: "Service reminder" },
+    { key: "progressReminder", label: "进度提醒", subject: "Progress update" },
+    { key: "completionRequest", label: "结单请求", subject: "Completion request" },
+    { key: "rushReply", label: "加急回复", subject: "Rush request update" },
+    { key: "completionSuccess", label: "结单成功", subject: "Order completed" },
+    { key: "returnSuccess", label: "退单成功", subject: "Order return completed" }
+  ];
+
+  const VersionNamingPolicy = localizedPair(
+    "IMPULSE versions use Semantic Versioning plus a short release name: vMAJOR.MINOR.PATCH · Release Name.",
+    "IMPULSE 版本采用语义化版本号加短发布名：v主版本.次版本.修订版本 · 发布名称。"
+  );
+
+  const DevelopmentRecords = [
+    {
+      version: "v0.11.0",
+      releasedAt: "2026-05-15",
+      nameI18n: localizedPair("Versioned Release Log", "版本化开发日志"),
+      statusI18n: localizedPair("Current production build", "当前生产版本"),
+      summaryI18n: localizedPair(
+        "Adds a visible current-version entry and an admin-only development log from the avatar menu.",
+        "在头像菜单加入当前版本入口，并为管理员加入开发日志。"
+      ),
+      itemsI18n: [
+        localizedPair("Added Current Version to guest and user avatar menus.", "在访客和已登录用户的头像菜单中新增当前版本。"),
+        localizedPair("Added an admin-only Development Log entry with full release history.", "在管理员头像菜单中新增开发日志，展示往期所有开发记录。"),
+        localizedPair("Upgraded the avatar menu with account summaries and release metadata.", "优化头像菜单，加入账户摘要与版本元信息。")
+      ]
+    },
+    {
+      version: "v0.10.0",
+      releasedAt: "2026-05-15",
+      nameI18n: localizedPair("Backend Foundation", "后端基础版"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
+      summaryI18n: localizedPair(
+        "Introduced the backend API layer for authentication, verification codes, funds, orders, chats, and server-side snapshots.",
+        "引入后端 API 层，承接认证、验证码、资金、订单、聊天和服务端快照。"
+      ),
+      itemsI18n: [
+        localizedPair("Added a unified /api/backend endpoint with local-file and KV storage adapters.", "新增统一的 /api/backend 接口，支持本地文件和 KV 存储适配。"),
+        localizedPair("Moved core account, order, recharge, and chat mutations to backend-first calls.", "将账户、订单、充值和聊天的核心变更改为优先走后端。"),
+        localizedPair("Added Resend-based email delivery support with safe local demo fallback.", "加入基于 Resend 的邮件发送支持，并保留安全的本地演示兜底。")
+      ]
+    },
+    {
+      version: "v0.9.0",
+      releasedAt: "2026-05-15",
+      nameI18n: localizedPair("Account Center", "账户中心"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
+      summaryI18n: localizedPair(
+        "Expanded user profiles, settings, avatars, registration fields, notification preferences, and bilingual editable content.",
+        "扩展用户资料、设置、头像、注册信息、通知偏好和中英文可编辑内容。"
+      ),
+      itemsI18n: [
+        localizedPair("Added user info, account security, contact settings, staff application, and sign-out settings.", "新增用户信息、账户安全、联系设置、我要入职和退出登录设置。"),
+        localizedPair("Added image avatar upload with a 5 MB limit and circular crop preview.", "新增不大于 5MB 的头像上传与圆形截取预览。"),
+        localizedPair("Required English and Simplified Chinese content for new categories, sections, and products.", "新增分类、分区和商品时要求分别填写英文和简体中文。")
+      ]
+    },
+    {
+      version: "v0.8.0",
+      releasedAt: "2026-05-15",
+      nameI18n: localizedPair("Deployment Baseline", "部署基线"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
+      summaryI18n: localizedPair(
+        "Prepared the project for GitHub, Vercel, and the impulse.ccwu.cc custom domain.",
+        "完成 GitHub、Vercel 与 impulse.ccwu.cc 自定义域名部署准备。"
+      ),
+      itemsI18n: [
+        localizedPair("Initialized Git workflow, .gitignore, and deployment checks.", "完善 Git 流程、.gitignore 和部署检查。"),
+        localizedPair("Connected the GitHub repository and Vercel production deployment.", "连接 GitHub 仓库与 Vercel 生产部署。"),
+        localizedPair("Guided DNS records for the custom domain.", "完成自定义域名 DNS 记录配置指导。")
+      ]
+    },
+    {
+      version: "v0.7.0",
+      releasedAt: "2026-05-15",
+      nameI18n: localizedPair("Email Auth", "邮箱认证"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
+      summaryI18n: localizedPair(
+        "Refined sign-in with password login and email-code login options.",
+        "优化登录界面，支持账户密码登录和邮箱验证码登录。"
+      ),
+      itemsI18n: [
+        localizedPair("Added email-based sign-in and six-digit verification flows.", "新增邮箱登录与六位验证码流程。"),
+        localizedPair("Kept password sign-in available as an alternate login method.", "保留账户密码登录作为可选方式。")
+      ]
+    },
+    {
+      version: "v0.6.0",
+      releasedAt: "2026-05-15",
+      nameI18n: localizedPair("Order Funds & Chat", "订单资金与聊天"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
+      summaryI18n: localizedPair(
+        "Added point-based checkout, recharge options, auto-return, order chat, read state, and customer order actions.",
+        "新增积分下单、充值档位、自动退单、订单聊天、已读状态与顾客订单操作。"
+      ),
+      itemsI18n: [
+        localizedPair("Added 1:1 USD-to-points recharge options.", "新增美元与积分 1:1 的充值档位。"),
+        localizedPair("Added customer-to-staff chat with text and image messages.", "新增顾客与员工之间可发送文字和图片的订单聊天。"),
+        localizedPair("Added rush, return, report, and tip actions requiring account verification.", "新增加急、退单、举报和小费操作，并要求账户验证。")
+      ]
+    },
+    {
+      version: "v0.5.0",
+      releasedAt: "2026-05-15",
+      nameI18n: localizedPair("Admin Operations", "管理运营台"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
+      summaryI18n: localizedPair(
+        "Built admin sections for users, orders, ledger, and operation logs with secondary passwords.",
+        "建立用户、订单、账本、日志四个管理分区，并加入二级密码。"
+      ),
+      itemsI18n: [
+        localizedPair("Added customer and staff user management views.", "新增顾客与员工用户管理视图。"),
+        localizedPair("Added order search, ledger records, operation logs, and clear-log action.", "新增订单检索、账本流水、操作日志和一键清空日志。")
+      ]
+    },
+    {
+      version: "v0.4.0",
+      releasedAt: "2026-05-15",
+      nameI18n: localizedPair("Global Language Layer", "多语言层"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
+      summaryI18n: localizedPair(
+        "Added language selection, local English/Simplified Chinese translations, and Google Translate fallback.",
+        "新增语言选择、本地英文和简体中文翻译，以及 Google Translate 兜底。"
+      ),
+      itemsI18n: [
+        localizedPair("Protected names such as IMPULSE and account names from translation.", "保护 IMPULSE 和账户名称等专用名不被翻译。"),
+        localizedPair("Separated local UI translations from editable content translation.", "区分结构性本地翻译和可编辑内容翻译。")
+      ]
+    },
+    {
+      version: "v0.3.0",
+      releasedAt: "2026-05-15",
+      nameI18n: localizedPair("Production Polish", "可用化打磨"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
+      summaryI18n: localizedPair(
+        "Reworked the static app into a more complete shopping experience without changing the product direction.",
+        "在不改变业务方向的前提下，把静态应用打磨为更完整的购物体验。"
+      ),
+      itemsI18n: [
+        localizedPair("Improved responsive layouts, modal flows, product details, and mode rendering.", "优化响应式布局、弹窗流程、商品详情和模式渲染。"),
+        localizedPair("Kept the HTML/CSS/JavaScript structure deployable as a static site.", "保持 HTML/CSS/JavaScript 结构，可作为静态站点部署。")
+      ]
+    },
+    {
+      version: "v0.2.0",
+      releasedAt: "2026-05-15",
+      nameI18n: localizedPair("Account Access", "账户入口"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
+      summaryI18n: localizedPair(
+        "Added the top-right account avatar entry for login and account actions.",
+        "在右上角加入账户头像入口，用于登录和账户操作。"
+      ),
+      itemsI18n: [
+        localizedPair("Added avatar/account button in the global top bar.", "在全局顶部栏新增头像/账户按钮。"),
+        localizedPair("Connected the avatar menu to login and account actions.", "将头像菜单连接到登录与账户操作。")
+      ]
+    },
+    {
+      version: "v0.1.0",
+      releasedAt: "2026-05-15",
+      nameI18n: localizedPair("Marketplace Shell", "商城骨架"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
+      summaryI18n: localizedPair(
+        "Created the IMPULSE three-level marketplace foundation for game services.",
+        "创建 IMPULSE 游戏服务三层商城基础结构。"
+      ),
+      itemsI18n: [
+        localizedPair("Added customer, staff, and admin visual modes.", "新增客户、员工和管理员三种视觉模式。"),
+        localizedPair("Added categories, game sections, product rows, and detail modals.", "新增一级分类、游戏分区、商品行和详情弹窗。"),
+        localizedPair("Added localStorage-backed seed data and management editing flows.", "新增 localStorage 种子数据和管理编辑流程。")
+      ]
+    }
+  ];
+
+  const CurrentRelease = DevelopmentRecords[0];
 
   const Languages = [
+    { code: "en", label: "英语", nativeName: "English", names: { "zh-CN": "英语", "zh-TW": "英語", en: "English", fr: "Anglais", ja: "英語", ko: "영어", es: "Inglés" } },
     { code: "zh-CN", label: "简体中文", nativeName: "简体中文", names: { "zh-CN": "简体中文", "zh-TW": "簡體中文", en: "Simplified Chinese", fr: "Chinois simplifié", ja: "簡体字中国語", ko: "중국어 간체", es: "Chino simplificado" } },
     { code: "zh-TW", label: "繁体中文", nativeName: "繁體中文", names: { "zh-CN": "繁体中文", "zh-TW": "繁體中文", en: "Traditional Chinese", fr: "Chinois traditionnel", ja: "繁体字中国語", ko: "중국어 번체", es: "Chino tradicional" } },
-    { code: "en", label: "英语", nativeName: "English", names: { "zh-CN": "英语", "zh-TW": "英語", en: "English", fr: "Anglais", ja: "英語", ko: "영어", es: "Inglés" } },
     { code: "fr", label: "法语", nativeName: "Français", names: { "zh-CN": "法语", "zh-TW": "法語", en: "French", fr: "Français", ja: "フランス語", ko: "프랑스어", es: "Francés" } },
     { code: "ja", label: "日语", nativeName: "日本語", names: { "zh-CN": "日语", "zh-TW": "日語", en: "Japanese", fr: "Japonais", ja: "日本語", ko: "일본어", es: "Japonés" } },
     { code: "ko", label: "韩语", nativeName: "한국어", names: { "zh-CN": "韩语", "zh-TW": "韓語", en: "Korean", fr: "Coréen", ja: "韓国語", ko: "한국어", es: "Coreano" } },
@@ -77,6 +271,7 @@
     "员工模式": { "zh-TW": "員工模式", en: "Staff Mode", fr: "Mode employé", ja: "スタッフモード", ko: "직원 모드", es: "Modo empleado" },
     "管理模式": { "zh-TW": "管理模式", en: "Admin Mode", fr: "Mode admin", ja: "管理モード", ko: "관리자 모드", es: "Modo administrador" },
     "客户": { "zh-TW": "客戶", en: "Customer", fr: "Client", ja: "顧客", ko: "고객", es: "Cliente" },
+    "访客": { "zh-TW": "訪客", en: "Guest", fr: "Invité", ja: "ゲスト", ko: "게스트", es: "Invitado" },
     "待处理": { "zh-TW": "待處理", en: "Pending", fr: "En attente", ja: "保留中", ko: "대기 중", es: "Pendiente" },
     "进行中": { "zh-TW": "進行中", en: "In Progress", fr: "En cours", ja: "進行中", ko: "진행 중", es: "En curso" },
     "已完成": { "zh-TW": "已完成", en: "Completed", fr: "Terminé", ja: "完了", ko: "완료", es: "Completado" },
@@ -88,8 +283,24 @@
     "登录账户": { "zh-TW": "登入帳戶", en: "Sign In", fr: "Connexion", ja: "ログイン", ko: "로그인", es: "Iniciar sesión" },
     "登录方式": { "zh-TW": "登入方式", en: "Sign-In Method", fr: "Méthode de connexion", ja: "ログイン方法", ko: "로그인 방식", es: "Método de acceso" },
     "账户菜单": { "zh-TW": "帳戶選單", en: "Account Menu", fr: "Menu du compte", ja: "アカウントメニュー", ko: "계정 메뉴", es: "Menú de cuenta" },
+    "当前版本": { "zh-TW": "目前版本", en: "Current Version", fr: "Version actuelle", ja: "現在のバージョン", ko: "현재 버전", es: "Versión actual" },
+    "开发日志": { "zh-TW": "開發日誌", en: "Development Log", fr: "Journal de développement", ja: "開発ログ", ko: "개발 로그", es: "Registro de desarrollo" },
+    "版本记录": { "zh-TW": "版本記錄", en: "Release History", fr: "Historique des versions", ja: "リリース履歴", ko: "릴리스 기록", es: "Historial de versiones" },
+    "查看开发日志": { "zh-TW": "查看開發日誌", en: "View Development Log", fr: "Voir le journal", ja: "開発ログを見る", ko: "개발 로그 보기", es: "Ver registro" },
+    "版本命名规范": { "zh-TW": "版本命名規範", en: "Version Naming", fr: "Nom des versions", ja: "バージョン命名", ko: "버전 명명", es: "Nomenclatura" },
+    "版本号": { "zh-TW": "版本號", en: "Version", fr: "Version", ja: "バージョン", ko: "버전", es: "Versión" },
+    "版本名称": { "zh-TW": "版本名稱", en: "Release Name", fr: "Nom de version", ja: "リリース名", ko: "릴리스 이름", es: "Nombre de versión" },
+    "发布时间": { "zh-TW": "發布時間", en: "Release Date", fr: "Date de sortie", ja: "リリース日", ko: "출시일", es: "Fecha de lanzamiento" },
+    "上传状态": { "zh-TW": "上傳狀態", en: "Upload Status", fr: "Statut d'envoi", ja: "アップロード状態", ko: "업로드 상태", es: "Estado de subida" },
+    "本次更新": { "zh-TW": "本次更新", en: "This Update", fr: "Cette mise à jour", ja: "今回の更新", ko: "이번 업데이트", es: "Esta actualización" },
+    "当前发布": { "zh-TW": "目前發布", en: "Current Release", fr: "Version courante", ja: "現在のリリース", ko: "현재 릴리스", es: "Lanzamiento actual" },
     "我的订单": { "zh-TW": "我的訂單", en: "My Orders", fr: "Mes commandes", ja: "注文履歴", ko: "내 주문", es: "Mis pedidos" },
     "语言选择": { "zh-TW": "語言選擇", en: "Language", fr: "Langue", ja: "言語", ko: "언어", es: "Idioma" },
+    "设置": { "zh-TW": "設定", en: "Settings", fr: "Paramètres", ja: "設定", ko: "설정", es: "Ajustes" },
+    "用户信息": { "zh-TW": "使用者資訊", en: "User Info", fr: "Infos utilisateur", ja: "ユーザー情報", ko: "사용자 정보", es: "Información de usuario" },
+    "账户安全": { "zh-TW": "帳戶安全", en: "Account Security", fr: "Sécurité du compte", ja: "アカウントセキュリティ", ko: "계정 보안", es: "Seguridad de cuenta" },
+    "联系设置": { "zh-TW": "聯絡設定", en: "Contact Settings", fr: "Paramètres de contact", ja: "連絡設定", ko: "연락 설정", es: "Ajustes de contacto" },
+    "我要入职": { "zh-TW": "我要入職", en: "Join as Staff", fr: "Rejoindre l'équipe", ja: "スタッフ応募", ko: "입사 신청", es: "Unirme al equipo" },
     "退出登录": { "zh-TW": "登出", en: "Sign Out", fr: "Déconnexion", ja: "ログアウト", ko: "로그아웃", es: "Cerrar sesión" },
     "确认退出登录？": { "zh-TW": "確認登出？", en: "Sign out?", fr: "Se déconnecter ?", ja: "ログアウトしますか？", ko: "로그아웃할까요?", es: "¿Cerrar sesión?" },
     "退出后将回到客户模式。": { "zh-TW": "登出後將回到客戶模式。", en: "After signing out, you will return to customer mode.", fr: "Après déconnexion, vous reviendrez au mode client.", ja: "ログアウト後は顧客モードに戻ります。", ko: "로그아웃하면 고객 모드로 돌아갑니다.", es: "Al cerrar sesión volverás al modo cliente." },
@@ -144,6 +355,27 @@
     "注册后将使用邮箱作为唯一登录凭证。": { "zh-TW": "註冊後將使用電子郵件作為唯一登入憑證。", en: "After registration, email is your login credential.", fr: "Après inscription, l'e-mail servira d'identifiant.", ja: "登録後はメールがログイン資格情報になります。", ko: "가입 후 이메일이 로그인 정보가 됩니다.", es: "Tras registrarte, el email será tu credencial." },
     "密码": { "zh-TW": "密碼", en: "Password", fr: "Mot de passe", ja: "パスワード", ko: "비밀번호", es: "Contraseña" },
     "确认密码": { "zh-TW": "確認密碼", en: "Confirm Password", fr: "Confirmer le mot de passe", ja: "パスワード確認", ko: "비밀번호 확인", es: "Confirmar contraseña" },
+    "用户ID": { "zh-TW": "使用者ID", en: "User ID", fr: "ID utilisateur", ja: "ユーザーID", ko: "사용자 ID", es: "ID de usuario" },
+    "头像": { "zh-TW": "頭像", en: "Avatar", fr: "Avatar", ja: "アバター", ko: "아바타", es: "Avatar" },
+    "修改头像": { "zh-TW": "修改頭像", en: "Change Avatar", fr: "Modifier l'avatar", ja: "アバター変更", ko: "아바타 변경", es: "Cambiar avatar" },
+    "上传图像": { "zh-TW": "上傳圖像", en: "Upload Image", fr: "Téléverser une image", ja: "画像をアップロード", ko: "이미지 업로드", es: "Subir imagen" },
+    "移除头像": { "zh-TW": "移除頭像", en: "Remove Avatar", fr: "Supprimer l'avatar", ja: "アバター削除", ko: "아바타 제거", es: "Quitar avatar" },
+    "已上传图片": { "zh-TW": "已上傳圖片", en: "Image Uploaded", fr: "Image téléversée", ja: "画像アップロード済み", ko: "이미지 업로드됨", es: "Imagen subida" },
+    "用户等级": { "zh-TW": "使用者等級", en: "User Level", fr: "Niveau utilisateur", ja: "ユーザーレベル", ko: "사용자 등급", es: "Nivel de usuario" },
+    "剩余资金": { "zh-TW": "剩餘資金", en: "Remaining Funds", fr: "Solde restant", ja: "残高", ko: "잔여 자금", es: "Fondos restantes" },
+    "余额": { en: "Balance" },
+    "国家或地区": { "zh-TW": "國家或地區", en: "Country or Region", fr: "Pays ou région", ja: "国または地域", ko: "국가 또는 지역", es: "País o región" },
+    "生日": { "zh-TW": "生日", en: "Birthday", fr: "Date de naissance", ja: "誕生日", ko: "생일", es: "Cumpleaños" },
+    "国家或地区 *": { "zh-TW": "國家或地區 *", en: "Country or Region *", fr: "Pays ou région *", ja: "国または地域 *", ko: "국가 또는 지역 *", es: "País o región *" },
+    "生日 *": { "zh-TW": "生日 *", en: "Birthday *", fr: "Date de naissance *", ja: "誕生日 *", ko: "생일 *", es: "Cumpleaños *" },
+    "性别": { "zh-TW": "性別", en: "Gender", fr: "Genre", ja: "性別", ko: "성별", es: "Género" },
+    "注销账户": { "zh-TW": "註銷帳戶", en: "Delete Account", fr: "Supprimer le compte", ja: "アカウント削除", ko: "계정 삭제", es: "Eliminar cuenta" },
+    "修改密码": { "zh-TW": "修改密碼", en: "Change Password", fr: "Modifier le mot de passe", ja: "パスワード変更", ko: "비밀번호 변경", es: "Cambiar contraseña" },
+    "绑定邮箱": { "zh-TW": "綁定電子郵件", en: "Bound Email", fr: "E-mail lié", ja: "連携メール", ko: "연결 이메일", es: "Email vinculado" },
+    "修改绑定邮箱": { "zh-TW": "修改綁定電子郵件", en: "Change Bound Email", fr: "Modifier l'e-mail lié", ja: "連携メールを変更", ko: "연결 이메일 변경", es: "Cambiar email vinculado" },
+    "通知邮箱": { "zh-TW": "通知電子郵件", en: "Notification Email", fr: "E-mail de notification", ja: "通知メール", ko: "알림 이메일", es: "Email de notificación" },
+    "注册时填写账户资料；带 * 的项目为必填，注册后不可修改。": { "zh-TW": "註冊時填寫帳戶資料；帶 * 的項目為必填，註冊後不可修改。", en: "Complete account details during registration; fields marked * are required and cannot be changed later.", fr: "Renseignez les informations du compte à l'inscription ; les champs * sont obligatoires et non modifiables ensuite.", ja: "登録時にアカウント情報を入力します。* の項目は必須で、後から変更できません。", ko: "가입 시 계정 정보를 입력하세요. * 표시 항목은 필수이며 이후 변경할 수 없습니다.", es: "Completa los datos al registrarte; los campos con * son obligatorios y no se podrán modificar después." },
+    "可选。上传不大于 5MB 的图像，系统会在圆框内居中截取。": { "zh-TW": "可選。上傳不大於 5MB 的圖像，系統會在圓框內置中截取。", en: "Optional. Upload an image up to 5MB; it will be centered and cropped in a circle.", fr: "Facultatif. Image jusqu'à 5 Mo, centrée et recadrée en cercle.", ja: "任意。5MB以下の画像をアップロードすると、円形に中央切り抜きされます。", ko: "선택 사항. 5MB 이하 이미지를 업로드하면 원형으로 중앙 크롭됩니다.", es: "Opcional. Sube una imagen de hasta 5 MB; se centrará y recortará en círculo." },
     "语言已切换": { "zh-TW": "語言已切換", en: "Language Changed", fr: "Langue modifiée", ja: "言語を変更しました", ko: "언어 변경됨", es: "Idioma cambiado" },
     "语言已保存": { "zh-TW": "語言已儲存", en: "Language Saved", fr: "Langue enregistrée", ja: "言語を保存しました", ko: "언어 저장됨", es: "Idioma guardado" },
     "正在准备翻译": { "zh-TW": "正在準備翻譯", en: "Preparing Translation", fr: "Préparation de la traduction", ja: "翻訳を準備中", ko: "번역 준비 중", es: "Preparando traducción" },
@@ -176,18 +408,299 @@
     }
   };
 
+  Object.assign(UiDictionary, {
+    "英文名称": { en: "English Name" },
+    "中文名称": { en: "Chinese Name" },
+    "英文描述": { en: "English Description" },
+    "中文描述": { en: "Chinese Description" },
+    "英文平台": { en: "English Platform" },
+    "中文平台": { en: "Chinese Platform" },
+    "英文服务时长": { en: "English Duration" },
+    "中文服务时长": { en: "Chinese Duration" },
+    "英文标签": { en: "English Badge" },
+    "中文标签": { en: "Chinese Badge" },
+    "图标 class": { en: "Icon Class" },
+    "价格": { en: "Price" },
+    "名称": { en: "Name" },
+    "描述": { en: "Description" },
+    "平台": { en: "Platform" },
+    "游戏": { en: "Game" },
+    "状态": { en: "Status" },
+    "当前": { en: "Current" },
+    "未填写": { en: "Not provided" },
+    "无": { en: "None" },
+    "自动退单": { en: "Auto-cancel" },
+    "退款": { en: "Refund" },
+    "标签": { en: "Badge" },
+    "服务时长": { en: "Service Duration" },
+    "新增分类": { en: "Add Category" },
+    "新增游戏分区": { en: "Add Game Section" },
+    "新增商品": { en: "Add Product" },
+    "编辑分类": { en: "Edit Category" },
+    "编辑游戏分区": { en: "Edit Game Section" },
+    "编辑商品": { en: "Edit Product" },
+    "删除分类": { en: "Delete Category" },
+    "删除游戏分区": { en: "Delete Game Section" },
+    "删除商品": { en: "Delete Product" },
+    "编辑内容": { en: "Edit Content" },
+    "删除内容": { en: "Delete Content" },
+    "删除分类？": { en: "Delete category?" },
+    "删除游戏分区？": { en: "Delete game section?" },
+    "删除商品？": { en: "Delete product?" },
+    "删除内容？": { en: "Delete content?" },
+    "分类已保存": { en: "Category Saved" },
+    "分区已保存": { en: "Section Saved" },
+    "商品已保存": { en: "Product Saved" },
+    "关于我们": { en: "About Us" },
+    "服务条款": { en: "Terms of Service" },
+    "隐私政策": { en: "Privacy Policy" },
+    "帮助中心": { en: "Help Center" },
+    "删除后会立即更新本地数据。": { en: "This will immediately update local data." },
+    "暂无分类。": { en: "No categories yet." },
+    "暂无游戏分区。": { en: "No game sections yet." },
+    "暂无商品。": { en: "No products yet." },
+    "暂无描述。": { en: "No description yet." },
+    "暂无详细描述。": { en: "No detailed description yet." },
+    "分类不存在。": { en: "Category not found." },
+    "游戏分区不存在。": { en: "Game section not found." },
+    "商品不存在": { en: "Product Not Found" },
+    "商品列表": { en: "Product List" },
+    "搜索结果": { en: "Search Results" },
+    "输入关键词后查看匹配内容。": { en: "Enter a keyword to view matching content." },
+    "没有找到匹配内容。": { en: "No matching content found." },
+    "请输入搜索关键词。": { en: "Please enter a search keyword." },
+    "暂无匹配商品。": { en: "No matching products." },
+    "分类与分区": { en: "Categories and Sections" },
+    "我的账户": { en: "My Account" },
+    "查看本地订单、预约和账户状态。": { en: "View local orders, reservations, and account status." },
+    "登录后可查看订单与预约。": { en: "Sign in to view orders and reservations." },
+    "当前账户暂不可充值。": { en: "This account cannot be recharged right now." },
+    "当前余额：": { en: "Current balance: " },
+    "本次还需": { en: "Still needed" },
+    "充值成功": { en: "Recharge Successful" },
+    "充值失败": { en: "Recharge Failed" },
+    "未找到当前账户。": { en: "Current account not found." },
+    "请稍后重试。": { en: "Please try again later." },
+    "请先登录": { en: "Please Sign In" },
+    "登录后才可以充值积分。": { en: "Sign in before recharging points." },
+    "登录后即可提交订单或预约。": { en: "Sign in to submit an order or reservation." },
+    "提交成功": { en: "Submitted" },
+    "订单已进入待处理。": { en: "The order is now pending." },
+    "预约已进入待处理。": { en: "The reservation is now pending." },
+    "订单创建失败，请稍后重试。": { en: "Order creation failed. Please try again later." },
+    "余额不足，请先充值。": { en: "Insufficient balance. Please recharge first." },
+    "自动退单时间至少为 1 分钟。": { en: "Auto-cancel time must be at least 1 minute." },
+    "角色信息、段位、期望目标或其他要求": { en: "Character info, rank, goals, or other requirements" },
+    "微信 / QQ / 手机号": { en: "WeChat / QQ / phone number" },
+    "订单不存在": { en: "Order Not Found" },
+    "尚未有人接单": { en: "Not Accepted Yet" },
+    "员工接单后即可打开聊天框。": { en: "The chat opens after a staff member accepts the order." },
+    "无权查看": { en: "No Permission" },
+    "只有订单顾客、接单员工或管理员可以打开聊天。": { en: "Only the customer, assigned staff, or admin can open this chat." },
+    "联系": { en: "Contact" },
+    "接单": { en: "Accept" },
+    "接单时间": { en: "Accepted At" },
+    "超时无人接单自动退单": { en: "Auto-cancel deadline" },
+    "已退款": { en: "Refunded" },
+    "退单退款": { en: "Return Refund" },
+    "已结算": { en: "Settled" },
+    "离线": { en: "Offline" },
+    "完成": { en: "Complete" },
+    "发送": { en: "Send" },
+    "输入消息": { en: "Type a message" },
+    "图片": { en: "Image" },
+    "聊天图片": { en: "Chat Image" },
+    "可以发送文字或图片。": { en: "You can send text or images." },
+    "请输入内容": { en: "Please enter content." },
+    "请选择图片文件。": { en: "Please choose an image file." },
+    "图片格式不支持": { en: "Unsupported Image Format" },
+    "加急": { en: "Rush" },
+    "退单": { en: "Return" },
+    "举报": { en: "Report" },
+    "小费": { en: "Tip" },
+    "申请加急": { en: "Request Rush" },
+    "申请退单": { en: "Request Return" },
+    "举报员工": { en: "Report Staff" },
+    "支付小费": { en: "Pay Tip" },
+    "账户密码": { en: "Account Password" },
+    "确认支付": { en: "Confirm Payment" },
+    "确认退单": { en: "Confirm Return" },
+    "提交举报": { en: "Submit Report" },
+    "举报类型": { en: "Report Type" },
+    "举报说明": { en: "Report Details" },
+    "服务态度": { en: "Service Attitude" },
+    "拖延或失联": { en: "Delay or Lost Contact" },
+    "违规行为": { en: "Rule Violation" },
+    "骚扰或不当言论": { en: "Harassment or Inappropriate Speech" },
+    "其他": { en: "Other" },
+    "请描述具体情况、时间和证据": { en: "Describe what happened, timing, and evidence" },
+    "小费积分": { en: "Tip Points" },
+    "一键核对": { en: "One-Click Audit" },
+    "一键清空日志": { en: "Clear Logs" },
+    "今日概览": { en: "Today Overview" },
+    "现有单目": { en: "Active Orders" },
+    "已结单目": { en: "Completed Orders" },
+    "预约单目": { en: "Reservations" },
+    "个人日志": { en: "Personal Log" },
+    "员工工作台": { en: "Staff Workspace" },
+    "查看当前进行中的订单，跟进交付进度和沟通状态。": { en: "View active orders and follow delivery progress and communication status." },
+    "复查历史完成订单，确认结算、评价与售后记录。": { en: "Review completed orders, settlement, ratings, and after-sales records." },
+    "管理未来预约，确认服务时间、人员与客户备注。": { en: "Manage upcoming reservations, service time, staffing, and customer notes." },
+    "记录本日工作进展、异常事项与交付备注。": { en: "Record today’s work progress, exceptions, and delivery notes." },
+    "订单处理、预约跟进、结单记录与个人日志集中在一个工作视图里。": { en: "Order handling, reservation follow-up, completion records, and logs in one workspace." },
+    "顾客": { en: "Customers" },
+    "用户": { en: "Users" },
+    "账本": { en: "Ledger" },
+    "日志": { en: "Logs" },
+    "顾客、员工账户、资金、封禁与注销管理。": { en: "Manage customer and staff accounts, funds, bans, and deletion." },
+    "查看顾客账户、积分、订单与限制状态。": { en: "View customer accounts, points, orders, and restrictions." },
+    "查看员工账户、积分、订单与兑现记录。": { en: "View staff accounts, points, orders, and payout records." },
+    "查看顾客": { en: "View Customers" },
+    "查看员工": { en: "View Staff" },
+    "统一检索充值单、消费单与兑现单。": { en: "Search recharge, consumption, and payout orders in one place." },
+    "实时资金流水与统计参考。": { en: "Real-time fund flows and statistical reference." },
+    "记录后台与关键业务操作。": { en: "Record admin and key business actions." },
+    "充值单": { en: "Recharge Orders" },
+    "消费单": { en: "Consumption Orders" },
+    "兑现单": { en: "Payout Orders" },
+    "全部": { en: "All" },
+    "用户ID": { en: "User ID" },
+    "资金": { en: "Funds" },
+    "在线状态": { en: "Online Status" },
+    "注册时间": { en: "Registration Time" },
+    "返回控制台": { en: "Back to Console" },
+    "返回用户分区": { en: "Back to Users" },
+    "返回列表": { en: "Back to List" },
+    "充值记录": { en: "Recharge Records" },
+    "订单记录": { en: "Order Records" },
+    "兑现记录": { en: "Payout Records" },
+    "参数修正": { en: "Parameter Correction" },
+    "封禁或注销": { en: "Ban or Delete" },
+    "资金核对": { en: "Funds Audit" },
+    "资金手动修改": { en: "Manual Funds Edit" },
+    "保存资金修改": { en: "Save Funds Change" },
+    "封禁": { en: "Ban" },
+    "解封": { en: "Unban" },
+    "注销": { en: "Delete" },
+    "封禁时长": { en: "Ban Duration" },
+    "3 个月": { en: "3 months" },
+    "6 个月": { en: "6 months" },
+    "1 年": { en: "1 year" },
+    "3 年": { en: "3 years" },
+    "5 年": { en: "5 years" },
+    "10 年": { en: "10 years" },
+    "输入二级密码": { en: "Enter Secondary Password" },
+    "管理员密码": { en: "Admin Password" },
+    "该分区需要二级密码才能打开。": { en: "This section requires a secondary password." },
+    "管理员密码不正确。": { en: "Admin password is incorrect." },
+    "该操作需要输入管理员密码。": { en: "This action requires the admin password." },
+    "该操作需要输入账户密码。": { en: "This action requires your account password." },
+    "密码不正确。": { en: "Incorrect password." },
+    "验证码不正确。": { en: "Incorrect verification code." },
+    "验证码已过期，请重新发送。": { en: "The verification code has expired. Please send a new one." },
+    "验证码已发送": { en: "Code Sent" },
+    "验证码已发送，请查看邮箱。": { en: "Verification code sent. Please check your inbox." },
+    "正在发送验证码...": { en: "Sending verification code..." },
+    "邮件接口未配置或暂不可用。": { en: "Email endpoint is not configured or is temporarily unavailable." },
+    "演示验证码": { en: "Demo code" },
+    "已退出登录": { en: "Signed Out" },
+    "当前已回到客户模式。": { en: "You are back in customer mode." },
+    "欢迎回来": { en: "Welcome Back" },
+    "用户名已存在。": { en: "Username already exists." },
+    "邮箱已被注册。": { en: "Email is already registered." },
+    "请输入用户名、邮箱和密码。": { en: "Please enter username, email, and password." },
+    "请输入有效邮箱。": { en: "Please enter a valid email." },
+    "密码至少需要 6 位。": { en: "Password must be at least 6 characters." },
+    "两次输入的密码不一致。": { en: "The two passwords do not match." },
+    "请输入国家或地区。": { en: "Please enter country or region." },
+    "请选择生日。": { en: "Please choose a birthday." },
+    "邮箱或密码不正确。": { en: "Email or password is incorrect." },
+    "账号或密码不正确。": { en: "Username or password is incorrect." },
+    "该邮箱未注册。": { en: "This email is not registered." },
+    "账户密码不正确。": { en: "Account password is incorrect." },
+    "验证失败。": { en: "Verification Failed" },
+    "请输入账户密码，或使用邮箱验证码完成验证。": { en: "Enter your account password or verify with an email code." },
+    "修改用户名": { en: "Change Username" },
+    "修改性别": { en: "Change Gender" },
+    "头像预览": { en: "Avatar Preview" },
+    "上传一张不大于 5MB 的图像，系统会在圆框内居中截取显示。": { en: "Upload an image up to 5MB. It will be centered and cropped in a circle." },
+    "请先选择一张图像。": { en: "Please choose an image first." },
+    "图像读取失败，请换一张图片。": { en: "Image reading failed. Please choose another image." },
+    "头像图片不能大于 5MB。": { en: "Avatar image cannot exceed 5MB." },
+    "头像保存失败，请换用更小的图片。": { en: "Avatar saving failed. Please use a smaller image." },
+    "头像已更新": { en: "Avatar Updated" },
+    "头像已移除": { en: "Avatar Removed" },
+    "用户名已更新": { en: "Username Updated" },
+    "性别已更新": { en: "Gender Updated" },
+    "修改密码验证": { en: "Change Password Verification" },
+    "修改绑定邮箱验证": { en: "Change Email Verification" },
+    "修改密码需要账户密码，或发送到原绑定邮箱的 6 位验证码。": { en: "Changing password requires your account password or a 6-digit code sent to the original email." },
+    "修改绑定邮箱需要账户密码，或发送到原绑定邮箱的 6 位验证码。": { en: "Changing bound email requires your account password or a 6-digit code sent to the original email." },
+    "当前账户没有可用邮箱。": { en: "This account has no available email." },
+    "当前绑定邮箱：": { en: "Current bound email: " },
+    "新邮箱": { en: "New Email" },
+    "新密码": { en: "New Password" },
+    "确认新密码": { en: "Confirm New Password" },
+    "密码已修改": { en: "Password Changed" },
+    "绑定邮箱已修改": { en: "Bound Email Changed" },
+    "已向原邮箱和新邮箱发送英文通知。": { en: "English notifications were sent to the old and new email addresses." },
+    "请输入有效通知邮箱。": { en: "Please enter a valid notification email." },
+    "联系设置已保存": { en: "Contact Settings Saved" },
+    "邮件通知语言固定为英语。": { en: "Email notifications are always sent in English." },
+    "通知邮箱默认为绑定邮箱，可单独修改。所有邮件通知均以英语发送。": { en: "Notification email defaults to the bound email and can be changed. All email notifications are sent in English." },
+    "提交入职申请": { en: "Submit Employment Application" },
+    "申请方向": { en: "Application Direction" },
+    "游戏经历与可服务项目": { en: "Game Experience and Services" },
+    "联系邮箱或方式": { en: "Contact Email or Method" },
+    "提交申请": { en: "Submit Application" },
+    "入职申请已提交": { en: "Employment Application Submitted" },
+    "管理员可在日志中查看记录。": { en: "Admins can view the record in logs." },
+    "选择语言后，英文和简体中文使用本地翻译；其他语言会尝试使用内嵌 Google Translate。": { en: "English and Simplified Chinese use local translations; other languages try embedded Google Translate." }
+  });
+
+  function normalizeLanguageCode(code) {
+    const value = String(code || "").trim();
+    return Languages.some((item) => item.code === value) ? value : DefaultLanguage;
+  }
+
   function activeLanguage() {
-    return localStorage.getItem(Keys.language) || "zh-CN";
+    return normalizeLanguageCode(localStorage.getItem(Keys.language) || DefaultLanguage);
+  }
+
+  function isLocalLanguage(code) {
+    return LocalLanguageCodes.includes(normalizeLanguageCode(code));
+  }
+
+  function contentLanguage(code = activeLanguage()) {
+    const normalized = normalizeLanguageCode(code);
+    if (normalized === "zh-CN" || normalized === "zh-TW") {
+      return "zh-CN";
+    }
+    return LocalContentLanguageCodes.includes(normalized) ? normalized : DefaultLanguage;
+  }
+
+  function reverseLocalPhrase(text, lang) {
+    const entry = Object.entries(UiDictionary).find(([, value]) => value && value[lang] === text);
+    return entry ? entry[0] : text;
+  }
+
+  function staticPhraseIn(text, lang = activeLanguage()) {
+    const normalized = normalizeLanguageCode(lang);
+    if (normalized === "zh-CN") {
+      return reverseLocalPhrase(text, "en");
+    }
+    const exact = UiDictionary[text];
+    if (exact && exact[normalized]) {
+      return exact[normalized];
+    }
+    return text;
   }
 
   function localizeStaticPhrase(text) {
     const lang = activeLanguage();
-    if (lang === "zh-CN") {
-      return text;
-    }
-    const exact = UiDictionary[text];
-    if (exact && exact[lang]) {
-      return exact[lang];
+    const staticResult = staticPhraseIn(text, lang);
+    if (staticResult !== text) {
+      return staticResult;
     }
     if (text.startsWith("语言选择：")) {
       return `${localizeStaticPhrase("语言选择")}：${text.slice("语言选择：".length)}`;
@@ -223,6 +736,149 @@
     }
     node.classList.add("notranslate");
     node.setAttribute("translate", "no");
+  }
+
+  const KnownContentTranslations = {
+    "专业教练": "Professional Coaching",
+    "职业思路、地图理解、枪法细节与排位规划一站提升。": "Improve professional decision-making, map knowledge, aim details, and ranked planning in one place.",
+    "语音陪玩": "Voice Companion",
+    "高质量语音陪伴，轻松开黑、上分、娱乐局都能安排。": "High-quality voice companionship for relaxed team play, climbing, and casual matches.",
+    "雇佣兵": "Mercenary",
+    "强力队友即时支援，攻坚、护航、目标执行更稳定。": "High-skill teammates on demand for pushes, escorting, and reliable objective execution.",
+    "账号交易": "Account Trading",
+    "精选游戏账号展示，信息清晰，交易流程可继续扩展。": "Curated game accounts with clear information and room to expand the transaction flow.",
+    "《暗区突围》手游": "Arena Breakout Mobile",
+    "手游端摸金、撤离、物资规划与战术协作服务。": "Mobile extraction, loot planning, evacuation routes, and tactical coordination services.",
+    "《暗区突围》端游": "Arena Breakout PC",
+    "端游射击节奏、装备配置、地图路线与组队服务。": "PC shooting tempo, gear setup, map routing, and squad services.",
+    "《三角洲行动》手游": "Delta Force Mobile",
+    "移动端战场协同、干员搭配、任务推进与段位服务。": "Mobile battlefield coordination, operator pairing, mission progress, and rank services.",
+    "《三角洲行动》端游": "Delta Force PC",
+    "端游攻防、载具配合、战术突破和高强度陪练。": "PC attack and defense, vehicle teamwork, tactical breakthroughs, and high-intensity practice.",
+    "手游": "Mobile",
+    "端游": "PC",
+    "基础提升课": "Fundamentals Coaching",
+    "教练根据你的对局习惯制定训练计划，覆盖地图理解、装备选择、枪法节奏和复盘建议。": "A coach builds a training plan around your match habits, covering map knowledge, gear choices, shooting rhythm, and review advice.",
+    "90 分钟": "90 minutes",
+    "入门": "Starter",
+    "进阶冲分课": "Ranked Climb Coaching",
+    "重点优化决策、队伍沟通、残局处理和高强度排位稳定性。": "Focused improvement for decision-making, team comms, clutch play, and ranked consistency.",
+    "3 小时": "3 hours",
+    "进阶": "Advanced",
+    "录像复盘套餐": "VOD Review Package",
+    "提交对局录像后获得细致复盘，标注关键失误、可复用打法与下一阶段训练重点。": "Submit match footage for a detailed review with key mistakes, reusable plays, and next-step training priorities.",
+    "1 份报告": "1 report",
+    "复盘": "Review",
+    "周训练计划": "Weekly Training Plan",
+    "连续训练安排，包含课前诊断、阶段目标、复盘和训练反馈。": "A continuous training schedule with pre-session diagnosis, stage goals, reviews, and training feedback.",
+    "7 天": "7 days",
+    "套餐": "Bundle",
+    "双小时语音陪玩": "Two-Hour Voice Companion",
+    "轻松开黑体验，支持娱乐、任务推进和基础协作，适合日常放松和熟悉地图。": "Relaxed team play for casual matches, task progress, and basic coordination while you unwind or learn maps.",
+    "2 小时": "2 hours",
+    "轻松": "Relaxed",
+    "晚间黄金档陪玩": "Prime-Time Companion",
+    "固定黄金时段服务，沟通稳定，适合组队上分、活动任务和连续开黑安排。": "Reliable prime-time sessions for ranked squads, event tasks, and planned team runs.",
+    "热门": "Popular",
+    "车队氛围组": "Squad Vibe Team",
+    "多人语音车队陪玩，节奏轻快，兼顾胜率和氛围。": "Multi-person voice squad play with a light rhythm, balancing win rate and atmosphere.",
+    "组队": "Squad",
+    "新人熟悉路线": "Beginner Route Tour",
+    "陪同熟悉地图路线、撤离点、任务节点和基础操作节奏。": "Guided practice for map routes, extraction points, task nodes, and basic operating rhythm.",
+    "新人": "Newcomer",
+    "强力护航单局": "One-Match Escort",
+    "高水平队友协助完成单局目标，提供路线判断、交火支援和撤离保障。": "High-level teammates help complete one-match objectives with route calls, firefight support, and extraction cover.",
+    "单局": "Single match",
+    "即时": "Instant",
+    "目标任务执行": "Objective Task Run",
+    "围绕指定任务制定执行方案，包含队伍配合、路线推进和关键节点保护。": "An execution plan around a specified task, including team coordination, route progress, and key-node protection.",
+    "3 单": "3 runs",
+    "任务": "Task",
+    "高强度攻坚套餐": "High-Intensity Push Package",
+    "面向困难局和连续目标，提供更完整的团队支援与战术执行体验。": "Fuller team support and tactical execution for hard matches and continuous objectives.",
+    "5 单": "5 runs",
+    "攻坚": "Push",
+    "排位护航组": "Ranked Escort Squad",
+    "适合集中冲分，安排稳定车队与明确战术分工。": "Built for focused rank climbing with a stable squad and clear tactical roles.",
+    "半日": "Half day",
+    "排位": "Ranked",
+    "入门成品账号": "Starter Ready Account",
+    "适合快速入坑的基础账号，展示等级、常用资源和主要可用内容。": "A basic ready-to-use account for quick entry, showing level, common resources, and available content.",
+    "即时咨询": "Instant consultation",
+    "进阶收藏账号": "Advanced Collection Account",
+    "拥有更完整资源和角色积累，适合想节省养成时间的玩家。": "A more complete account with accumulated resources and characters for players who want to save build time.",
+    "客服确认": "Support confirmation",
+    "稀有高配账号": "Rare High-Spec Account",
+    "高价值账号展示项，后续可扩展为资质审核、担保交易和客服确认流程。": "A high-value account listing that can later support qualification checks, escrow, and support confirmation.",
+    "专员审核": "Specialist review",
+    "账号估值服务": "Account Valuation Service",
+    "根据资源、段位、皮肤、历史投入和市场情况给出参考估值。": "A reference valuation based on resources, rank, skins, historical spend, and market conditions.",
+    "估值": "Valuation"
+  };
+
+  function localizedPair(en = "", zh = "") {
+    const english = String(en || zh || "").trim();
+    const chinese = String(zh || en || "").trim();
+    return { en: english, "zh-CN": chinese };
+  }
+
+  function localizedI18n(values, fallback = "") {
+    const lang = contentLanguage();
+    if (values && typeof values === "object") {
+      return values[lang] || values.en || values["zh-CN"] || fallback;
+    }
+    return fallback;
+  }
+
+  function knownContentPair(value = "") {
+    const chinese = String(value || "").trim();
+    return localizedPair(KnownContentTranslations[chinese] || chinese, chinese);
+  }
+
+  function ensureContentI18n(item, fields = ContentTextFields) {
+    const next = { ...(item || {}) };
+    fields.forEach((field) => {
+      const key = `${field}I18n`;
+      const existing = next[key] && typeof next[key] === "object" ? next[key] : {};
+      const fallback = knownContentPair(next[field] || "");
+      const en = String(existing.en || fallback.en || next[field] || "").trim();
+      const zh = String(existing["zh-CN"] || existing.zh || fallback["zh-CN"] || next[field] || "").trim();
+      next[key] = localizedPair(en, zh);
+      next[field] = zh || en;
+    });
+    return next;
+  }
+
+  function localizedContent(item, field, fallback = "") {
+    const key = `${field}I18n`;
+    const values = item?.[key];
+    const lang = contentLanguage();
+    if (values && typeof values === "object") {
+      return values[lang] || values.en || values["zh-CN"] || item?.[field] || fallback;
+    }
+    const pair = knownContentPair(item?.[field] || fallback);
+    return pair[lang] || pair.en || pair["zh-CN"] || fallback;
+  }
+
+  function localizedOrderContent(order, field, fallback = "") {
+    const values = order?.[`${field}I18n`];
+    const lang = contentLanguage();
+    if (values && typeof values === "object") {
+      return values[lang] || values.en || values["zh-CN"] || order?.[field] || fallback;
+    }
+    return order?.[field] || fallback;
+  }
+
+  function contentValues(item, field) {
+    const ensured = ensureContentI18n(item, [field]);
+    return ensured[`${field}I18n`] || localizedPair();
+  }
+
+  function searchContentText(item, fields = ContentTextFields) {
+    return fields.flatMap((field) => {
+      const values = item?.[`${field}I18n`] || {};
+      return [item?.[field], values.en, values["zh-CN"]];
+    }).filter(Boolean).join(" ");
   }
 
   const StaffSections = [
@@ -359,20 +1015,125 @@
     return legacyName ? `${legacyName}@impulse.local` : "";
   }
 
+  function padNumber(value, length) {
+    return String(value).padStart(length, "0");
+  }
+
+  function utc8Parts(value) {
+    const date = value ? new Date(value) : new Date();
+    const validDate = Number.isNaN(date.getTime()) ? new Date() : date;
+    const shifted = new Date(validDate.getTime() + 8 * 60 * 60 * 1000);
+    return {
+      year: shifted.getUTCFullYear(),
+      month: shifted.getUTCMonth() + 1,
+      day: shifted.getUTCDate(),
+      hour: shifted.getUTCHours(),
+      minute: shifted.getUTCMinutes(),
+      second: shifted.getUTCSeconds()
+    };
+  }
+
+  function utc8DayKey(value) {
+    const parts = utc8Parts(value);
+    return `${parts.year}-${padNumber(parts.month, 2)}-${padNumber(parts.day, 2)}`;
+  }
+
+  function createUserPublicId(createdAt, sequence) {
+    const parts = utc8Parts(createdAt);
+    return [
+      padNumber(parts.month, 2),
+      padNumber(parts.day, 2),
+      padNumber(parts.year, 4),
+      padNumber(parts.hour, 2),
+      padNumber(parts.minute, 2),
+      padNumber(parts.second, 2),
+      padNumber(sequence, 4)
+    ].join("");
+  }
+
+  function defaultEmailNotices() {
+    return Object.fromEntries(EmailNoticeTypes.map((item) => [item.key, true]));
+  }
+
+  function clampUserLevel(value) {
+    const level = Math.trunc(Number(value) || 0);
+    return Math.max(0, Math.min(5, level));
+  }
+
+  function genderLabel(value) {
+    return (GenderOptions.find((item) => item.value === value) || GenderOptions[0]).label;
+  }
+
+  function profileAvatarText(profile, username = "") {
+    const avatar = String(profile?.avatar || "").trim();
+    if (avatar) {
+      return avatar.slice(0, 4).toUpperCase();
+    }
+    return String(username || profile?.username || "U").slice(0, 2).toUpperCase();
+  }
+
+  function profileAvatarNode(profile, username = "", className = "profile-avatar") {
+    const image = String(profile?.avatarImage || "").trim();
+    return h("div", { className: `${className} notranslate`, translate: "no" },
+      image
+        ? h("img", { src: image, alt: "头像" })
+        : profileAvatarText(profile, username)
+    );
+  }
+
+  function cropAvatarFile(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) {
+        resolve({ image: "", name: "" });
+        return;
+      }
+      if (!file.type.startsWith("image/")) {
+        reject(new Error("请选择图像文件。"));
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        reject(new Error("头像图片不能大于 5MB。"));
+        return;
+      }
+      const image = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      image.addEventListener("load", () => {
+        const canvas = document.createElement("canvas");
+        const outputSize = 512;
+        const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+        const sourceX = Math.max(0, (image.naturalWidth - sourceSize) / 2);
+        const sourceY = Math.max(0, (image.naturalHeight - sourceSize) / 2);
+        canvas.width = outputSize;
+        canvas.height = outputSize;
+        const context = canvas.getContext("2d");
+        context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, outputSize, outputSize);
+        URL.revokeObjectURL(objectUrl);
+        resolve({ image: canvas.toDataURL("image/jpeg", 0.88), name: file.name });
+      });
+      image.addEventListener("error", () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("图像读取失败，请换一张图片。"));
+      });
+      image.src = objectUrl;
+    });
+  }
+
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
   }
 
   function formatPrice(value) {
     const number = Number(value) || 0;
-    return `${number.toLocaleString("zh-CN", { minimumFractionDigits: 0 })} 积分`;
+    const locale = contentLanguage() === "zh-CN" ? "zh-CN" : "en-US";
+    const unit = contentLanguage() === "zh-CN" ? "积分" : "pts";
+    return `${number.toLocaleString(locale, { minimumFractionDigits: 0 })} ${unit}`;
   }
 
   function formatDate(value) {
     if (!value) {
-      return "未设置";
+      return localizeStaticPhrase("未设置");
     }
-    return new Date(value).toLocaleString("zh-CN", {
+    return new Date(value).toLocaleString(contentLanguage() === "zh-CN" ? "zh-CN" : "en-US", {
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
@@ -382,9 +1143,9 @@
 
   function formatFullDate(value) {
     if (!value) {
-      return "未设置";
+      return localizeStaticPhrase("未设置");
     }
-    return new Date(value).toLocaleString("zh-CN", {
+    return new Date(value).toLocaleString(contentLanguage() === "zh-CN" ? "zh-CN" : "en-US", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -457,20 +1218,20 @@
       continued: "顾客已同意继续",
       continue_declined: "顾客拒绝继续"
     };
-    return labels[rush.status] || "";
+    return labels[rush.status] ? localizeStaticPhrase(labels[rush.status]) : "";
   }
 
   function userStatus(profile) {
     if (!profile || profile.deleted) {
-      return "已注销";
+      return localizeStaticPhrase("已注销");
     }
     if (isBanned(profile)) {
-      return `封禁至 ${formatDate(profile.bannedUntil)}`;
+      return `${localizeStaticPhrase("封禁")} ${formatDate(profile.bannedUntil)}`;
     }
     if (State.currentUser && State.currentUser.username === profile.username) {
-      return "在线";
+      return localizeStaticPhrase("在线");
     }
-    return isProfileOnline(profile) ? "在线" : "离线";
+    return isProfileOnline(profile) ? localizeStaticPhrase("在线") : localizeStaticPhrase("离线");
   }
 
   const Storage = {
@@ -484,6 +1245,9 @@
     },
     set(key, value) {
       localStorage.setItem(key, JSON.stringify(value));
+      if (typeof window.__impulseBackendSync === "function") {
+        window.__impulseBackendSync(key);
+      }
     },
     remove(key) {
       localStorage.removeItem(key);
@@ -516,6 +1280,216 @@
     }
   };
 
+  const Mail = {
+    endpoint: "/api/send-email",
+    escapeHtml(value) {
+      return String(value || "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;"
+      })[char]);
+    },
+    htmlFromText(text) {
+      return `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827;white-space:pre-wrap;">${this.escapeHtml(text)}</div>`;
+    },
+    async send(to, subject, text, html = "") {
+      if (!isEmail(to) || !subject || !text) {
+        return { ok: false, configured: false, error: "Invalid email payload." };
+      }
+      try {
+        const response = await fetch(this.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: normalizeEmail(to),
+            subject,
+            text,
+            html: html || this.htmlFromText(text)
+          })
+        });
+        const result = await response.json().catch(() => ({}));
+        return {
+          ok: response.ok && result.ok,
+          configured: result.configured !== false,
+          id: result.id || "",
+          error: result.error || ""
+        };
+      } catch (error) {
+        return { ok: false, configured: false, error: error.message || "Email endpoint is unavailable." };
+      }
+    },
+    async sendVerificationCode(to, code) {
+      const subject = "Your IMPULSE verification code";
+      const text = [
+        `Your IMPULSE verification code is ${code}.`,
+        "It expires in 10 minutes.",
+        "If you did not request this code, you can ignore this email."
+      ].join("\n");
+      return this.send(to, subject, text);
+    },
+    sendEnglishEmail(to, subject, body) {
+      return this.send(to, subject, body);
+    }
+  };
+
+  const Backend = {
+    endpoint: "/api/backend",
+    bootstrapped: false,
+    online: false,
+    hydrating: false,
+    syncTimer: null,
+    managedKeys: new Set([Keys.users, Keys.profiles, Keys.categories, Keys.games, Keys.products, Keys.orders, Keys.orderChats, Keys.ledger, Keys.adminLogs]),
+    token() {
+      return localStorage.getItem(Keys.backendToken) || "";
+    },
+    setToken(token) {
+      if (token) {
+        localStorage.setItem(Keys.backendToken, token);
+      } else {
+        localStorage.removeItem(Keys.backendToken);
+      }
+    },
+    snapshot() {
+      return {
+        users: Storage.get(Keys.users, []),
+        profiles: Storage.get(Keys.profiles, []),
+        categories: Storage.get(Keys.categories, []),
+        games: Storage.get(Keys.games, {}),
+        products: Storage.get(Keys.products, {}),
+        orders: Storage.get(Keys.orders, []),
+        orderChats: Storage.get(Keys.orderChats, {}),
+        ledger: Storage.get(Keys.ledger, []),
+        adminLogs: Storage.get(Keys.adminLogs, [])
+      };
+    },
+    hydrate(snapshot) {
+      if (!snapshot || typeof snapshot !== "object") {
+        return;
+      }
+      this.hydrating = true;
+      try {
+        if (Array.isArray(snapshot.users)) Storage.set(Keys.users, snapshot.users);
+        if (Array.isArray(snapshot.profiles)) Storage.set(Keys.profiles, snapshot.profiles);
+        if (Array.isArray(snapshot.categories)) Storage.set(Keys.categories, snapshot.categories);
+        if (snapshot.games && typeof snapshot.games === "object") Storage.set(Keys.games, snapshot.games);
+        if (snapshot.products && typeof snapshot.products === "object") Storage.set(Keys.products, snapshot.products);
+        if (Array.isArray(snapshot.orders)) Storage.set(Keys.orders, snapshot.orders);
+        if (snapshot.orderChats && typeof snapshot.orderChats === "object") Storage.set(Keys.orderChats, snapshot.orderChats);
+        if (Array.isArray(snapshot.ledger)) Storage.set(Keys.ledger, snapshot.ledger);
+        if (Array.isArray(snapshot.adminLogs)) Storage.set(Keys.adminLogs, snapshot.adminLogs);
+      } finally {
+        this.hydrating = false;
+      }
+    },
+    async request(action, payload = {}) {
+      try {
+        const response = await fetch(this.endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(this.token() ? { Authorization: `Bearer ${this.token()}` } : {})
+          },
+          body: JSON.stringify({ action, payload })
+        });
+        const result = await response.json().catch(() => ({}));
+        this.online = response.ok || Boolean(result && result.message);
+        return { ...result, httpOk: response.ok };
+      } catch (error) {
+        this.online = false;
+        return { ok: false, offline: true, message: error.message || "Backend unavailable." };
+      }
+    },
+    async bootstrap() {
+      const result = await this.request("bootstrap", { snapshot: this.snapshot() });
+      this.bootstrapped = true;
+      if (result.ok && result.snapshot) {
+        this.hydrate(result.snapshot);
+        return true;
+      }
+      return false;
+    },
+    queueSync(reason = "frontend-change") {
+      if (!this.bootstrapped || this.hydrating || !this.online) {
+        return;
+      }
+      window.clearTimeout(this.syncTimer);
+      this.syncTimer = window.setTimeout(() => this.syncNow(reason), 650);
+    },
+    async syncNow(reason = "frontend-change") {
+      if (this.hydrating || !this.online) {
+        return;
+      }
+      await this.request("saveSnapshot", { reason, snapshot: this.snapshot() });
+    },
+    async sendVerification(purpose, email) {
+      const result = await this.request("sendVerification", { purpose, email });
+      return result;
+    },
+    async loginPassword(identity, password) {
+      const result = await this.request("loginPassword", { identity, password });
+      return this.applyAuthResult(result);
+    },
+    async loginCode(email, code) {
+      const result = await this.request("loginCode", { email, code });
+      return this.applyAuthResult(result);
+    },
+    async register(values) {
+      const result = await this.request("register", values);
+      return this.applyAuthResult(result);
+    },
+    applyMutationResult(result) {
+      if (result?.ok && result.snapshot) {
+        this.hydrate(result.snapshot);
+      }
+      return result;
+    },
+    async adjustFunds(profileId, amountPoints, reason, meta = {}) {
+      return this.applyMutationResult(await this.request("adjustFunds", { profileId, amountPoints, reason, meta }));
+    },
+    async createOrder(payload) {
+      return this.applyMutationResult(await this.request("createOrder", payload));
+    },
+    async updateOrderStatus(orderId, status) {
+      return this.applyMutationResult(await this.request("updateOrderStatus", { orderId, status }));
+    },
+    async addChatMessage(orderId, message) {
+      return this.applyMutationResult(await this.request("addChatMessage", { orderId, ...message }));
+    },
+    async updatePassword(password) {
+      return this.applyMutationResult(await this.request("updatePassword", { password }));
+    },
+    async updateEmail(email) {
+      return this.applyMutationResult(await this.request("updateEmail", { email }));
+    },
+    applyAuthResult(result) {
+      if (!result || !result.ok) {
+        return result || { ok: false, message: "Backend unavailable." };
+      }
+      if (result.token) {
+        this.setToken(result.token);
+      }
+      if (result.snapshot) {
+        this.hydrate(result.snapshot);
+      }
+      if (result.user) {
+        Session.start(result.user, { skipBackendLog: true });
+      }
+      return { ok: true };
+    },
+    async logout() {
+      await this.request("logout", {});
+      this.setToken("");
+    }
+  };
+
+  window.__impulseBackendSync = (key) => {
+    if (Backend.managedKeys.has(key)) {
+      Backend.queueSync(key);
+    }
+  };
+
   const Seed = {
     categories() {
       return [
@@ -523,24 +1497,32 @@
           id: "coaching",
           title: "专业教练",
           description: "职业思路、地图理解、枪法细节与排位规划一站提升。",
+          titleI18n: localizedPair("Professional Coaching", "专业教练"),
+          descriptionI18n: localizedPair("Improve professional decision-making, map knowledge, aim details, and ranked planning in one place.", "职业思路、地图理解、枪法细节与排位规划一站提升。"),
           icon: "fa-solid fa-chalkboard-user"
         },
         {
           id: "companion",
           title: "语音陪玩",
           description: "高质量语音陪伴，轻松开黑、上分、娱乐局都能安排。",
+          titleI18n: localizedPair("Voice Companion", "语音陪玩"),
+          descriptionI18n: localizedPair("High-quality voice companionship for relaxed team play, climbing, and casual matches.", "高质量语音陪伴，轻松开黑、上分、娱乐局都能安排。"),
           icon: "fa-solid fa-headset"
         },
         {
           id: "mercenary",
           title: "雇佣兵",
           description: "强力队友即时支援，攻坚、护航、目标执行更稳定。",
+          titleI18n: localizedPair("Mercenary", "雇佣兵"),
+          descriptionI18n: localizedPair("High-skill teammates on demand for pushes, escorting, and reliable objective execution.", "强力队友即时支援，攻坚、护航、目标执行更稳定。"),
           icon: "fa-solid fa-helmet-battle"
         },
         {
           id: "accounts",
           title: "账号交易",
           description: "精选游戏账号展示，信息清晰，交易流程可继续扩展。",
+          titleI18n: localizedPair("Account Trading", "账号交易"),
+          descriptionI18n: localizedPair("Curated game accounts with clear information and room to expand the transaction flow.", "精选游戏账号展示，信息清晰，交易流程可继续扩展。"),
           icon: "fa-solid fa-id-card"
         }
       ];
@@ -551,57 +1533,69 @@
           slug: "arena-mobile",
           title: "《暗区突围》手游",
           description: "手游端摸金、撤离、物资规划与战术协作服务。",
+          titleI18n: localizedPair("Arena Breakout Mobile", "《暗区突围》手游"),
+          descriptionI18n: localizedPair("Mobile extraction, loot planning, evacuation routes, and tactical coordination services.", "手游端摸金、撤离、物资规划与战术协作服务。"),
           icon: "fa-solid fa-mobile-screen-button",
-          platform: "手游"
+          platform: "手游",
+          platformI18n: localizedPair("Mobile", "手游")
         },
         {
           slug: "arena-pc",
           title: "《暗区突围》端游",
           description: "端游射击节奏、装备配置、地图路线与组队服务。",
+          titleI18n: localizedPair("Arena Breakout PC", "《暗区突围》端游"),
+          descriptionI18n: localizedPair("PC shooting tempo, gear setup, map routing, and squad services.", "端游射击节奏、装备配置、地图路线与组队服务。"),
           icon: "fa-solid fa-desktop",
-          platform: "端游"
+          platform: "端游",
+          platformI18n: localizedPair("PC", "端游")
         },
         {
           slug: "delta-mobile",
           title: "《三角洲行动》手游",
           description: "移动端战场协同、干员搭配、任务推进与段位服务。",
+          titleI18n: localizedPair("Delta Force Mobile", "《三角洲行动》手游"),
+          descriptionI18n: localizedPair("Mobile battlefield coordination, operator pairing, mission progress, and rank services.", "移动端战场协同、干员搭配、任务推进与段位服务。"),
           icon: "fa-solid fa-crosshairs",
-          platform: "手游"
+          platform: "手游",
+          platformI18n: localizedPair("Mobile", "手游")
         },
         {
           slug: "delta-pc",
           title: "《三角洲行动》端游",
           description: "端游攻防、载具配合、战术突破和高强度陪练。",
+          titleI18n: localizedPair("Delta Force PC", "《三角洲行动》端游"),
+          descriptionI18n: localizedPair("PC attack and defense, vehicle teamwork, tactical breakthroughs, and high-intensity practice.", "端游攻防、载具配合、战术突破和高强度陪练。"),
           icon: "fa-solid fa-computer",
-          platform: "端游"
+          platform: "端游",
+          platformI18n: localizedPair("PC", "端游")
         }
       ];
     },
     productProfiles() {
       return {
         coaching: [
-          ["基础提升课", 199, "教练根据你的对局习惯制定训练计划，覆盖地图理解、装备选择、枪法节奏和复盘建议。", "90 分钟", "入门"],
-          ["进阶冲分课", 399, "重点优化决策、队伍沟通、残局处理和高强度排位稳定性。", "3 小时", "进阶"],
-          ["录像复盘套餐", 129, "提交对局录像后获得细致复盘，标注关键失误、可复用打法与下一阶段训练重点。", "1 份报告", "复盘"],
-          ["周训练计划", 699, "连续训练安排，包含课前诊断、阶段目标、复盘和训练反馈。", "7 天", "套餐"]
+          ["基础提升课", "Fundamentals Coaching", 199, "教练根据你的对局习惯制定训练计划，覆盖地图理解、装备选择、枪法节奏和复盘建议。", "A coach builds a training plan around your match habits, covering map knowledge, gear choices, shooting rhythm, and review advice.", "90 分钟", "90 minutes", "入门", "Starter"],
+          ["进阶冲分课", "Ranked Climb Coaching", 399, "重点优化决策、队伍沟通、残局处理和高强度排位稳定性。", "Focused improvement for decision-making, team comms, clutch play, and ranked consistency.", "3 小时", "3 hours", "进阶", "Advanced"],
+          ["录像复盘套餐", "VOD Review Package", 129, "提交对局录像后获得细致复盘，标注关键失误、可复用打法与下一阶段训练重点。", "Submit match footage for a detailed review with key mistakes, reusable plays, and next-step training priorities.", "1 份报告", "1 report", "复盘", "Review"],
+          ["周训练计划", "Weekly Training Plan", 699, "连续训练安排，包含课前诊断、阶段目标、复盘和训练反馈。", "A continuous training schedule with pre-session diagnosis, stage goals, reviews, and training feedback.", "7 天", "7 days", "套餐", "Bundle"]
         ],
         companion: [
-          ["双小时语音陪玩", 88, "轻松开黑体验，支持娱乐、任务推进和基础协作，适合日常放松和熟悉地图。", "2 小时", "轻松"],
-          ["晚间黄金档陪玩", 168, "固定黄金时段服务，沟通稳定，适合组队上分、活动任务和连续开黑安排。", "3 小时", "热门"],
-          ["车队氛围组", 258, "多人语音车队陪玩，节奏轻快，兼顾胜率和氛围。", "3 小时", "组队"],
-          ["新人熟悉路线", 98, "陪同熟悉地图路线、撤离点、任务节点和基础操作节奏。", "2 小时", "新人"]
+          ["双小时语音陪玩", "Two-Hour Voice Companion", 88, "轻松开黑体验，支持娱乐、任务推进和基础协作，适合日常放松和熟悉地图。", "Relaxed team play for casual matches, task progress, and basic coordination while you unwind or learn maps.", "2 小时", "2 hours", "轻松", "Relaxed"],
+          ["晚间黄金档陪玩", "Prime-Time Companion", 168, "固定黄金时段服务，沟通稳定，适合组队上分、活动任务和连续开黑安排。", "Reliable prime-time sessions for ranked squads, event tasks, and planned team runs.", "3 小时", "3 hours", "热门", "Popular"],
+          ["车队氛围组", "Squad Vibe Team", 258, "多人语音车队陪玩，节奏轻快，兼顾胜率和氛围。", "Multi-person voice squad play with a light rhythm, balancing win rate and atmosphere.", "3 小时", "3 hours", "组队", "Squad"],
+          ["新人熟悉路线", "Beginner Route Tour", 98, "陪同熟悉地图路线、撤离点、任务节点和基础操作节奏。", "Guided practice for map routes, extraction points, task nodes, and basic operating rhythm.", "2 小时", "2 hours", "新人", "Newcomer"]
         ],
         mercenary: [
-          ["强力护航单局", 99, "高水平队友协助完成单局目标，提供路线判断、交火支援和撤离保障。", "单局", "即时"],
-          ["目标任务执行", 229, "围绕指定任务制定执行方案，包含队伍配合、路线推进和关键节点保护。", "3 单", "任务"],
-          ["高强度攻坚套餐", 369, "面向困难局和连续目标，提供更完整的团队支援与战术执行体验。", "5 单", "攻坚"],
-          ["排位护航组", 499, "适合集中冲分，安排稳定车队与明确战术分工。", "半日", "排位"]
+          ["强力护航单局", "One-Match Escort", 99, "高水平队友协助完成单局目标，提供路线判断、交火支援和撤离保障。", "High-level teammates help complete one-match objectives with route calls, firefight support, and extraction cover.", "单局", "Single match", "即时", "Instant"],
+          ["目标任务执行", "Objective Task Run", 229, "围绕指定任务制定执行方案，包含队伍配合、路线推进和关键节点保护。", "An execution plan around a specified task, including team coordination, route progress, and key-node protection.", "3 单", "3 runs", "任务", "Task"],
+          ["高强度攻坚套餐", "High-Intensity Push Package", 369, "面向困难局和连续目标，提供更完整的团队支援与战术执行体验。", "Fuller team support and tactical execution for hard matches and continuous objectives.", "5 单", "5 runs", "攻坚", "Push"],
+          ["排位护航组", "Ranked Escort Squad", 499, "适合集中冲分，安排稳定车队与明确战术分工。", "Built for focused rank climbing with a stable squad and clear tactical roles.", "半日", "Half day", "排位", "Ranked"]
         ],
         accounts: [
-          ["入门成品账号", 299, "适合快速入坑的基础账号，展示等级、常用资源和主要可用内容。", "即时咨询", "入门"],
-          ["进阶收藏账号", 899, "拥有更完整资源和角色积累，适合想节省养成时间的玩家。", "客服确认", "进阶"],
-          ["稀有高配账号", 1999, "高价值账号展示项，后续可扩展为资质审核、担保交易和客服确认流程。", "专员审核", "稀有"],
-          ["账号估值服务", 59, "根据资源、段位、皮肤、历史投入和市场情况给出参考估值。", "1 份报告", "估值"]
+          ["入门成品账号", "Starter Ready Account", 299, "适合快速入坑的基础账号，展示等级、常用资源和主要可用内容。", "A basic ready-to-use account for quick entry, showing level, common resources, and available content.", "即时咨询", "Instant consultation", "入门", "Starter"],
+          ["进阶收藏账号", "Advanced Collection Account", 899, "拥有更完整资源和角色积累，适合想节省养成时间的玩家。", "A more complete account with accumulated resources and characters for players who want to save build time.", "客服确认", "Support confirmation", "进阶", "Advanced"],
+          ["稀有高配账号", "Rare High-Spec Account", 1999, "高价值账号展示项，后续可扩展为资质审核、担保交易和客服确认流程。", "A high-value account listing that can later support qualification checks, escrow, and support confirmation.", "专员审核", "Specialist review", "稀有", "Rare"],
+          ["账号估值服务", "Account Valuation Service", 59, "根据资源、段位、皮肤、历史投入和市场情况给出参考估值。", "A reference valuation based on resources, rank, skins, historical spend, and market conditions.", "1 份报告", "1 report", "估值", "Valuation"]
         ]
       };
     },
@@ -617,18 +1611,25 @@
           id: `${category.id}-${game.slug}`,
           title: game.title,
           description: game.description,
+          titleI18n: game.titleI18n,
+          descriptionI18n: game.descriptionI18n,
           icon: game.icon,
-          platform: game.platform
+          platform: game.platform,
+          platformI18n: game.platformI18n
         }));
 
         games[category.id].forEach((game) => {
-          products[game.id] = profiles[category.id].map(([title, price, description, duration, badge], index) => ({
+          products[game.id] = profiles[category.id].map(([titleZh, titleEn, price, descriptionZh, descriptionEn, durationZh, durationEn, badgeZh, badgeEn], index) => ({
             id: `${game.id}-p${index + 1}`,
-            title: `${game.title} · ${title}`,
-            description,
+            title: `${game.title} · ${titleZh}`,
+            titleI18n: localizedPair(`${game.titleI18n.en} · ${titleEn}`, `${game.title} · ${titleZh}`),
+            description: descriptionZh,
+            descriptionI18n: localizedPair(descriptionEn, descriptionZh),
             price,
-            duration,
-            badge,
+            duration: durationZh,
+            durationI18n: localizedPair(durationEn, durationZh),
+            badge: badgeZh,
+            badgeI18n: localizedPair(badgeEn, badgeZh),
             icon: category.icon
           }));
         });
@@ -676,7 +1677,8 @@
       });
       Storage.set(Keys.games, games);
       Storage.set(Keys.products, products);
-      Storage.set(Keys.dataVersion, 2);
+      this.ensureContentI18n();
+      Storage.set(Keys.dataVersion, 3);
       this.ensureProfiles();
     },
     resetContent() {
@@ -684,7 +1686,7 @@
       Storage.set(Keys.categories, seed.categories);
       Storage.set(Keys.games, seed.games);
       Storage.set(Keys.products, seed.products);
-      Storage.set(Keys.dataVersion, 2);
+      Storage.set(Keys.dataVersion, 3);
       this.ensureProfiles();
     },
     users() {
@@ -810,20 +1812,74 @@
         const key = normalize(user.username);
         const current = byUsername.get(key);
         next.push({
-          id: current?.id || createId("user"),
+          id: current?.id || "",
+          legacyId: current?.id || "",
           username: user.username,
           role: user.role || "customer",
           funds: Number(current?.funds) || 0,
           createdAt: current?.createdAt || user.createdAt || new Date().toISOString(),
+          avatar: current?.avatar || "",
+          avatarImage: current?.avatarImage || user.avatarImage || "",
+          avatarImageName: current?.avatarImageName || user.avatarImageName || "",
+          level: clampUserLevel(current?.level),
+          countryRegion: current?.countryRegion || user.countryRegion || "未设置",
+          birthday: current?.birthday || user.birthday || "",
+          gender: current?.gender || user.gender || "unset",
+          notificationEmail: current?.notificationEmail || userEmail(user),
+          emailNotices: { ...defaultEmailNotices(), ...(current?.emailNotices || {}) },
+          employmentApplication: current?.employmentApplication || null,
           bannedUntil: current?.bannedUntil || "",
           deleted: Boolean(current?.deleted),
           deletedAt: current?.deletedAt || "",
           lastOnlineAt: current?.lastOnlineAt || ""
         });
       });
+
+      const idChanges = new Map();
+      const usedIds = new Set();
+      const groups = new Map();
+      next.forEach((profile) => {
+        const dayKey = utc8DayKey(profile.createdAt);
+        groups.set(dayKey, [...(groups.get(dayKey) || []), profile]);
+      });
+      groups.forEach((profiles) => {
+        profiles
+          .slice()
+          .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt) || a.username.localeCompare(b.username))
+          .forEach((profile, index) => {
+            const oldId = profile.legacyId;
+            let nextId = UserIdPattern.test(profile.id) && !usedIds.has(profile.id)
+              ? profile.id
+              : createUserPublicId(profile.createdAt, index + 1);
+            let sequence = index + 1;
+            while (usedIds.has(nextId)) {
+              sequence += 1;
+              nextId = createUserPublicId(profile.createdAt, sequence);
+            }
+            profile.id = nextId;
+            usedIds.add(nextId);
+            if (oldId && oldId !== nextId) {
+              idChanges.set(oldId, nextId);
+            }
+            delete profile.legacyId;
+          });
+      });
+
+      if (idChanges.size) {
+        Storage.set(Keys.ledger, this.ledger().map((entry) => (
+          idChanges.has(entry.userId) ? { ...entry, userId: idChanges.get(entry.userId) } : entry
+        )));
+      }
+
       existing.forEach((profile) => {
-        if (!byUsername.has(normalize(profile.username))) {
-          next.push(profile);
+        if (!next.some((item) => normalize(item.username) === normalize(profile.username))) {
+          const preserved = { ...profile };
+          if (!UserIdPattern.test(preserved.id || "")) {
+            preserved.id = createUserPublicId(preserved.createdAt || new Date().toISOString(), next.length + 1);
+          }
+          preserved.emailNotices = { ...defaultEmailNotices(), ...(preserved.emailNotices || {}) };
+          preserved.level = clampUserLevel(preserved.level);
+          next.push(preserved);
         }
       });
       this.saveProfiles(next);
@@ -837,6 +1893,132 @@
     },
     saveProfile(profile) {
       this.saveProfiles(this.profiles().map((item) => (item.id === profile.id ? profile : item)));
+    },
+    currentProfile() {
+      return State.currentUser ? this.profileByUsername(State.currentUser.username) : null;
+    },
+    updateStoredUser(username, patch) {
+      const users = this.users();
+      const index = users.findIndex((user) => normalize(user.username) === normalize(username));
+      if (index < 0) {
+        return { ok: false, message: "内置账号暂不支持修改该信息。" };
+      }
+      users[index] = { ...users[index], ...patch };
+      Storage.set(Keys.users, users);
+      return { ok: true, user: users[index] };
+    },
+    renameUser(oldUsername, newUsername) {
+      const nextUsername = String(newUsername || "").trim();
+      if (!nextUsername) {
+        return { ok: false, message: "请输入新的用户名。" };
+      }
+      if (normalize(oldUsername) !== normalize(nextUsername) && this.findUser(nextUsername)) {
+        return { ok: false, message: "用户名已存在。" };
+      }
+      const updated = this.updateStoredUser(oldUsername, { username: nextUsername });
+      if (!updated.ok) {
+        return updated;
+      }
+      this.saveProfiles(this.profiles().map((profile) => (
+        normalize(profile.username) === normalize(oldUsername) ? { ...profile, username: nextUsername } : profile
+      )));
+      this.saveOrders(this.orders().map((order) => ({
+        ...order,
+        customerUsername: normalize(order.customerUsername) === normalize(oldUsername) ? nextUsername : order.customerUsername,
+        handledBy: normalize(order.handledBy) === normalize(oldUsername) ? nextUsername : order.handledBy
+      })));
+      Storage.set(Keys.ledger, this.ledger().map((entry) => (
+        normalize(entry.username) === normalize(oldUsername) ? { ...entry, username: nextUsername } : entry
+      )));
+      const chats = this.chats();
+      Object.keys(chats).forEach((orderId) => {
+        chats[orderId] = (chats[orderId] || []).map((message) => {
+          const readBy = Array.isArray(message.readBy)
+            ? message.readBy.map((name) => (normalize(name) === normalize(oldUsername) ? nextUsername : name))
+            : message.readBy;
+          const readAt = Object.fromEntries(Object.entries(message.readAt || {}).map(([name, value]) => [
+            normalize(name) === normalize(oldUsername) ? nextUsername : name,
+            value
+          ]));
+          return {
+            ...message,
+            sender: normalize(message.sender) === normalize(oldUsername) ? nextUsername : message.sender,
+            readBy,
+            readAt
+          };
+        });
+      });
+      this.saveChats(chats);
+      if (State.currentUser && normalize(State.currentUser.username) === normalize(oldUsername)) {
+        State.currentUser = { ...State.currentUser, username: nextUsername };
+        Storage.set(Keys.currentUser, State.currentUser);
+      }
+      this.log("修改用户名", `${oldUsername} -> ${nextUsername}`);
+      return { ok: true };
+    },
+    updateCurrentUserPassword(password) {
+      if (String(password || "").length < 6) {
+        return { ok: false, message: "密码至少需要 6 位。" };
+      }
+      return this.updateStoredUser(State.currentUser?.username, { password });
+    },
+    updateCurrentUserEmail(email) {
+      const normalizedEmail = normalizeEmail(email);
+      if (!isEmail(normalizedEmail)) {
+        return { ok: false, message: "请输入有效邮箱。" };
+      }
+      const currentUsername = State.currentUser?.username;
+      const owner = this.findUserByEmail(normalizedEmail);
+      if (owner && normalize(owner.username) !== normalize(currentUsername)) {
+        return { ok: false, message: "该邮箱已被其他账户绑定。" };
+      }
+      const user = this.findUser(currentUsername);
+      const previousEmail = userEmail(user);
+      const updated = this.updateStoredUser(currentUsername, { email: normalizedEmail });
+      if (!updated.ok) {
+        return updated;
+      }
+      const profile = this.currentProfile();
+      if (profile && (!profile.notificationEmail || normalizeEmail(profile.notificationEmail) === previousEmail)) {
+        this.saveProfile({ ...profile, notificationEmail: normalizedEmail });
+      }
+      this.recordEnglishEmail(previousEmail, "IMPULSE email binding changed", "Your IMPULSE account email address has been changed. If this was not you, please contact support immediately.");
+      this.recordEnglishEmail(normalizedEmail, "IMPULSE email binding confirmed", "Your IMPULSE account is now bound to this email address.");
+      this.log("修改绑定邮箱", `${currentUsername} ${previousEmail} -> ${normalizedEmail}`);
+      return { ok: true, previousEmail, email: normalizedEmail };
+    },
+    recordEnglishEmail(to, subject, body) {
+      if (!isEmail(to)) {
+        return null;
+      }
+      Mail.sendEnglishEmail(to, subject, body).then((result) => {
+        if (result.ok) {
+          this.log("Email sent", `To: ${to} / Subject: ${subject} / Provider ID: ${result.id || "n/a"}`);
+        }
+      });
+      return this.log("English email", `To: ${to} / Subject: ${subject} / Body: ${body}`);
+    },
+    notifyUser(profile, noticeKey, context = {}) {
+      if (!profile || profile.deleted || profile.emailNotices?.[noticeKey] === false) {
+        return null;
+      }
+      const user = this.findUser(profile.username);
+      const to = normalizeEmail(profile.notificationEmail || userEmail(user));
+      if (!isEmail(to)) {
+        return null;
+      }
+      const notice = EmailNoticeTypes.find((item) => item.key === noticeKey);
+      if (!notice) {
+        return null;
+      }
+      const body = [
+        `Hello ${profile.username},`,
+        context.orderId ? `Order ID: ${context.orderId}.` : "",
+        context.itemName ? `Item: ${context.itemName}.` : "",
+        context.amount ? `Amount: ${context.amount}.` : "",
+        "This is an IMPULSE account notification."
+      ].filter(Boolean).join(" ");
+      return this.recordEnglishEmail(to, notice.subject, body);
     },
     touchCurrentUser() {
       if (!State.currentUser) {
@@ -879,6 +2061,12 @@
       };
       this.saveLedger([entry, ...this.ledger()]);
       this.log("资金流水", `${profile.username} ${reason}：${before} -> ${after}`);
+      if (meta.type === "recharge" && delta > 0) {
+        this.notifyUser(nextProfile, "rechargeSuccess", {
+          amount: `${delta} points`,
+          itemName: meta.itemName || reason
+        });
+      }
       return { ok: true, profile: nextProfile, entry };
     },
     categories() {
@@ -907,6 +2095,26 @@
     },
     saveOrders(orders) {
       Storage.set(Keys.orders, orders);
+    },
+    ensureContentI18n() {
+      const categories = this.categories().map((category) => ensureContentI18n(category, ["title", "description"]));
+      const games = this.games();
+      const products = this.products();
+      const validCategoryIds = new Set(categories.map((category) => category.id));
+      Object.entries(games).forEach(([categoryId, list]) => {
+        if (!validCategoryIds.has(categoryId) || !Array.isArray(list)) {
+          games[categoryId] = [];
+          return;
+        }
+        games[categoryId] = list.map((game) => ensureContentI18n(game, ["title", "description", "platform"]));
+        games[categoryId].forEach((game) => {
+          products[game.id] = Array.isArray(products[game.id]) ? products[game.id] : [];
+          products[game.id] = products[game.id].map((product) => ensureContentI18n(product, ["title", "description", "duration", "badge"]));
+        });
+      });
+      Storage.set(Keys.categories, categories);
+      Storage.set(Keys.games, games);
+      Storage.set(Keys.products, products);
     },
     saveOrder(order) {
       this.saveOrders(this.orders().map((item) => (item.id === order.id ? order : item)));
@@ -955,6 +2163,7 @@
       return items;
     },
     upsertCategory(category) {
+      category = ensureContentI18n(category, ["title", "description"]);
       const categories = this.categories();
       const exists = categories.some((item) => item.id === category.id);
       this.saveCategories(exists ? categories.map((item) => (item.id === category.id ? category : item)) : [...categories, category]);
@@ -965,6 +2174,7 @@
       }
     },
     upsertGame(categoryId, game) {
+      game = ensureContentI18n(game, ["title", "description", "platform"]);
       const games = this.games();
       const list = games[categoryId] || [];
       const exists = list.some((item) => item.id === game.id);
@@ -977,6 +2187,7 @@
       }
     },
     upsertProduct(gameId, product) {
+      product = ensureContentI18n(product, ["title", "description", "duration", "badge"]);
       const products = this.products();
       const list = products[gameId] || [];
       const exists = list.some((item) => item.id === product.id);
@@ -1048,6 +2259,11 @@
         return { ok: false, reason: deduction.reason, balance: deduction.before, required: price };
       }
       this.log("创建订单", `${order.customerUsername} 提交 ${order.productTitle}`);
+      this.notifyUser(profile, "orderSuccess", {
+        orderId: order.id,
+        itemName: order.productTitle,
+        amount: `${price} points`
+      });
       return { ok: true, order };
     },
     updateOrder(orderId, patch) {
@@ -1101,6 +2317,11 @@
         updatedAt: refundedAt
       } : item)));
       this.log("订单退款", `${current.id} ${current.customerUsername} 返还 ${refundAmount} 积分`);
+      this.notifyUser(profile, "returnSuccess", {
+        orderId: current.id,
+        itemName: current.productTitle,
+        amount: `${refundAmount} points`
+      });
       return { ok: true };
     },
     processAutoRefunds() {
@@ -1206,6 +2427,11 @@
         text: accepted ? `员工已接受加急，结单期限为 ${formatFullDate(order.rush.deadlineAt)}。` : "员工已拒绝加急申请，加急费用已退回。"
       });
       this.log(accepted ? "接受加急" : "拒绝加急", `${order.id} ${State.currentUser?.username || ""}`);
+      this.notifyUser(this.profileByUsername(order.customerUsername), "rushReply", {
+        orderId: order.id,
+        itemName: order.productTitle,
+        amount: accepted ? "Rush request accepted" : "Rush request declined"
+      });
       return { ok: true };
     },
     requestContinueAfterBreach(orderId) {
@@ -1289,6 +2515,11 @@
         text: `顾客已退单，系统返还 ${refundAmount} 积分。`
       });
       this.log("顾客退单", `${order.id} 返还 ${refundAmount} 积分`);
+      this.notifyUser(customer, "returnSuccess", {
+        orderId: order.id,
+        itemName: order.productTitle,
+        amount: `${refundAmount} points`
+      });
       return { ok: true, refundAmount };
     },
     tipOrder(orderId, amount) {
@@ -1410,6 +2641,13 @@
         text: `${settlementNote}：员工获得 ${staffPayout} 积分${customerRefund ? `，顾客退回 ${customerRefund} 积分` : ""}。`
       });
       this.log("订单结算", `${order.id} ${settlementNote}，员工 ${staffPayout}，顾客退款 ${customerRefund}`);
+      if (customer) {
+        this.notifyUser(customer, "completionSuccess", {
+          orderId: order.id,
+          itemName: order.productTitle,
+          amount: `${price} points`
+        });
+      }
       return { ok: true, staffPayout, customerRefund };
     },
     metrics() {
@@ -1500,7 +2738,7 @@
       const currentIndex = modes.indexOf(State.mode);
       this.setMode(modes[(currentIndex + 1) % modes.length]);
     },
-    start(user) {
+    start(user, options = {}) {
       const profile = Data.profileByUsername(user.username);
       State.currentUser = { username: user.username, role: user.role };
       Storage.set(Keys.currentUser, State.currentUser);
@@ -1509,7 +2747,9 @@
       if (profile) {
         Data.saveProfile({ ...profile, lastOnlineAt: new Date().toISOString() });
       }
-      Data.log("用户登录", user.username);
+      if (!options.skipBackendLog) {
+        Data.log("用户登录", user.username);
+      }
       return { ok: true };
     },
     ensureUserAvailable(user) {
@@ -1522,10 +2762,17 @@
       }
       return { ok: true };
     },
-    loginByPassword(identity, password) {
+    async loginByPassword(identity, password) {
       const trimmedIdentity = String(identity || "").trim();
       if (!trimmedIdentity || !password) {
         return { ok: false, message: "请输入账号或邮箱和密码。" };
+      }
+      const backendResult = await Backend.loginPassword(trimmedIdentity, password);
+      if (backendResult.ok) {
+        return backendResult;
+      }
+      if (!backendResult.offline) {
+        return backendResult;
       }
       const user = isEmail(trimmedIdentity)
         ? Data.findUserByEmail(trimmedIdentity)
@@ -1539,10 +2786,17 @@
       }
       return this.start(user);
     },
-    loginByEmailCode(email, code) {
+    async loginByEmailCode(email, code) {
       const normalizedEmail = normalizeEmail(email);
       if (!isEmail(normalizedEmail)) {
         return { ok: false, message: "请输入有效邮箱。" };
+      }
+      const backendResult = await Backend.loginCode(normalizedEmail, code);
+      if (backendResult.ok) {
+        return backendResult;
+      }
+      if (!backendResult.offline) {
+        return backendResult;
       }
       const user = Data.findUserByEmail(normalizedEmail);
       if (!user) {
@@ -1558,7 +2812,7 @@
       }
       return this.start(user);
     },
-    login(email, password, code) {
+    async login(email, password, code) {
       const normalizedEmail = normalizeEmail(email);
       if (!isEmail(normalizedEmail)) {
         return { ok: false, message: "请输入有效邮箱。" };
@@ -1577,7 +2831,7 @@
       }
       return this.start(user);
     },
-    register(username, email, password, confirmPassword, code) {
+    async register(username, email, password, confirmPassword, code, profileFields = {}) {
       const normalizedEmail = normalizeEmail(email);
       if (!username.trim() || !password) {
         return { ok: false, message: "请输入用户名、邮箱和密码。" };
@@ -1597,11 +2851,45 @@
       if (Data.findUserByEmail(normalizedEmail)) {
         return { ok: false, message: "邮箱已被注册。" };
       }
+      if (!String(profileFields.countryRegion || "").trim()) {
+        return { ok: false, message: "请输入国家或地区。" };
+      }
+      if (!profileFields.birthday) {
+        return { ok: false, message: "请选择生日。" };
+      }
+      const backendResult = await Backend.register({
+        username,
+        email: normalizedEmail,
+        password,
+        confirmPassword,
+        code,
+        countryRegion: profileFields.countryRegion,
+        birthday: profileFields.birthday,
+        gender: profileFields.gender,
+        avatarImage: profileFields.avatarImage,
+        avatarImageName: profileFields.avatarImageName
+      });
+      if (backendResult.ok) {
+        return backendResult;
+      }
+      if (!backendResult.offline) {
+        return backendResult;
+      }
       const verified = Verification.verify("register", normalizedEmail, code);
       if (!verified.ok) {
         return verified;
       }
-      Data.saveUser({ username: username.trim(), email: normalizedEmail, password, role: "customer" });
+      Data.saveUser({
+        username: username.trim(),
+        email: normalizedEmail,
+        password,
+        role: "customer",
+        countryRegion: String(profileFields.countryRegion || "").trim(),
+        birthday: profileFields.birthday,
+        gender: profileFields.gender || "unset",
+        avatarImage: profileFields.avatarImage || "",
+        avatarImageName: profileFields.avatarImageName || ""
+      });
       return this.start(Data.findUser(username));
     },
     logout() {
@@ -1611,6 +2899,7 @@
         Data.saveProfile({ ...profile, lastOnlineAt: "" });
       }
       Data.log("用户登出", username);
+      Backend.logout();
       State.currentUser = null;
       State.mode = "customer";
       Storage.remove(Keys.currentUser);
@@ -1627,7 +2916,7 @@
     scriptId: "google-translate-script",
     elementId: "google_translate_element",
     selected() {
-      return localStorage.getItem(Keys.language) || "zh-CN";
+      return activeLanguage();
     },
     selectedLabel() {
       return languageName(this.selected());
@@ -1644,14 +2933,14 @@
         this.ready = true;
         this.initialized = true;
         new window.google.translate.TranslateElement({
-          pageLanguage: "zh-CN",
+          pageLanguage: DefaultLanguage,
           includedLanguages: Languages.map((item) => item.code).join(","),
           autoDisplay: false
         }, this.elementId);
         window.setTimeout(() => this.applySaved(), 300);
       };
 
-      if (this.selected() !== "zh-CN") {
+      if (!isLocalLanguage(this.selected())) {
         this.loadScript();
       }
     },
@@ -1675,9 +2964,9 @@
       localStorage.setItem(Keys.language, language.code);
       App.render();
 
-      if (language.code === "zh-CN") {
+      if (isLocalLanguage(language.code)) {
         this.clearCookie();
-        UI.toast("语言已切换", "正在恢复简体中文。");
+        UI.toast("语言已切换", languageName(language.code));
         window.setTimeout(() => window.location.reload(), 350);
         return;
       }
@@ -1745,7 +3034,7 @@
     },
     applySaved() {
       const language = this.selected();
-      if (language === "zh-CN") {
+      if (isLocalLanguage(language)) {
         return;
       }
       this.apply(language);
@@ -1764,9 +3053,9 @@
       return true;
     },
     setCookie(code) {
-      document.cookie = `googtrans=/zh-CN/${code}; path=/`;
+      document.cookie = `googtrans=/${DefaultLanguage}/${code}; path=/`;
       if (window.location.hostname) {
-        document.cookie = `googtrans=/zh-CN/${code}; path=/; domain=${window.location.hostname}`;
+        document.cookie = `googtrans=/${DefaultLanguage}/${code}; path=/; domain=${window.location.hostname}`;
       }
     },
     clearCookie() {
@@ -1776,7 +3065,7 @@
       }
     },
     refresh() {
-      if (this.ready && this.selected() !== "zh-CN") {
+      if (this.ready && !isLocalLanguage(this.selected())) {
         window.setTimeout(() => this.applySaved(), 250);
       }
     }
@@ -1926,8 +3215,8 @@
           { name: "password", label: "密码", type: "password", required: true }
         ],
         submitLabel: "确认",
-        onSubmit: (values) => {
-          if (!validator(values.password)) {
+        onSubmit: async (values) => {
+          if (!await validator(values.password)) {
             return { error: "密码不正确。" };
           }
           onSuccess();
@@ -1977,10 +3266,17 @@
         )
       );
 
-      form.addEventListener("submit", (event) => {
+      form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const values = Object.fromEntries(new FormData(form).entries());
-        const result = onSubmit(values);
+        const submitButton = form.querySelector("button[type='submit']");
+        if (submitButton) {
+          submitButton.disabled = true;
+        }
+        const result = await onSubmit(values);
+        if (submitButton) {
+          submitButton.disabled = false;
+        }
         if (result && result.error) {
           message.textContent = result.error;
           return;
@@ -2021,17 +3317,28 @@
 
       if (!State.currentUser) {
         Dom.topActions.appendChild(
-          h("button", { className: "account-button", type: "button", dataset: { action: "open-login" }, ariaLabel: "登录账户", title: "登录账户" },
+          h("button", { className: "account-button", type: "button", dataset: { action: "open-guest-menu" }, ariaLabel: "账户菜单", title: "账户菜单" },
             icon("fa-regular fa-user")
           )
         );
         return;
       }
 
-      const avatar = h("button", { className: "avatar-button", type: "button", dataset: { action: "open-user-menu" }, ariaLabel: "账户菜单", title: "账户菜单" },
-        State.currentUser.username.slice(0, 2).toUpperCase()
+      const profile = Data.profileByUsername(State.currentUser.username);
+      const avatar = h("button", { className: "avatar-button notranslate", translate: "no", type: "button", dataset: { action: "open-user-menu" }, ariaLabel: "账户菜单", title: "账户菜单" },
+        profile?.avatarImage
+          ? h("img", { src: profile.avatarImage, alt: "头像" })
+          : profileAvatarText(profile, State.currentUser.username)
       );
-      Dom.topActions.appendChild(h("div", { className: "user-chip" }, avatar, h("span", { className: "user-name notranslate", translate: "no", text: State.currentUser.username })));
+      const userName = h("button", {
+        className: "user-name user-name-button notranslate",
+        translate: "no",
+        type: "button",
+        dataset: { action: "open-user-menu" },
+        ariaLabel: "账户菜单",
+        title: "账户菜单"
+      }, State.currentUser.username);
+      Dom.topActions.appendChild(h("div", { className: "user-chip" }, avatar, userName));
     },
     pageMeta() {
       const route = State.route;
@@ -2066,8 +3373,8 @@
         const category = Data.category(route.params.categoryId);
         return {
           kicker: Modes[State.mode],
-          title: category ? category.title : "游戏分区",
-          description: category ? category.description : "选择游戏分区查看商品。",
+          title: category ? localizedContent(category, "title") : "游戏分区",
+          description: category ? localizedContent(category, "description") : "选择游戏分区查看商品。",
           stats: [
             ["分区", (Data.games()[route.params.categoryId] || []).length],
             ["商品", Data.allProductsWithMeta().filter((item) => item.category.id === route.params.categoryId).length],
@@ -2080,8 +3387,8 @@
         const game = Data.game(route.params.categoryId, route.params.gameId);
         return {
           kicker: Modes[State.mode],
-          title: game ? game.title : "商品列表",
-          description: game ? game.description : "逐行浏览商品，并查看具体服务详情。",
+          title: game ? localizedContent(game, "title") : "商品列表",
+          description: game ? localizedContent(game, "description") : "逐行浏览商品，并查看具体服务详情。",
           stats: [
             ["商品", (Data.products()[route.params.gameId] || []).length],
             ["订单", metrics.orders],
@@ -2182,16 +3489,16 @@
         const category = Data.category(State.route.params.categoryId);
         slash();
         if (State.route.name === "category") {
-          Dom.breadcrumb.appendChild(h("span", { text: category ? category.title : "分类" }));
+          Dom.breadcrumb.appendChild(h("span", { text: category ? localizedContent(category, "title") : "分类" }));
         } else {
-          add(category ? category.title : "分类", () => Router.go("category", { categoryId: State.route.params.categoryId }));
+          add(category ? localizedContent(category, "title") : "分类", () => Router.go("category", { categoryId: State.route.params.categoryId }));
         }
       }
 
       if (State.route.name === "products") {
         const game = Data.game(State.route.params.categoryId, State.route.params.gameId);
         slash();
-        Dom.breadcrumb.appendChild(h("span", { text: game ? game.title : "商品" }));
+        Dom.breadcrumb.appendChild(h("span", { text: game ? localizedContent(game, "title") : "商品" }));
       }
 
       if (State.route.name === "staff") {
@@ -2213,6 +3520,20 @@
     showMenuAt(x, y, items) {
       clear(Dom.contextMenu);
       items.forEach((item) => {
+        if (item.type === "separator") {
+          Dom.contextMenu.appendChild(h("div", { className: "menu-separator", role: "separator" }));
+          return;
+        }
+        if (item.type === "summary") {
+          Dom.contextMenu.appendChild(item.node || h("div", { className: "menu-summary" },
+            item.icon ? h("div", { className: "menu-summary-icon" }, icon(item.icon)) : null,
+            h("div", {},
+              h("strong", { text: item.title || "" }),
+              item.subtitle ? h("span", { text: item.subtitle }) : null
+            )
+          ));
+          return;
+        }
         Dom.contextMenu.appendChild(
           h("button", {
             type: "button",
@@ -2221,7 +3542,7 @@
               this.hideMenu();
               item.action();
             }
-          }, icon(item.icon), item.label)
+          }, item.icon ? icon(item.icon) : null, item.label)
         );
       });
       Dom.contextMenu.classList.remove("hidden");
@@ -2229,6 +3550,7 @@
       const height = Dom.contextMenu.offsetHeight;
       Dom.contextMenu.style.left = `${Math.max(12, Math.min(x, window.innerWidth - width - 12))}px`;
       Dom.contextMenu.style.top = `${Math.max(12, Math.min(y, window.innerHeight - height - 12))}px`;
+      Translation.localizeStaticUi(Dom.contextMenu);
     },
     showMenuFromElement(element, items) {
       const rect = element.getBoundingClientRect();
@@ -2249,9 +3571,9 @@
       },
         h("div", { className: "card-icon" }, icon(item.icon || "fa-solid fa-star")),
         h("div", {},
-          h("h2", { text: item.title }),
-          h("p", { text: item.description || "暂无描述。" }),
-          item.platform ? h("div", { className: "tag-row" }, h("span", { className: "tag", text: item.platform })) : null
+          h("h2", { text: localizedContent(item, "title") }),
+          h("p", { text: localizedContent(item, "description", "暂无描述。") || "暂无描述。" }),
+          localizedContent(item, "platform") ? h("div", { className: "tag-row" }, h("span", { className: "tag", text: localizedContent(item, "platform") })) : null
         ),
         h("div", { className: "card-footer" },
           h("span", { className: "tag", text: buttonText })
@@ -2264,12 +3586,12 @@
         dataset: { manageType: "product", manageId: product.id, gameId: game.id }
       },
         h("div", {},
-          h("h3", { className: "row-title", text: product.title }),
+          h("h3", { className: "row-title", text: localizedContent(product, "title") }),
           h("div", { className: "row-meta" },
-            h("span", { text: category.title }),
-            h("span", { text: game.title }),
-            product.duration ? h("span", { text: product.duration }) : null,
-            product.badge ? h("span", { className: "tag", text: product.badge }) : null
+            h("span", { text: localizedContent(category, "title") }),
+            h("span", { text: localizedContent(game, "title") }),
+            localizedContent(product, "duration") ? h("span", { text: localizedContent(product, "duration") }) : null,
+            localizedContent(product, "badge") ? h("span", { className: "tag", text: localizedContent(product, "badge") }) : null
           )
         ),
         h("div", { className: "price", text: formatPrice(product.price) }),
@@ -2307,21 +3629,21 @@
 
       return h("article", { className: "order-row" },
         h("div", {},
-          h("h3", { className: "row-title", text: order.productTitle }),
+          h("h3", { className: "row-title", text: localizedOrderContent(order, "productTitle") }),
           h("div", { className: "row-meta" },
-            h("span", { text: `${OrderTypeLabels[order.type]} ${order.id.slice(-6).toUpperCase()}` }),
-            h("span", { text: order.gameTitle }),
+            h("span", {}, localizeStaticPhrase(OrderTypeLabels[order.type] || "订单"), " ", order.id.slice(-6).toUpperCase()),
+            h("span", { text: localizedOrderContent(order, "gameTitle") }),
             h("span", { text: formatPrice(order.price) }),
             h("span", { text: formatFullDate(order.createdAt) }),
-            order.appointmentAt ? h("span", { text: `预约 ${formatFullDate(order.appointmentAt)}` }) : null,
-            order.autoCancelAt && order.status === "pending" ? h("span", { text: `无人接单自动退单 ${formatFullDate(order.autoCancelAt)}` }) : null,
-            order.acceptedAt ? h("span", { text: `接单时间 ${formatFullDate(order.acceptedAt)}` }) : null,
+            order.appointmentAt ? h("span", {}, localizeStaticPhrase("预约"), " ", formatFullDate(order.appointmentAt)) : null,
+            order.autoCancelAt && order.status === "pending" ? h("span", {}, localizeStaticPhrase("超时无人接单自动退单"), " ", formatFullDate(order.autoCancelAt)) : null,
+            order.acceptedAt ? h("span", {}, localizeStaticPhrase("接单时间"), " ", formatFullDate(order.acceptedAt)) : null,
             rushStatusLabel(order.rush) ? h("span", { className: "tag", text: rushStatusLabel(order.rush) }) : null,
-            order.handledBy ? h("span", {}, "接单 ", h("span", { className: "notranslate", translate: "no", text: order.handledBy })) : null,
-            order.refundedAt ? h("span", { text: `已退款 ${formatFullDate(order.refundedAt)}` }) : null,
-            order.returnRefundedAt ? h("span", { text: `退单退款 ${formatPrice(order.returnRefundAmount)}` }) : null,
-            order.settledAt ? h("span", { text: `已结算 ${formatFullDate(order.settledAt)}` }) : null,
-            canManage ? h("span", {}, "客户 ", h("span", { className: "notranslate", translate: "no", text: order.customerUsername })) : null,
+            order.handledBy ? h("span", {}, localizeStaticPhrase("接单"), " ", h("span", { className: "notranslate", translate: "no", text: order.handledBy })) : null,
+            order.refundedAt ? h("span", {}, localizeStaticPhrase("已退款"), " ", formatFullDate(order.refundedAt)) : null,
+            order.returnRefundedAt ? h("span", {}, localizeStaticPhrase("退单退款"), " ", formatPrice(order.returnRefundAmount)) : null,
+            order.settledAt ? h("span", {}, localizeStaticPhrase("已结算"), " ", formatFullDate(order.settledAt)) : null,
+            canManage ? h("span", {}, localizeStaticPhrase("客户"), " ", h("span", { className: "notranslate", translate: "no", text: order.customerUsername })) : null,
             UI.statusPill(order.status)
           ),
           order.note ? h("p", { text: order.note }) : null
@@ -2419,16 +3741,20 @@
       if (!q) {
         return Components.empty("请输入搜索关键词。");
       }
-      const categoryMatches = Data.categories().filter((category) => normalize(`${category.title} ${category.description}`).includes(q));
+      const categoryMatches = Data.categories().filter((category) => normalize(searchContentText(category, ["title", "description"])).includes(q));
       const gameMatches = [];
       Data.categories().forEach((category) => {
         (Data.games()[category.id] || []).forEach((game) => {
-          if (normalize(`${game.title} ${game.description}`).includes(q)) {
+          if (normalize(searchContentText(game, ["title", "description", "platform"])).includes(q)) {
             gameMatches.push({ category, game });
           }
         });
       });
-      const productMatches = Data.allProductsWithMeta().filter(({ product, game, category }) => normalize(`${product.title} ${product.description} ${game.title} ${category.title}`).includes(q));
+      const productMatches = Data.allProductsWithMeta().filter(({ product, game, category }) => normalize([
+        searchContentText(product, ["title", "description", "duration", "badge"]),
+        searchContentText(game, ["title", "description", "platform"]),
+        searchContentText(category, ["title", "description"])
+      ].join(" ")).includes(q));
 
       if (!categoryMatches.length && !gameMatches.length && !productMatches.length) {
         return Components.empty("没有找到匹配内容。");
@@ -2444,8 +3770,8 @@
         h("section", { className: "panel" },
           h("h2", { text: "分类与分区" }),
           h("div", { className: "product-list" },
-            categoryMatches.map((category) => h("button", { className: "button button-ghost", type: "button", dataset: { action: "open-category", categoryId: category.id } }, icon(category.icon), category.title)),
-            gameMatches.map(({ category, game }) => h("button", { className: "button button-ghost", type: "button", dataset: { action: "open-products", categoryId: category.id, gameId: game.id } }, icon(game.icon), game.title))
+            categoryMatches.map((category) => h("button", { className: "button button-ghost", type: "button", dataset: { action: "open-category", categoryId: category.id } }, icon(category.icon), localizedContent(category, "title"))),
+            gameMatches.map(({ category, game }) => h("button", { className: "button button-ghost", type: "button", dataset: { action: "open-products", categoryId: category.id, gameId: game.id } }, icon(game.icon), localizedContent(game, "title")))
           )
         )
       );
@@ -2460,7 +3786,7 @@
         h("div", { className: "detail-heading" },
           h("div", {},
             h("h2", { text: "账户积分" }),
-            h("p", { text: profile ? `当前余额：${Number(profile.funds || 0).toLocaleString("zh-CN")} 积分` : "当前账户暂不可充值。" })
+            h("p", { text: profile ? `${localizeStaticPhrase("当前余额：")}${formatPrice(profile.funds)}` : "当前账户暂不可充值。" })
           ),
           profile ? h("button", { className: "button button-primary", type: "button", dataset: { action: "open-recharge" } }, icon("fa-solid fa-coins"), "充值积分") : null
         )
@@ -2488,12 +3814,21 @@
       };
 
       return h("div", { className: "grid" },
-        StaffSections.map((section) => Components.card({
-          item: { ...section, description: `${section.description} 当前：${countFor(section.id)}` },
-          action: "open-staff-section",
-          buttonText: "进入",
-          dataset: { section: section.id }
-        }))
+        StaffSections.map((section) => {
+          const count = countFor(section.id);
+          const countEn = typeof count === "number" ? count : staticPhraseIn(count, "en");
+          const countZh = typeof count === "number" ? count : staticPhraseIn(count, "zh-CN");
+          return Components.card({
+            item: {
+              ...section,
+              titleI18n: localizedPair(staticPhraseIn(section.title, "en"), section.title),
+              descriptionI18n: localizedPair(`${staticPhraseIn(section.description, "en")} ${staticPhraseIn("当前", "en")}: ${countEn}`, `${section.description} 当前：${countZh}`)
+            },
+            action: "open-staff-section",
+            buttonText: "进入",
+            dataset: { section: section.id }
+          });
+        })
       );
     },
     staffSection(sectionId) {
@@ -2542,7 +3877,11 @@
       if (!section) {
         return h("div", { className: "grid" },
           AdminSections.map((item) => Components.card({
-            item,
+            item: {
+              ...item,
+              titleI18n: localizedPair(staticPhraseIn(item.title, "en"), item.title),
+              descriptionI18n: localizedPair(staticPhraseIn(item.description, "en"), item.description)
+            },
             action: "request-admin-section",
             buttonText: "输入二级密码",
             dataset: { section: item.id }
@@ -2582,13 +3921,25 @@
       if (!role) {
         return h("div", { className: "grid grid-two" },
           Components.card({
-            item: { title: "顾客", description: "查看顾客账户、积分、订单与限制状态。", icon: "fa-solid fa-user" },
+            item: {
+              title: "顾客",
+              description: "查看顾客账户、积分、订单与限制状态。",
+              titleI18n: localizedPair(staticPhraseIn("顾客", "en"), "顾客"),
+              descriptionI18n: localizedPair(staticPhraseIn("查看顾客账户、积分、订单与限制状态。", "en"), "查看顾客账户、积分、订单与限制状态。"),
+              icon: "fa-solid fa-user"
+            },
             action: "open-admin-user-role",
             buttonText: "查看顾客",
             dataset: { role: "customer" }
           }),
           Components.card({
-            item: { title: "员工", description: "查看员工账户、积分、订单与兑现记录。", icon: "fa-solid fa-user-tie" },
+            item: {
+              title: "员工",
+              description: "查看员工账户、积分、订单与兑现记录。",
+              titleI18n: localizedPair(staticPhraseIn("员工", "en"), "员工"),
+              descriptionI18n: localizedPair(staticPhraseIn("查看员工账户、积分、订单与兑现记录。", "en"), "查看员工账户、积分、订单与兑现记录。"),
+              icon: "fa-solid fa-user-tie"
+            },
             action: "open-admin-user-role",
             buttonText: "查看员工",
             dataset: { role: "staff" }
@@ -2629,7 +3980,7 @@
           users.map((item) => h("button", { className: "admin-table-row user-grid", type: "button", dataset: { action: "open-admin-user-detail", role, userId: item.id } },
             h("span", { className: "mono", text: item.id }),
             h("span", { className: "notranslate", translate: "no", text: item.username }),
-            h("span", { text: `${Number(item.funds || 0).toLocaleString("zh-CN")} 积分` }),
+            h("span", { text: formatPrice(item.funds) }),
             h("span", { text: userStatus(item) })
           ))
         )
@@ -2644,7 +3995,7 @@
         h("div", { className: "detail-heading" },
           h("div", {},
             h("h2", {}, h("span", { className: "notranslate", translate: "no", text: profile.username })),
-            h("p", { text: `用户ID：${profile.id} / 注册时间：${formatFullDate(profile.createdAt)} / 状态：${userStatus(profile)}` })
+            h("p", {}, localizeStaticPhrase("用户ID"), "：", h("span", { className: "mono notranslate", translate: "no", text: profile.id }), " / ", localizeStaticPhrase("注册时间"), "：", formatFullDate(profile.createdAt), " / ", localizeStaticPhrase("状态"), "：", userStatus(profile))
           ),
           h("button", { className: "button button-ghost", type: "button", dataset: { action: "open-admin-user-role", role: profile.role } }, "返回列表")
         ),
@@ -2660,7 +4011,7 @@
         return this.simpleTable(["单号", "充值项目", "充值积分", "充值金额", "充值时间"], rows.map((entry) => [
           entry.id,
           entry.itemName || entry.title,
-          `${entry.amountPoints} 积分`,
+          formatPrice(entry.amountPoints),
           `$${entry.amountMoney || 0}`,
           formatFullDate(entry.createdAt)
         ]));
@@ -2677,8 +4028,8 @@
         const rows = Data.orders().filter((order) => profile.role === "staff" ? order.handledBy === profile.username : order.customerUsername === profile.username);
         return this.simpleTable(["单号", "订单名称", "订单金额", "下单时间", "结单时间"], rows.map((order) => [
           order.id,
-          order.productTitle,
-          `${order.price} 积分`,
+          localizedOrderContent(order, "productTitle"),
+          formatPrice(order.price),
           formatFullDate(order.createdAt),
           order.completedAt ? formatFullDate(order.completedAt) : "未结单"
         ]));
@@ -2714,13 +4065,13 @@
         const consume = Data.orders().map((order) => ({
         id: order.id,
         type: "consume",
-        name: order.productTitle,
+        name: localizedOrderContent(order, "productTitle"),
         amount: order.price,
         user: order.customerUsername,
         status: StatusLabels[order.status] || order.status,
         createdAt: order.createdAt,
         completedAt: order.completedAt || "",
-        detail: `游戏：${order.gameTitle} / 联系方式：${order.contact || "未填写"} / 预约：${order.appointmentAt ? formatFullDate(order.appointmentAt) : "无"} / 自动退单：${order.autoCancelAt ? formatFullDate(order.autoCancelAt) : "未设置"} / 加急：${rushStatusLabel(order.rush) || "无"} / 举报：${(order.reports || []).length} 条 / 退款：${order.refundedAt ? formatFullDate(order.refundedAt) : "无"} / 备注：${order.note || "无"}`
+        detail: `${localizeStaticPhrase("游戏")}：${localizedOrderContent(order, "gameTitle")} / ${localizeStaticPhrase("联系方式")}：${order.contact || localizeStaticPhrase("未填写")} / ${localizeStaticPhrase("预约")}：${order.appointmentAt ? formatFullDate(order.appointmentAt) : localizeStaticPhrase("无")} / ${localizeStaticPhrase("自动退单")}：${order.autoCancelAt ? formatFullDate(order.autoCancelAt) : localizeStaticPhrase("未设置")} / ${localizeStaticPhrase("加急")}：${rushStatusLabel(order.rush) || localizeStaticPhrase("无")} / ${localizeStaticPhrase("举报")}：${(order.reports || []).length} / ${localizeStaticPhrase("退款")}：${order.refundedAt ? formatFullDate(order.refundedAt) : localizeStaticPhrase("无")} / ${localizeStaticPhrase("备注")}：${order.note || localizeStaticPhrase("无")}`
       }));
       const flows = Data.ledger().filter((entry) => ["recharge", "cashout"].includes(entry.type)).map((entry) => ({
         id: entry.id,
@@ -2762,7 +4113,7 @@
           typeLabel[record.type],
           record.name,
           record.user,
-          `${record.amount} 积分`,
+          formatPrice(record.amount),
           record.status,
           formatFullDate(record.createdAt),
           record.completedAt ? formatFullDate(record.completedAt) : "未结单",
@@ -2837,11 +4188,39 @@
         const identityInput = h("input", { name: "identity", type: "text", autocomplete: "username", placeholder: "用户名或邮箱", required: true });
         const codeInput = h("input", { name: "code", type: "text", inputmode: "numeric", autocomplete: "one-time-code", maxlength: "6", pattern: "[0-9]{6}", placeholder: "6 位验证码", required: true });
         const sendCodeButton = h("button", { className: "button button-ghost button-small", type: "button" }, icon("fa-regular fa-envelope"), "发送验证码");
+        let registerAvatarImage = "";
+        let registerAvatarName = "";
+        const registerAvatarPreview = h("div", { className: "avatar-upload-preview avatar-upload-preview-small" },
+          h("span", { className: "notranslate", translate: "no", text: "IMP" })
+        );
+        const registerAvatarInput = h("input", { name: "avatarFile", type: "file", accept: "image/*" });
 
-        const sendCode = () => {
+        const sendCode = async () => {
           const email = normalizeEmail(emailInput.value);
           if (!isEmail(email)) {
             message.textContent = "请输入有效邮箱。";
+            return;
+          }
+          const purpose = isLogin ? "login" : "register";
+          message.textContent = "";
+          codeHint.textContent = localizeStaticPhrase("正在发送验证码...");
+          sendCodeButton.disabled = true;
+          const backendResult = await Backend.sendVerification(purpose, email);
+          sendCodeButton.disabled = false;
+          if (backendResult.ok) {
+            if (backendResult.devCode) {
+              codeHint.textContent = contentLanguage() === "zh-CN"
+                ? `演示验证码：${backendResult.devCode}，10 分钟内有效。后端邮件服务未配置。`
+                : `Demo code: ${backendResult.devCode}. Valid for 10 minutes. Backend email is not configured.`;
+              UI.toast("验证码已发送", `演示验证码：${backendResult.devCode}`);
+              return;
+            }
+            codeHint.textContent = localizeStaticPhrase("验证码已发送，请查看邮箱。");
+            UI.toast("验证码已发送", "验证码已发送，请查看邮箱。");
+            return;
+          }
+          if (!backendResult.offline) {
+            message.textContent = backendResult.message || "验证码发送失败。";
             return;
           }
           if (isLogin && !Data.findUserByEmail(email)) {
@@ -2852,13 +4231,37 @@
             message.textContent = "邮箱已被注册。";
             return;
           }
-          const code = Verification.generate(isLogin ? "login" : "register", email);
-          message.textContent = "";
-          codeHint.textContent = `演示验证码：${code}，10 分钟内有效。接入真实邮箱服务后这里会改为邮件发送。`;
+          const code = Verification.generate(purpose, email);
+          const result = await Mail.sendVerificationCode(email, code);
+          Data.log("English email", `To: ${email} / Subject: Your IMPULSE verification code / Body: Your verification code is ${code}.`);
+          if (result.ok) {
+            codeHint.textContent = localizeStaticPhrase("验证码已发送，请查看邮箱。");
+            UI.toast("验证码已发送", "验证码已发送，请查看邮箱。");
+            return;
+          }
+          codeHint.textContent = contentLanguage() === "zh-CN"
+            ? `演示验证码：${code}，10 分钟内有效。邮件接口未配置或暂不可用。`
+            : `Demo code: ${code}. Valid for 10 minutes. Email endpoint is not configured or is temporarily unavailable.`;
           UI.toast("验证码已发送", `演示验证码：${code}`);
         };
 
         sendCodeButton.addEventListener("click", sendCode);
+        registerAvatarInput.addEventListener("change", () => {
+          const file = registerAvatarInput.files?.[0];
+          if (!file) {
+            return;
+          }
+          cropAvatarFile(file).then((result) => {
+            registerAvatarImage = result.image;
+            registerAvatarName = result.name;
+            message.textContent = "";
+            clear(registerAvatarPreview);
+            registerAvatarPreview.appendChild(h("img", { src: registerAvatarImage, alt: "头像预览" }));
+          }).catch((error) => {
+            message.textContent = error.message;
+            registerAvatarInput.value = "";
+          });
+        });
 
         const introTitle = isLogin
           ? (isEmailCodeLogin ? "邮箱验证码登录" : "账户密码登录")
@@ -2895,6 +4298,16 @@
           : [
               h("label", { className: "field" }, "邮箱", emailInput),
               h("label", { className: "field" }, "用户名", h("input", { name: "username", type: "text", autocomplete: "username", required: true })),
+              h("label", { className: "field" }, "国家或地区 *", h("input", { name: "countryRegion", type: "text", autocomplete: "country-name", required: true, placeholder: "中国 / United States" })),
+              h("label", { className: "field" }, "生日 *", h("input", { name: "birthday", type: "date", required: true })),
+              h("label", { className: "field" }, "性别", h("select", { name: "gender" },
+                GenderOptions.map((option) => h("option", { value: option.value }, option.label))
+              )),
+              h("label", { className: "field" }, "头像",
+                registerAvatarPreview,
+                registerAvatarInput,
+                h("small", { text: "可选。上传不大于 5MB 的图像，系统会在圆框内居中截取。" })
+              ),
               h("label", { className: "field" }, "密码", h("input", { name: "password", type: "password", autocomplete: "new-password", required: true })),
               h("label", { className: "field" }, "确认密码", h("input", { name: "confirmPassword", type: "password", autocomplete: "new-password", required: true })),
               verificationField,
@@ -2915,14 +4328,27 @@
           h("button", { className: "button button-primary button-full", type: "submit" }, isLogin ? "登录" : "注册并登录")
         );
 
-        form.addEventListener("submit", (event) => {
+        form.addEventListener("submit", async (event) => {
           event.preventDefault();
           const values = Object.fromEntries(new FormData(form).entries());
-          const result = isLogin
+          const submitButton = form.querySelector("button[type='submit']");
+          if (submitButton) {
+            submitButton.disabled = true;
+          }
+          const result = await (isLogin
             ? (isEmailCodeLogin
                 ? Session.loginByEmailCode(values.email, values.code)
                 : Session.loginByPassword(values.identity, values.password))
-            : Session.register(values.username, values.email, values.password, values.confirmPassword, values.code);
+            : Session.register(values.username, values.email, values.password, values.confirmPassword, values.code, {
+                countryRegion: values.countryRegion,
+                birthday: values.birthday,
+                gender: values.gender,
+                avatarImage: registerAvatarImage,
+                avatarImageName: registerAvatarName
+              }));
+          if (submitButton) {
+            submitButton.disabled = false;
+          }
           if (!result.ok) {
             message.textContent = result.message;
             return;
@@ -2935,7 +4361,7 @@
         const card = h("div", { className: "modal-card auth-card slide-up" },
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
           h("h2", { text: isLogin ? "登录 IMPULSE" : "注册 IMPULSE" }),
-          h("p", { className: "auth-subtitle", text: isLogin ? "可以使用账户密码登录，也可以切换为邮箱验证码登录。" : "注册后将使用邮箱作为唯一登录凭证。" }),
+          h("p", { className: "auth-subtitle", text: isLogin ? "可以使用账户密码登录，也可以切换为邮箱验证码登录。" : "注册时填写账户资料；带 * 的项目为必填，注册后不可修改。" }),
           h("div", { className: "tabs" },
             h("button", { className: `tab ${isLogin ? "active" : ""}`, type: "button", onClick: () => { mode = "login"; render(); } }, "登录"),
             h("button", { className: `tab ${!isLogin ? "active" : ""}`, type: "button", onClick: () => { mode = "register"; render(); } }, "注册")
@@ -2960,12 +4386,12 @@
         h("div", { className: "modal-card modal-wide slide-up" },
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
           h("div", { className: "product-art" }, icon(product.icon || category.icon || "fa-solid fa-gamepad")),
-          h("h2", { text: product.title }),
-          h("p", { text: product.description || "暂无详细描述。" }),
+          h("h2", { text: localizedContent(product, "title") }),
+          h("p", { text: localizedContent(product, "description", "暂无详细描述。") || "暂无详细描述。" }),
           h("div", { className: "tag-row" },
-            h("span", { className: "tag", text: category.title }),
-            h("span", { className: "tag", text: game.title }),
-            product.duration ? h("span", { className: "tag", text: product.duration }) : null
+            h("span", { className: "tag", text: localizedContent(category, "title") }),
+            h("span", { className: "tag", text: localizedContent(game, "title") }),
+            localizedContent(product, "duration") ? h("span", { className: "tag", text: localizedContent(product, "duration") }) : null
           ),
           h("strong", { className: "detail-price", text: formatPrice(product.price) }),
           h("div", { className: "modal-actions" },
@@ -2988,7 +4414,8 @@
         return;
       }
       if ((Number(profile.funds) || 0) < price) {
-        UI.toast("余额不足", `还需 ${price - Number(profile.funds || 0)} 积分，请先充值。`);
+        const shortage = formatPrice(price - Number(profile.funds || 0));
+        UI.toast("余额不足", contentLanguage() === "zh-CN" ? `还需 ${shortage}，请先充值。` : `Need ${shortage} more. Please recharge first.`);
         this.openRecharge(profile, price - Number(profile.funds || 0));
         return;
       }
@@ -3003,7 +4430,7 @@
         title: type === "reservation" ? "预约服务" : "提交订单",
         submitLabel: type === "reservation" ? "提交预约" : "提交订单",
         fields,
-        onSubmit: (values) => {
+        onSubmit: async (values) => {
           const minutes = Math.ceil(Number(values.autoCancelMinutes));
           if (!Number.isFinite(minutes) || minutes < 1) {
             return { error: "自动退单时间至少为 1 分钟。" };
@@ -3014,14 +4441,17 @@
             return { error: "余额不足，请先充值。" };
           }
           const autoCancelMinutes = Math.min(minutes, 10080);
-          const result = Data.createOrder({
+          const orderPayload = {
             type,
             categoryId: category.id,
-            categoryTitle: category.title,
+            categoryTitle: localizedContent(category, "title"),
+            categoryTitleI18n: contentValues(category, "title"),
             gameId: game.id,
-            gameTitle: game.title,
+            gameTitle: localizedContent(game, "title"),
+            gameTitleI18n: contentValues(game, "title"),
             productId: product.id,
-            productTitle: product.title,
+            productTitle: localizedContent(product, "title"),
+            productTitleI18n: contentValues(product, "title"),
             price,
             customerUsername: State.currentUser.username,
             contact: values.contact,
@@ -3029,7 +4459,11 @@
             note: values.note || "",
             autoCancelMinutes,
             autoCancelAt: new Date(Date.now() + autoCancelMinutes * 60000).toISOString()
-          });
+          };
+          let result = await Backend.createOrder(orderPayload);
+          if (result.offline) {
+            result = Data.createOrder(orderPayload);
+          }
           if (!result.ok) {
             if (result.reason === "insufficient") {
               window.setTimeout(() => this.openRecharge(latestProfile, price - Number(result.balance || 0)), 0);
@@ -3052,47 +4486,505 @@
         return;
       }
       const balance = Number(currentProfile.funds || 0);
+      const exchangeText = contentLanguage() === "zh-CN" ? `1 美元 = ${PointsPerDollar} 积分。` : `1 USD = ${PointsPerDollar} ${PointsPerDollar === 1 ? "pt" : "pts"}.`;
       UI.openModal(
         h("div", { className: "modal-card slide-up" },
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
           h("h2", { text: needed > 0 ? "余额不足" : "充值积分" }),
-          h("p", { text: `当前余额：${balance.toLocaleString("zh-CN")} 积分。1 美元 = ${PointsPerDollar} 积分。` }),
-          needed > 0 ? h("p", { className: "balance-note", text: `本次还需 ${Math.max(0, Number(needed) || 0).toLocaleString("zh-CN")} 积分。` }) : null,
+          h("p", {}, localizeStaticPhrase("当前余额："), formatPrice(balance), "。", exchangeText),
+          needed > 0 ? h("p", { className: "balance-note" }, localizeStaticPhrase("本次还需"), " ", formatPrice(Math.max(0, Number(needed) || 0)), "。") : null,
           h("div", { className: "recharge-grid" },
             RechargeOptions.map((amount) => h("button", {
               className: "recharge-option",
               type: "button",
-              onClick: () => {
+              onClick: async () => {
                 const latest = Data.profileById(currentProfile.id);
                 if (!latest) {
                   UI.toast("充值失败", "未找到当前账户。");
                   return;
                 }
                 const points = amount * PointsPerDollar;
-                const result = Data.adjustFunds(latest.id, points, "用户充值", {
+                const payloadMeta = {
                   type: "recharge",
                   amountMoney: amount,
                   itemName: `${amount}$ 充值`
-                });
+                };
+                let result = await Backend.adjustFunds(latest.id, points, "用户充值", payloadMeta);
+                if (result.offline) {
+                  result = Data.adjustFunds(latest.id, points, "用户充值", payloadMeta);
+                }
                 if (!result.ok) {
                   UI.toast("充值失败", "请稍后重试。");
                   return;
                 }
                 UI.closeModal();
-                UI.toast("充值成功", `已增加 ${points.toLocaleString("zh-CN")} 积分。`);
+                UI.toast("充值成功", contentLanguage() === "zh-CN" ? `已增加 ${formatPrice(points)}。` : `${formatPrice(points)} added.`);
                 App.render();
               }
             },
               h("strong", { text: `${amount}$` }),
-              h("span", { text: `${(amount * PointsPerDollar).toLocaleString("zh-CN")} 积分` })
+              h("span", { text: formatPrice(amount * PointsPerDollar) })
             ))
           )
         )
       );
     },
-    accountPasswordOk(password) {
+    async accountPasswordOk(password) {
       const user = State.currentUser ? Data.findUser(State.currentUser.username) : null;
-      return Boolean(user && user.password === password);
+      if (user?.password && user.password === password) {
+        return true;
+      }
+      const result = await Backend.request("verifyPassword", { password });
+      if (result.ok) {
+        return true;
+      }
+      return false;
+    },
+    openUserSettings() {
+      if (!State.currentUser) {
+        Auth.open("login");
+        return;
+      }
+      const settings = [
+        { label: "用户信息", icon: "fa-solid fa-id-card", action: () => this.openUserInfoSettings() },
+        { label: "账户安全", icon: "fa-solid fa-shield-halved", action: () => this.openAccountSecuritySettings() },
+        { label: "联系设置", icon: "fa-solid fa-envelope-open-text", action: () => this.openContactSettings() },
+        { label: "我要入职", icon: "fa-solid fa-briefcase", action: () => this.openEmploymentSettings() },
+        { label: "退出登录", icon: "fa-solid fa-right-from-bracket", destructive: true, action: () => UI.openConfirm("确认退出登录？", "退出后将回到客户模式。", () => Session.logout()) }
+      ];
+      UI.openModal(
+        h("div", { className: "modal-card modal-wide slide-up" },
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("h2", { text: "设置" }),
+          h("p", { text: "管理账户资料、安全验证、通知邮箱与入职申请。" }),
+          h("div", { className: "settings-action-grid" },
+            settings.map((item) => h("button", {
+              className: `settings-action ${item.destructive ? "destructive" : ""}`,
+              type: "button",
+              onClick: item.action
+            }, icon(item.icon), h("span", { text: item.label })))
+          )
+        )
+      );
+    },
+    openUserInfoSettings() {
+      const profile = Data.currentProfile();
+      const user = State.currentUser ? Data.findUser(State.currentUser.username) : null;
+      if (!profile || !user) {
+        UI.toast("账户不可用", "未找到当前用户资料。");
+        return;
+      }
+      const row = ({ label, value, valueNode, actionLabel = "修改", onClick, destructive = false }) => h("div", { className: "settings-row" },
+        h("div", {},
+          h("span", { text: `${label}：` }),
+          valueNode || h("strong", {
+            className: ["用户ID", "用户名", "国家或地区", "生日"].includes(label) ? `${label === "用户ID" ? "mono " : ""}notranslate` : "",
+            translate: ["用户ID", "用户名", "国家或地区", "生日"].includes(label) ? "no" : null,
+            text: ["用户ID", "用户名", "国家或地区", "生日"].includes(label) ? (value || "未设置") : localizeStaticPhrase(value || "未设置")
+          })
+        ),
+        onClick
+          ? h("button", { className: `button ${destructive ? "button-danger" : "button-ghost"} button-small`, type: "button", onClick }, actionLabel)
+          : null
+      );
+
+      UI.openModal(
+        h("div", { className: "modal-card modal-wide slide-up" },
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("div", { className: "profile-summary" },
+            profileAvatarNode(profile, profile.username),
+            h("div", {},
+              h("h2", { className: "notranslate", translate: "no", text: profile.username }),
+              h("p", {}, localizeStaticPhrase("用户等级"), "：Lv", clampUserLevel(profile.level), " / ", localizeStaticPhrase("余额"), "：", formatPrice(profile.funds))
+            )
+          ),
+          h("div", { className: "settings-list" },
+            row({ label: "用户ID", value: profile.id }),
+            row({ label: "用户名", value: profile.username, onClick: () => this.openEditUsername(profile) }),
+            row({ label: "头像", valueNode: profileAvatarNode(profile, profile.username, "profile-avatar profile-avatar-small"), onClick: () => this.openEditAvatar(profile) }),
+            row({ label: "用户等级", value: `Lv${clampUserLevel(profile.level)}` }),
+            row({ label: "剩余资金", value: formatPrice(profile.funds) }),
+            row({ label: "国家或地区", value: profile.countryRegion || "未设置" }),
+            row({ label: "生日", value: profile.birthday || "未设置" }),
+            row({ label: "性别", value: genderLabel(profile.gender), onClick: () => this.openEditGender(profile) }),
+            row({ label: "注销账户", value: "注销后该账户将无法继续登录。", actionLabel: "注销", destructive: true, onClick: () => this.openDeleteAccountFlow() })
+          )
+        )
+      );
+    },
+    openEditUsername(profile) {
+      UI.openFormModal({
+        title: "修改用户名",
+        fields: [{ name: "username", label: "用户名", value: profile.username, required: true }],
+        submitLabel: "保存",
+        onSubmit: (values) => {
+          const result = Data.renameUser(profile.username, values.username);
+          if (!result.ok) {
+            return { error: result.message };
+          }
+          UI.toast("用户名已更新", values.username.trim());
+          window.setTimeout(() => {
+            App.render();
+            this.openUserInfoSettings();
+          }, 0);
+          return null;
+        }
+      });
+    },
+    openEditAvatar(profile) {
+      let selectedImage = profile.avatarImage || "";
+      let selectedName = profile.avatarImageName || "";
+      const message = h("p", { className: "form-message" });
+      const preview = h("div", { className: "avatar-upload-preview" },
+        selectedImage
+          ? h("img", { src: selectedImage, alt: "头像预览" })
+          : h("span", { className: "notranslate", translate: "no", text: profileAvatarText(profile, profile.username) })
+      );
+      const fileInput = h("input", { type: "file", accept: "image/*" });
+      fileInput.addEventListener("change", () => {
+        const file = fileInput.files?.[0];
+        if (!file) {
+          return;
+        }
+        if (!file.type.startsWith("image/")) {
+          message.textContent = "请选择图像文件。";
+          fileInput.value = "";
+          return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          message.textContent = "头像图片不能大于 5MB。";
+          fileInput.value = "";
+          return;
+        }
+        cropAvatarFile(file).then((result) => {
+          selectedImage = result.image;
+          selectedName = result.name;
+          message.textContent = "";
+          clear(preview);
+          preview.appendChild(h("img", { src: selectedImage, alt: "头像预览" }));
+        }).catch((error) => {
+          message.textContent = error.message;
+          fileInput.value = "";
+        });
+      });
+      UI.openModal(
+        h("div", { className: "modal-card slide-up" },
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("h2", { text: "修改头像" }),
+          h("p", { text: "上传一张不大于 5MB 的图像，系统会在圆框内居中截取显示。" }),
+          preview,
+          h("label", { className: "field" }, "上传图像", fileInput),
+          message,
+          h("div", { className: "modal-actions" },
+            h("button", { className: "button button-ghost", type: "button", dataset: { action: "close-modal" } }, "取消"),
+            profile.avatarImage ? h("button", {
+              className: "button button-ghost",
+              type: "button",
+              onClick: () => {
+                Data.saveProfile({ ...profile, avatarImage: "", avatarImageName: "" });
+                UI.closeModal();
+                UI.toast("头像已移除");
+                App.render();
+                window.setTimeout(() => this.openUserInfoSettings(), 0);
+              }
+            }, "移除头像") : null,
+            h("button", {
+              className: "button button-primary",
+              type: "button",
+              onClick: () => {
+                if (!selectedImage) {
+                  message.textContent = "请先选择一张图像。";
+                  return;
+                }
+                try {
+                  Data.saveProfile({ ...profile, avatar: "", avatarImage: selectedImage, avatarImageName: selectedName });
+                } catch (error) {
+                  message.textContent = "头像保存失败，请换用更小的图片。";
+                  return;
+                }
+                UI.closeModal();
+                UI.toast("头像已更新");
+                App.render();
+                window.setTimeout(() => this.openUserInfoSettings(), 0);
+              }
+            }, "保存")
+          )
+        )
+      );
+    },
+    openEditGender(profile) {
+      UI.openFormModal({
+        title: "修改性别",
+        fields: [{ name: "gender", label: "性别", type: "select", value: profile.gender || "unset", options: GenderOptions }],
+        submitLabel: "保存",
+        onSubmit: (values) => {
+          Data.saveProfile({ ...profile, gender: values.gender || "unset" });
+          UI.toast("性别已更新");
+          window.setTimeout(() => this.openUserInfoSettings(), 0);
+          return null;
+        }
+      });
+    },
+    async verifyCurrentUserSecret(password, code) {
+      const user = State.currentUser ? Data.findUser(State.currentUser.username) : null;
+      const email = userEmail(user);
+      if (password && await this.accountPasswordOk(password)) {
+        return { ok: true };
+      }
+      if (code) {
+        return Verification.verify("account", email, code);
+      }
+      return { ok: false, message: "请输入账户密码，或使用邮箱验证码完成验证。" };
+    },
+    openAccountVerification({ title, body, onVerified }) {
+      const user = State.currentUser ? Data.findUser(State.currentUser.username) : null;
+      const email = userEmail(user);
+      const message = h("p", { className: "form-message" });
+      const codeHint = h("p", { className: "auth-code-hint" });
+      const passwordInput = h("input", { name: "password", type: "password", autocomplete: "current-password", placeholder: "账户密码" });
+      const codeInput = h("input", { name: "code", type: "text", inputmode: "numeric", autocomplete: "one-time-code", maxlength: "6", pattern: "[0-9]{6}", placeholder: "6 位验证码" });
+      const sendCodeButton = h("button", {
+        className: "button button-ghost button-small",
+        type: "button",
+        onClick: async () => {
+          if (!isEmail(email)) {
+            message.textContent = "当前账户没有可用邮箱。";
+            return;
+          }
+          const code = Verification.generate("account", email);
+          message.textContent = "";
+          codeHint.textContent = localizeStaticPhrase("正在发送验证码...");
+          sendCodeButton.disabled = true;
+          const result = await Mail.sendVerificationCode(email, code);
+          Data.log("English email", `To: ${email} / Subject: Your IMPULSE verification code / Body: Your verification code is ${code}.`);
+          sendCodeButton.disabled = false;
+          if (result.ok) {
+            codeHint.textContent = localizeStaticPhrase("验证码已发送，请查看邮箱。");
+            UI.toast("验证码已发送", "验证码已发送，请查看邮箱。");
+            return;
+          }
+          codeHint.textContent = contentLanguage() === "zh-CN"
+            ? `演示验证码：${code}，发送至原绑定邮箱 ${email}，10 分钟内有效。邮件接口未配置或暂不可用。`
+            : `Demo code: ${code}. Sent to ${email}. Valid for 10 minutes. Email endpoint is not configured or is temporarily unavailable.`;
+          UI.toast("验证码已发送", `演示验证码：${code}`);
+        }
+      }, icon("fa-regular fa-envelope"), "发送验证码");
+      const form = h("form", { className: "form-stack" },
+        body ? h("p", { text: body }) : null,
+        h("label", { className: "field" }, "账户密码", passwordInput),
+        h("label", { className: "field" }, "邮箱验证码",
+          h("div", { className: "verify-row" }, codeInput, sendCodeButton)
+        ),
+        codeHint,
+        message,
+        h("div", { className: "modal-actions" },
+          h("button", { className: "button button-ghost", type: "button", dataset: { action: "close-modal" } }, "取消"),
+          h("button", { className: "button button-primary", type: "submit" }, "确认")
+        )
+      );
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const values = Object.fromEntries(new FormData(form).entries());
+        const result = await this.verifyCurrentUserSecret(values.password, values.code);
+        if (!result.ok) {
+          message.textContent = result.message || "验证失败。";
+          return;
+        }
+        UI.closeModal();
+        onVerified();
+      });
+      UI.openModal(
+        h("div", { className: "modal-card slide-up" },
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("h2", { text: title }),
+          form
+        )
+      );
+    },
+    openDeleteAccountFlow() {
+      this.openAccountVerification({
+        title: "注销账户验证",
+        body: "注销账户需要账户密码或原绑定邮箱验证码。",
+        onVerified: () => {
+          UI.openConfirm("确认注销账户？", "注销后账户将无法登录，当前会话会立即退出。", () => {
+            const profile = Data.currentProfile();
+            if (!profile) {
+              return;
+            }
+            Data.saveProfile({ ...profile, deleted: true, deletedAt: new Date().toISOString() });
+            Data.log("用户自助注销", profile.username);
+            UI.toast("账户已注销");
+            Session.logout();
+          });
+        }
+      });
+    },
+    openAccountSecuritySettings() {
+      const user = State.currentUser ? Data.findUser(State.currentUser.username) : null;
+      const email = userEmail(user);
+      UI.openModal(
+        h("div", { className: "modal-card slide-up" },
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("h2", { text: "账户安全" }),
+          h("div", { className: "settings-list" },
+            h("div", { className: "settings-row" },
+              h("div", {}, h("span", { text: "密码" }), h("strong", { text: "已设置" })),
+              h("button", { className: "button button-ghost button-small", type: "button", onClick: () => this.openPasswordChangeFlow() }, "修改密码")
+            ),
+            h("div", { className: "settings-row" },
+              h("div", {}, h("span", { text: "绑定邮箱" }), h("strong", { className: "notranslate", translate: "no", text: email || "未绑定" })),
+              h("button", { className: "button button-ghost button-small", type: "button", onClick: () => this.openEmailBindingSettings() }, "查看")
+            )
+          )
+        )
+      );
+    },
+    openPasswordChangeFlow() {
+      this.openAccountVerification({
+        title: "修改密码验证",
+        body: "修改密码需要账户密码，或发送到原绑定邮箱的 6 位验证码。",
+        onVerified: () => {
+          UI.openFormModal({
+            title: "修改密码",
+            fields: [
+              { name: "password", label: "新密码", type: "password", required: true },
+              { name: "confirmPassword", label: "确认新密码", type: "password", required: true }
+            ],
+            submitLabel: "保存",
+            onSubmit: async (values) => {
+              if (values.password !== values.confirmPassword) {
+                return { error: "两次输入的密码不一致。" };
+              }
+              let result = await Backend.updatePassword(values.password);
+              if (result.offline) {
+                result = Data.updateCurrentUserPassword(values.password);
+              }
+              if (!result.ok) {
+                return { error: result.message };
+              }
+              UI.toast("密码已修改");
+              Data.log("修改密码", State.currentUser.username);
+              return null;
+            }
+          });
+        }
+      });
+    },
+    openEmailBindingSettings() {
+      const user = State.currentUser ? Data.findUser(State.currentUser.username) : null;
+      const email = userEmail(user);
+      UI.openModal(
+        h("div", { className: "modal-card slide-up" },
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("h2", { text: "绑定邮箱" }),
+          h("p", {}, "当前绑定邮箱：", h("span", { className: "notranslate", translate: "no", text: email || "未绑定" })),
+          h("button", { className: "button button-primary button-full", type: "button", onClick: () => this.openEmailChangeFlow(email) }, icon("fa-solid fa-envelope-circle-check"), "修改绑定邮箱")
+        )
+      );
+    },
+    openEmailChangeFlow(previousEmail) {
+      this.openAccountVerification({
+        title: "修改绑定邮箱验证",
+        body: "修改绑定邮箱需要账户密码，或发送到原绑定邮箱的 6 位验证码。",
+        onVerified: () => {
+          UI.openFormModal({
+            title: "修改绑定邮箱",
+            fields: [{ name: "email", label: "新邮箱", type: "email", placeholder: "name@example.com", required: true }],
+            submitLabel: "保存",
+            onSubmit: async (values) => {
+              let result = await Backend.updateEmail(values.email);
+              if (result.offline) {
+                result = Data.updateCurrentUserEmail(values.email);
+              }
+              if (!result.ok) {
+                return { error: result.message };
+              }
+              UI.toast("绑定邮箱已修改", "已向原邮箱和新邮箱发送英文通知。");
+              window.setTimeout(() => this.openEmailBindingSettings(), 0);
+              return null;
+            }
+          });
+        }
+      });
+    },
+    openContactSettings() {
+      const profile = Data.currentProfile();
+      const user = State.currentUser ? Data.findUser(State.currentUser.username) : null;
+      if (!profile || !user) {
+        UI.toast("账户不可用", "未找到当前用户资料。");
+        return;
+      }
+      const emailInput = h("input", { name: "notificationEmail", type: "email", value: profile.notificationEmail || userEmail(user), placeholder: "name@example.com", required: true });
+      const message = h("p", { className: "form-message" });
+      const form = h("form", { className: "form-stack" },
+        h("p", { text: "通知邮箱默认为绑定邮箱，可单独修改。所有邮件通知均以英语发送。" }),
+        h("label", { className: "field" }, "通知邮箱", emailInput),
+        h("div", { className: "notice-list" },
+          EmailNoticeTypes.map((notice) => h("label", { className: "notice-toggle" },
+            h("input", { type: "checkbox", name: notice.key, checked: profile.emailNotices?.[notice.key] !== false }),
+            h("span", { text: notice.label }),
+            h("small", { className: "notranslate", translate: "no", text: notice.subject })
+          ))
+        ),
+        message,
+        h("div", { className: "modal-actions" },
+          h("button", { className: "button button-ghost", type: "button", dataset: { action: "close-modal" } }, "取消"),
+          h("button", { className: "button button-primary", type: "submit" }, "保存")
+        )
+      );
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const formData = new FormData(form);
+        const notificationEmail = normalizeEmail(formData.get("notificationEmail"));
+        if (!isEmail(notificationEmail)) {
+          message.textContent = "请输入有效通知邮箱。";
+          return;
+        }
+        const emailNotices = Object.fromEntries(EmailNoticeTypes.map((notice) => [notice.key, formData.has(notice.key)]));
+        Data.saveProfile({ ...profile, notificationEmail, emailNotices });
+        Data.log("更新联系设置", profile.username);
+        UI.closeModal();
+        UI.toast("联系设置已保存", "邮件通知语言固定为英语。");
+        App.render();
+      });
+      UI.openModal(
+        h("div", { className: "modal-card modal-wide slide-up" },
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("h2", { text: "联系设置" }),
+          form
+        )
+      );
+    },
+    openEmploymentSettings() {
+      const profile = Data.currentProfile();
+      if (!profile) {
+        UI.toast("账户不可用", "未找到当前用户资料。");
+        return;
+      }
+      UI.openFormModal({
+        title: "我要入职",
+        fields: [
+          { name: "targetRole", label: "申请方向", value: profile.employmentApplication?.targetRole || "陪玩/代打员工", required: true },
+          { name: "contact", label: "联系邮箱或方式", value: profile.employmentApplication?.contact || profile.notificationEmail || "", required: true },
+          { name: "experience", label: "游戏经历与可服务项目", type: "textarea", value: profile.employmentApplication?.experience || "", required: true }
+        ],
+        submitLabel: "提交申请",
+        onSubmit: (values) => {
+          const application = {
+            id: profile.employmentApplication?.id || createId("hire"),
+            status: "pending",
+            targetRole: values.targetRole.trim(),
+            contact: values.contact.trim(),
+            experience: values.experience.trim(),
+            submittedAt: new Date().toISOString()
+          };
+          Data.saveProfile({ ...profile, employmentApplication: application });
+          Data.log("提交入职申请", `${profile.username} ${application.targetRole}`);
+          UI.toast("入职申请已提交", "管理员可在日志中查看记录。");
+          return null;
+        },
+        wide: true
+      });
     },
     openOrderChat(orderId) {
       Data.processRushBreaches();
@@ -3202,12 +5094,19 @@
           UI.toast("请输入内容", "可以发送文字或图片。");
           return;
         }
-        const send = (imageData = "") => {
-          Data.addChatMessage(order.id, {
+        const send = async (imageData = "") => {
+          const messagePayload = {
             type: imageData ? "image" : "text",
             text,
             imageData
-          });
+          };
+          const backendResult = await Backend.addChatMessage(order.id, messagePayload);
+          if (backendResult.offline) {
+            Data.addChatMessage(order.id, messagePayload);
+          } else if (!backendResult.ok) {
+            UI.toast("操作失败", backendResult.message || "请稍后重试。");
+            return;
+          }
           this.openOrderChat(order.id);
         };
         if (!file) {
@@ -3260,9 +5159,9 @@
           { name: "days", label: "结单期限（天）", type: "number", value: "1", min: "1", max: "30", step: "1", required: true },
           { name: "password", label: "账户密码", type: "password", required: true }
         ],
-        submitLabel: `支付 ${fee} 积分并申请`,
-        onSubmit: (values) => {
-          if (!this.accountPasswordOk(values.password)) {
+        submitLabel: contentLanguage() === "zh-CN" ? `支付 ${formatPrice(fee)}并申请` : `Pay ${formatPrice(fee)} and Request`,
+        onSubmit: async (values) => {
+          if (!await this.accountPasswordOk(values.password)) {
             return { error: "账户密码不正确。" };
           }
           const result = Data.requestRush(orderId, values.days);
@@ -3286,15 +5185,15 @@
           { name: "password", label: "账户密码", type: "password", required: true }
         ],
         submitLabel: "确认退单",
-        onSubmit: (values) => {
-          if (!this.accountPasswordOk(values.password)) {
+        onSubmit: async (values) => {
+          if (!await this.accountPasswordOk(values.password)) {
             return { error: "账户密码不正确。" };
           }
           const result = Data.returnOrder(orderId);
           if (!result.ok) {
             return { error: "退单窗口已关闭或订单不可退。" };
           }
-          UI.toast("退单完成", `已退回 ${result.refundAmount} 积分。`);
+          UI.toast("退单完成", contentLanguage() === "zh-CN" ? `已退回 ${formatPrice(result.refundAmount)}。` : `${formatPrice(result.refundAmount)} refunded.`);
           window.setTimeout(() => this.openOrderChat(orderId), 0);
           return null;
         }
@@ -3315,8 +5214,8 @@
           { name: "password", label: "账户密码", type: "password", required: true }
         ],
         submitLabel: "提交举报",
-        onSubmit: (values) => {
-          if (!this.accountPasswordOk(values.password)) {
+        onSubmit: async (values) => {
+          if (!await this.accountPasswordOk(values.password)) {
             return { error: "账户密码不正确。" };
           }
           const result = Data.reportOrder(orderId, values.reason, values.description.trim());
@@ -3338,12 +5237,12 @@
           { name: "password", label: "账户密码", type: "password", required: true }
         ],
         submitLabel: "确认支付",
-        onSubmit: (values) => {
+        onSubmit: async (values) => {
           const amount = Math.ceil(Number(values.amount));
           if (!Number.isFinite(amount) || amount <= 0) {
             return { error: "请输入有效的小费金额。" };
           }
-          if (!this.accountPasswordOk(values.password)) {
+          if (!await this.accountPasswordOk(values.password)) {
             return { error: "账户密码不正确。" };
           }
           const result = Data.tipOrder(orderId, amount);
@@ -3354,7 +5253,7 @@
             }
             return { error: "当前订单不能支付小费。" };
           }
-          UI.toast("小费已支付", `${amount} 积分已转给员工。`);
+          UI.toast("小费已支付", contentLanguage() === "zh-CN" ? `${formatPrice(amount)}已转给员工。` : `${formatPrice(amount)} sent to staff.`);
           window.setTimeout(() => this.openOrderChat(orderId), 0);
           return null;
         }
@@ -3386,15 +5285,116 @@
         }
       });
     },
+    accountMenuSummary() {
+      const profile = Data.currentProfile();
+      if (!State.currentUser || !profile) {
+        return {
+          type: "summary",
+          node: h("div", { className: "menu-summary" },
+            h("div", { className: "menu-summary-icon" }, icon("fa-regular fa-user")),
+            h("div", {},
+              h("strong", { text: localizeStaticPhrase("访客") }),
+              h("span", {}, localizeStaticPhrase("当前版本"), " ", h("span", { className: "notranslate", translate: "no", text: CurrentRelease.version }))
+            )
+          )
+        };
+      }
+      const modeLabel = localizeStaticPhrase(Modes[State.mode] || "客户模式");
+      return {
+        type: "summary",
+        node: h("div", { className: "menu-summary" },
+          profileAvatarNode(profile, profile.username, "profile-avatar profile-avatar-small menu-avatar"),
+          h("div", {},
+            h("strong", { className: "notranslate", translate: "no", text: profile.username }),
+            h("span", {}, modeLabel, " · ", h("span", { className: "notranslate", translate: "no", text: CurrentRelease.version }))
+          )
+        )
+      };
+    },
+    releaseMeta(label, value, noTranslate = false) {
+      return h("div", { className: "release-meta" },
+        h("span", { text: label }),
+        h("strong", { className: noTranslate ? "notranslate" : "", translate: noTranslate ? "no" : null, text: value })
+      );
+    },
+    openCurrentVersion() {
+      const release = CurrentRelease;
+      UI.openModal(
+        h("div", { className: "modal-card modal-wide slide-up" },
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("div", { className: "release-hero" },
+            h("span", { className: "release-badge" }, icon("fa-solid fa-code-branch"), localizeStaticPhrase("当前发布")),
+            h("h2", {}, h("span", { className: "notranslate", translate: "no", text: release.version }), " · ", localizedI18n(release.nameI18n)),
+            h("p", { text: localizedI18n(release.summaryI18n) })
+          ),
+          h("div", { className: "release-meta-grid" },
+            this.releaseMeta(localizeStaticPhrase("版本号"), release.version, true),
+            this.releaseMeta(localizeStaticPhrase("版本名称"), localizedI18n(release.nameI18n)),
+            this.releaseMeta(localizeStaticPhrase("发布时间"), release.releasedAt, true),
+            this.releaseMeta(localizeStaticPhrase("上传状态"), localizedI18n(release.statusI18n))
+          ),
+          h("section", { className: "release-section" },
+            h("h3", { text: localizeStaticPhrase("版本命名规范") }),
+            h("p", { text: localizedI18n(VersionNamingPolicy) })
+          ),
+          h("section", { className: "release-section" },
+            h("h3", { text: localizeStaticPhrase("本次更新") }),
+            h("ul", { className: "release-bullets" },
+              release.itemsI18n.map((item) => h("li", { text: localizedI18n(item) }))
+            )
+          ),
+          State.currentUser?.role === "admin" ? h("div", { className: "modal-actions" },
+            h("button", { className: "button button-primary", type: "button", onClick: () => this.openDevelopmentLog() }, icon("fa-solid fa-clock-rotate-left"), "查看开发日志")
+          ) : null
+        )
+      );
+    },
+    openDevelopmentLog() {
+      UI.openModal(
+        h("div", { className: "modal-card modal-wide slide-up" },
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("h2", { text: "开发日志" }),
+          h("p", { text: localizedI18n(VersionNamingPolicy) }),
+          h("div", { className: "release-list" },
+            DevelopmentRecords.map((release, index) => h("article", { className: `release-card ${index === 0 ? "current" : ""}` },
+              h("div", { className: "release-card-head" },
+                h("strong", { className: "notranslate", translate: "no", text: release.version }),
+                h("span", { className: "tag", text: localizedI18n(release.statusI18n) })
+              ),
+              h("h3", { text: localizedI18n(release.nameI18n) }),
+              h("p", { text: localizedI18n(release.summaryI18n) }),
+              h("div", { className: "release-date" }, localizeStaticPhrase("发布时间"), "：", h("span", { className: "notranslate", translate: "no", text: release.releasedAt })),
+              h("ul", { className: "release-bullets" },
+                release.itemsI18n.map((item) => h("li", { text: localizedI18n(item) }))
+              )
+            ))
+          )
+        )
+      );
+    },
     userMenu(anchor) {
       const items = [
+        this.accountMenuSummary(),
+        { type: "separator" },
         { label: "我的订单", icon: "fa-solid fa-receipt", action: () => Router.go("account") },
         State.currentUser?.role !== "admin" ? { label: "充值积分", icon: "fa-solid fa-coins", action: () => this.openRecharge() } : null,
-        { label: `语言选择：${Translation.selectedLabel()}`, icon: "fa-solid fa-language", action: () => this.openLanguageSelector() },
-        State.mode === "admin" ? { label: "管理控制台", icon: "fa-solid fa-screwdriver-wrench", action: () => Router.go("admin") } : null,
-        { label: "退出登录", icon: "fa-solid fa-right-from-bracket", destructive: true, action: () => UI.openConfirm("确认退出登录？", "退出后将回到客户模式。", () => Session.logout()) }
+        { label: "语言选择", icon: "fa-solid fa-language", action: () => this.openLanguageSelector() },
+        { label: "当前版本", icon: "fa-solid fa-code-branch", action: () => this.openCurrentVersion() },
+        State.currentUser?.role === "admin" ? { label: "开发日志", icon: "fa-solid fa-clock-rotate-left", action: () => this.openDevelopmentLog() } : null,
+        { type: "separator" },
+        { label: "设置", icon: "fa-solid fa-gear", action: () => this.openUserSettings() }
       ].filter(Boolean);
       UI.showMenuFromElement(anchor, items);
+    },
+    guestMenu(anchor) {
+      UI.showMenuFromElement(anchor, [
+        this.accountMenuSummary(),
+        { type: "separator" },
+        { label: "语言选择", icon: "fa-solid fa-language", action: () => this.openLanguageSelector() },
+        { label: "当前版本", icon: "fa-solid fa-code-branch", action: () => this.openCurrentVersion() },
+        { type: "separator" },
+        { label: "登录", icon: "fa-regular fa-user", action: () => Auth.open("login") }
+      ]);
     },
     openLanguageSelector() {
       const current = Translation.selected();
@@ -3402,7 +5402,7 @@
         h("div", { className: "modal-card slide-up" },
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
           h("h2", { text: "语言选择" }),
-          h("p", { text: "选择语言后，页面会通过内嵌 Google Translate 尝试自动转译。翻译质量与可用性取决于网络和 Google 服务状态。" }),
+          h("p", { text: "选择语言后，英文和简体中文使用本地翻译；其他语言会尝试使用内嵌 Google Translate。" }),
           h("div", { className: "language-grid" },
             Languages.map((language) => h("button", {
               className: `language-option ${language.code === current ? "active" : ""}`,
@@ -3420,7 +5420,7 @@
         )
       );
     },
-    setOrderStatus(orderId, status) {
+    async setOrderStatus(orderId, status) {
       let order = Data.orderById(orderId);
       if (!order) {
         UI.toast("订单不存在");
@@ -3453,6 +5453,17 @@
         App.render();
         return;
       }
+      const backendResult = await Backend.updateOrderStatus(orderId, status);
+      if (backendResult.ok) {
+        UI.toast("订单已更新", StatusLabels[status]);
+        App.render();
+        return;
+      }
+      if (!backendResult.offline) {
+        UI.toast("操作失败", backendResult.message || "请稍后重试。");
+        App.render();
+        return;
+      }
       if (status === "cancelled" && ["pending", "processing"].includes(order.status) && !order.refundedAt && Number(order.price || 0) > 0) {
         const result = Data.refundOrder(order, "订单取消退款");
         UI.toast(result.ok ? "订单已取消并退款" : "订单已取消", result.ok ? "积分已返还至顾客账户。" : "未找到可退款账户。");
@@ -3470,6 +5481,11 @@
           role: "system",
           type: "system",
           text: `${accepted?.handledBy || "员工"} 已接单，聊天功能已开启。`
+        });
+        Data.notifyUser(Data.profileByUsername(accepted?.customerUsername), "orderAccepted", {
+          orderId: accepted?.id,
+          itemName: accepted?.productTitle,
+          amount: accepted?.handledBy ? `Accepted by ${accepted.handledBy}` : "Accepted"
         });
       }
       if (status === "completed") {
@@ -3658,10 +5674,15 @@
       const type = target.dataset.manageType;
       const id = target.dataset.manageId;
       const gameId = target.dataset.gameId;
-      const noun = { category: "分类", game: "分区", product: "商品" }[type] || "内容";
+      const labels = {
+        category: { edit: "编辑分类", delete: "删除分类" },
+        game: { edit: "编辑游戏分区", delete: "删除游戏分区" },
+        product: { edit: "编辑商品", delete: "删除商品" }
+      };
+      const current = labels[type] || { edit: "编辑内容", delete: "删除内容" };
       return [
-        { label: `编辑${noun}`, icon: "fa-solid fa-pen", action: () => this.editItem(type, id, gameId) },
-        { label: `删除${noun}`, icon: "fa-solid fa-trash", destructive: true, action: () => this.deleteItem(type, id, gameId) }
+        { label: current.edit, icon: "fa-solid fa-pen", action: () => this.editItem(type, id, gameId) },
+        { label: current.delete, icon: "fa-solid fa-trash", destructive: true, action: () => this.deleteItem(type, id, gameId) }
       ];
     },
     adminMenuForBlank() {
@@ -3679,15 +5700,26 @@
     editItem(type, id, explicitGameId) {
       if (type === "category") {
         const item = id ? clone(Data.category(id)) : { id: createId("category"), title: "", description: "", icon: "fa-solid fa-star" };
+        const title = contentValues(item, "title");
+        const description = contentValues(item, "description");
         UI.openFormModal({
           title: id ? "编辑分类" : "新增分类",
           fields: [
-            { name: "title", label: "名称", value: item.title, required: true },
-            { name: "description", label: "描述", type: "textarea", value: item.description },
+            { name: "titleEn", label: "英文名称", value: title.en, required: true },
+            { name: "titleZh", label: "中文名称", value: title["zh-CN"], required: true },
+            { name: "descriptionEn", label: "英文描述", type: "textarea", value: description.en },
+            { name: "descriptionZh", label: "中文描述", type: "textarea", value: description["zh-CN"] },
             { name: "icon", label: "图标 class", value: item.icon || "fa-solid fa-star", required: true }
           ],
           onSubmit: (values) => {
-            Data.upsertCategory({ ...item, title: values.title.trim(), description: values.description.trim(), icon: values.icon.trim() });
+            Data.upsertCategory({
+              ...item,
+              title: values.titleZh.trim(),
+              description: values.descriptionZh.trim(),
+              titleI18n: localizedPair(values.titleEn, values.titleZh),
+              descriptionI18n: localizedPair(values.descriptionEn, values.descriptionZh),
+              icon: values.icon.trim()
+            });
             UI.toast("分类已保存");
             App.render();
           }
@@ -3697,16 +5729,31 @@
       if (type === "game") {
         const categoryId = State.route.params.categoryId;
         const item = id ? clone(Data.game(categoryId, id)) : { id: createId("game"), title: "", description: "", icon: "fa-solid fa-star", platform: "" };
+        const title = contentValues(item, "title");
+        const description = contentValues(item, "description");
+        const platform = contentValues(item, "platform");
         UI.openFormModal({
           title: id ? "编辑游戏分区" : "新增游戏分区",
           fields: [
-            { name: "title", label: "名称", value: item.title, required: true },
-            { name: "description", label: "描述", type: "textarea", value: item.description },
-            { name: "platform", label: "平台", value: item.platform || "" },
+            { name: "titleEn", label: "英文名称", value: title.en, required: true },
+            { name: "titleZh", label: "中文名称", value: title["zh-CN"], required: true },
+            { name: "descriptionEn", label: "英文描述", type: "textarea", value: description.en },
+            { name: "descriptionZh", label: "中文描述", type: "textarea", value: description["zh-CN"] },
+            { name: "platformEn", label: "英文平台", value: platform.en || "" },
+            { name: "platformZh", label: "中文平台", value: platform["zh-CN"] || "" },
             { name: "icon", label: "图标 class", value: item.icon || "fa-solid fa-star", required: true }
           ],
           onSubmit: (values) => {
-            Data.upsertGame(categoryId, { ...item, title: values.title.trim(), description: values.description.trim(), platform: values.platform.trim(), icon: values.icon.trim() });
+            Data.upsertGame(categoryId, {
+              ...item,
+              title: values.titleZh.trim(),
+              description: values.descriptionZh.trim(),
+              platform: values.platformZh.trim(),
+              titleI18n: localizedPair(values.titleEn, values.titleZh),
+              descriptionI18n: localizedPair(values.descriptionEn, values.descriptionZh),
+              platformI18n: localizedPair(values.platformEn, values.platformZh),
+              icon: values.icon.trim()
+            });
             UI.toast("分区已保存");
             App.render();
           }
@@ -3716,24 +5763,36 @@
       if (type === "product") {
         const gameId = explicitGameId || State.route.params.gameId;
         const item = id ? clone(Data.product(gameId, id)) : { id: createId("product"), title: "", description: "", price: 0, duration: "", badge: "", icon: "fa-solid fa-gamepad" };
+        const title = contentValues(item, "title");
+        const description = contentValues(item, "description");
+        const duration = contentValues(item, "duration");
+        const badge = contentValues(item, "badge");
         UI.openFormModal({
           title: id ? "编辑商品" : "新增商品",
           fields: [
-            { name: "title", label: "名称", value: item.title, required: true },
-            { name: "description", label: "描述", type: "textarea", value: item.description },
+            { name: "titleEn", label: "英文名称", value: title.en, required: true },
+            { name: "titleZh", label: "中文名称", value: title["zh-CN"], required: true },
+            { name: "descriptionEn", label: "英文描述", type: "textarea", value: description.en },
+            { name: "descriptionZh", label: "中文描述", type: "textarea", value: description["zh-CN"] },
             { name: "price", label: "价格", type: "number", min: "0", step: "1", value: item.price, required: true },
-            { name: "duration", label: "服务时长", value: item.duration || "" },
-            { name: "badge", label: "标签", value: item.badge || "" },
+            { name: "durationEn", label: "英文服务时长", value: duration.en || "" },
+            { name: "durationZh", label: "中文服务时长", value: duration["zh-CN"] || "" },
+            { name: "badgeEn", label: "英文标签", value: badge.en || "" },
+            { name: "badgeZh", label: "中文标签", value: badge["zh-CN"] || "" },
             { name: "icon", label: "图标 class", value: item.icon || "fa-solid fa-gamepad" }
           ],
           onSubmit: (values) => {
             Data.upsertProduct(gameId, {
               ...item,
-              title: values.title.trim(),
-              description: values.description.trim(),
+              title: values.titleZh.trim(),
+              description: values.descriptionZh.trim(),
+              titleI18n: localizedPair(values.titleEn, values.titleZh),
+              descriptionI18n: localizedPair(values.descriptionEn, values.descriptionZh),
               price: Number(values.price) || 0,
-              duration: values.duration.trim(),
-              badge: values.badge.trim(),
+              duration: values.durationZh.trim(),
+              durationI18n: localizedPair(values.durationEn, values.durationZh),
+              badge: values.badgeZh.trim(),
+              badgeI18n: localizedPair(values.badgeEn, values.badgeZh),
               icon: values.icon.trim()
             });
             UI.toast("商品已保存");
@@ -3744,8 +5803,8 @@
       }
     },
     deleteItem(type, id, explicitGameId) {
-      const labels = { category: "分类", game: "分区", product: "商品" };
-      UI.openConfirm(`删除${labels[type]}？`, "删除后会立即更新本地数据。", () => {
+      const labels = { category: "删除分类？", game: "删除游戏分区？", product: "删除商品？" };
+      UI.openConfirm(labels[type] || "删除内容？", "删除后会立即更新本地数据。", () => {
         if (type === "category") {
           Data.deleteCategory(id);
           Router.go("home");
@@ -3765,7 +5824,7 @@
   };
 
   const App = {
-    init() {
+    async init() {
       Dom.topActions = $("#topActions");
       Dom.searchForm = $("#searchForm");
       Dom.searchInput = $("#searchInput");
@@ -3777,6 +5836,7 @@
       Dom.toastRoot = $("#toastRoot");
 
       Data.initialize();
+      await Backend.bootstrap();
       Data.processAutoRefunds();
       Data.processRushBreaches();
       Session.load();
@@ -3885,6 +5945,9 @@
       if (action === "open-login") {
         Auth.open("login");
       }
+      if (action === "open-guest-menu") {
+        Actions.guestMenu(target);
+      }
       if (action === "open-recharge") {
         Actions.openRecharge();
       }
@@ -3978,6 +6041,7 @@
       }
       document.body.classList.remove("customer-mode", "staff-mode", "admin-mode");
       document.body.classList.add(`${State.mode}-mode`);
+      document.documentElement.lang = Translation.selected();
       document.title = `IMPULSE ${localizeStaticPhrase("游戏服务商城")}`;
       Dom.searchInput.value = State.route.name === "search" ? State.route.params.q : "";
       UI.renderTopbar();
