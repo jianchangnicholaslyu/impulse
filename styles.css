@@ -409,6 +409,7 @@ p {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+/* AI: admin edit controls need WCAG-ish contrast; previous white/soft-blue text was unreadable. */
 .admin-edit-toolbar {
   display: flex;
   align-items: center;
@@ -442,6 +443,31 @@ p {
 
 .admin-edit-toolbar .row-actions {
   justify-content: flex-end;
+}
+
+.admin-edit-toolbar .button-primary {
+  color: #ffffff;
+  background: linear-gradient(135deg, #3347c7, #185abc);
+  border: 1px solid rgba(24, 90, 188, 0.34);
+  box-shadow: 0 10px 22px rgba(24, 90, 188, 0.22);
+}
+
+.admin-edit-toolbar .button-ghost {
+  color: #1d2939;
+  background: #ffffff;
+  border-color: #98a2b3;
+  box-shadow: none;
+}
+
+.admin-edit-toolbar .button-ghost:hover {
+  background: #eef4ff;
+  border-color: #667085;
+}
+
+.admin-edit-toolbar .button-danger {
+  color: #ffffff;
+  border-color: rgba(192, 16, 72, 0.42);
+  background: #c01048;
 }
 
 .batch-count {
@@ -1424,6 +1450,65 @@ button.admin-table-row:hover {
   transform: translateY(-2px);
   border-color: var(--button-text);
   box-shadow: 0 12px 26px rgba(16, 24, 40, 0.14);
+}
+
+.language-control-note,
+.policy-control-note {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  color: #17324d;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  border: 1px solid #b7e3ff;
+  border-radius: var(--radius);
+  background: #edf8ff;
+}
+
+.language-helper-note {
+  margin: 10px 0 0;
+  color: var(--ink-muted);
+  line-height: 1.55;
+}
+
+.policy-document {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.policy-document h2 {
+  margin: 10px 0 12px;
+  color: var(--ink);
+}
+
+.policy-intro {
+  max-width: 780px;
+  color: #344054;
+  line-height: 1.7;
+}
+
+.policy-sections {
+  display: grid;
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.policy-section {
+  padding: 16px;
+  border: 1px solid #d0d5dd;
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.policy-section h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.policy-section p {
+  margin: 0;
+  color: #475467;
+  line-height: 1.7;
 }
 
 .balance-note {

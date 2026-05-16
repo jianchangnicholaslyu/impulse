@@ -62,6 +62,74 @@
   const DefaultLanguage = "en";
   const LocalLanguageCodes = ["en", "zh-CN"];
   const LocalContentLanguageCodes = ["en", "zh-CN"];
+  const ControllingLanguageNotice = "English is the controlling language for all legal, payment, refund, dispute, withdrawal, and official communication terms. Any translation is provided for convenience only and does not modify the English terms.";
+  const ProtectedTranslationSelector = ".notranslate, [translate='no'], .policy-document, .official-communication, .financial-value, .status-value, .order-locked-term, [data-no-machine-translate='true']";
+  const LegalInfoPages = ["terms", "privacy", "refund", "payment", "points", "dispute", "withdrawal"];
+  const LegalInfoContent = {
+    terms: {
+      title: "Terms of Service",
+      intro: "These Terms of Service govern access to and use of IMPULSE. The English version controls all rights, duties, account rules, purchases, refunds, disputes, and platform communications.",
+      sections: [
+        ["Service Scope", "IMPULSE provides a marketplace-style interface for game coaching, companion play, order coordination, account listing workflows, and related digital services. Some features may remain simulated or pending backend expansion until officially launched."],
+        ["Accounts", "Users are responsible for accurate account information, account security, and all activity performed through their account. IMPULSE may restrict, suspend, or terminate accounts for fraud, abuse, payment risk, policy violations, or security concerns."],
+        ["Orders", "Orders, reservations, chats, and operational records are handled according to the displayed English order terms, payment rules, refund rules, dispute rules, and withdrawal rules."]
+      ]
+    },
+    privacy: {
+      title: "Privacy Policy",
+      intro: "This Privacy Policy describes how IMPULSE handles account, order, payment, communication, and operational data. The English version controls.",
+      sections: [
+        ["Data We Process", "IMPULSE may process account identifiers, email addresses, profile fields, order records, wallet or point balance records, chat messages, uploaded images, system logs, and support records needed to operate the service."],
+        ["Purpose", "Data is used for authentication, account safety, order fulfillment, payment and refund handling, dispute review, support, anti-abuse controls, compliance, and service improvement."],
+        ["Retention", "Chat records are intended to be retained for 14 days. System logs and order-number records are intended to be retained for 30 days, then archived or removed according to the active operational policy."]
+      ]
+    },
+    refund: {
+      title: "Refund Policy",
+      intro: "This Refund Policy applies to point refunds, order cancellations, failed assignments, return requests, rush requests, and dispute outcomes. The English version controls.",
+      sections: [
+        ["Unassigned Orders", "If an order is not accepted before the user-selected auto-cancel deadline, the order may be cancelled and the full point amount may be returned to the customer balance."],
+        ["Accepted Orders", "After an order is accepted, return eligibility depends on the displayed return window, service progress, evidence, dispute findings, and the applicable English order terms."],
+        ["Rush Fees", "Rush fees may be non-refundable unless the English rush terms, breach terms, or dispute decision state otherwise."]
+      ]
+    },
+    payment: {
+      title: "Payment Rules",
+      intro: "These Payment Rules govern point purchases, customer spending, tips, rush fees, staff withdrawals, charge records, and financial adjustments. The English version controls.",
+      sections: [
+        ["Points", "Points are a platform balance unit. Unless a specific promotion or rule states otherwise, 1 USD equals 1 point."],
+        ["Non-Negative Balance", "A customer balance cannot go below zero. If the balance is insufficient, the user must recharge before placing or modifying the order."],
+        ["Records", "Every balance change should create a ledger record showing the amount, direction, reason, related order number, actor, and time."]
+      ]
+    },
+    points: {
+      title: "Points Rules",
+      intro: "These Points Rules explain point balances, recharges, spending, manual corrections, tips, refunds, and account reviews. The English version controls.",
+      sections: [
+        ["Balance", "Available points represent the user balance shown inside IMPULSE. Manual corrections require administrator authorization and should be logged."],
+        ["Use", "Points may be spent on eligible orders, reservations, rush requests, tips, and other enabled platform services."],
+        ["Review", "IMPULSE may review point activity for fraud, abuse, error, or disputed transactions and may adjust records according to the English policy terms."]
+      ]
+    },
+    dispute: {
+      title: "Dispute Rules",
+      intro: "These Dispute Rules govern reports, evidence review, service complaints, refund decisions, staff penalties, and final dispute conclusions. The English version controls.",
+      sections: [
+        ["Reports", "Customers may report service issues through the provided report flow. Reports should include a clear description, timing, evidence, and the related order number."],
+        ["Review", "Administrators may review order records, chat history, uploaded evidence, staff activity, payment records, and prior account history."],
+        ["Decision", "Dispute outcomes may include no action, warning, partial refund, full refund, staff compensation adjustment, account restriction, or other operational remedies stated in English."]
+      ]
+    },
+    withdrawal: {
+      title: "Withdrawal Rules",
+      intro: "These Withdrawal Rules govern staff cash-out requests, review, approval, rejection, timing, and notices. The English version controls.",
+      sections: [
+        ["Eligibility", "Withdrawals may require completed orders, available staff balance, identity or risk review, and compliance with internal payout rules."],
+        ["Review", "IMPULSE may delay, reject, or adjust a withdrawal request if records are incomplete, disputed, suspicious, or inconsistent with the English rules."],
+        ["Notices", "Withdrawal requested, approved, and rejected notices are official communications and are sent in English."]
+      ]
+    }
+  };
   const ContentTextFields = ["title", "description", "platform", "duration", "badge"];
   const GenderOptions = [
     { value: "unset", label: "未设置" },
@@ -82,17 +150,35 @@
     { key: "returnSuccess", label: "退单成功", subject: "Order return completed" }
   ];
 
-  const VersionNamingPolicy = localizedPair(
-    "IMPULSE versions use Semantic Versioning plus a short release name: vMAJOR.MINOR.PATCH · Release Name.",
-    "IMPULSE 版本采用语义化版本号加短发布名：v主版本.次版本.修订版本 · 发布名称。"
-  );
-
   const DevelopmentRecords = [
+    // AI: top item = next release draft. Do not mark Uploaded or push until user explicitly says upload.
+    {
+      version: "v0.15.0",
+      releasedAt: "2026-05-17",
+      nameI18n: localizedPair("Resend Email Foundation", "Resend 邮件基础"),
+      statusI18n: localizedPair("Current production build", "当前生产版本"),
+      summaryI18n: localizedPair(
+        "Adds the server-only Resend email foundation and sets a clear English-control boundary for legal, payment, dispute, withdrawal, and official communication terms.",
+        "新增仅服务端执行的 Resend 邮件基础，并为法律、支付、争议、提现和官方通信条款建立明确的英文控制边界。"
+      ),
+      itemsI18n: [
+        localizedPair("Added a unified server-side Resend email module and branded transactional templates.", "新增统一的服务端 Resend 邮件模块和品牌事务邮件模板。"),
+        localizedPair("Added email verification, magic-link, password-reset, notification, and email health API routes.", "新增邮箱验证码、魔法链接、密码重置、通知发送和邮件健康检查接口。"),
+        localizedPair("Verification codes now expire in 5 minutes, are stored only as hashes, and include request rate limits.", "验证码现在 5 分钟过期，仅以哈希保存，并加入请求频率限制。"),
+        localizedPair("Locked the legacy send-email endpoint behind the backend secret so clients cannot send arbitrary email.", "将旧邮件发送入口改为后端密钥保护，避免客户端任意发信。"),
+        localizedPair("Legal, payment, refund, dispute, withdrawal, and point-rule pages now remain English-only and protected from machine translation.", "法律、支付、退款、争议、提现和积分规则页面现在保持仅英文，并防止机器翻译覆盖。"),
+        localizedPair("Official email templates remain English-only and carry no-translate protection in the rendered message body.", "官方邮件模板保持仅英文，并在渲染邮件正文中加入禁止翻译保护。"),
+        localizedPair("Language selection now explains that English controls legal and official communication terms.", "语言选择界面现在说明英文为法律和官方通信条款的控制语言。"),
+        localizedPair("Removed the internal process section from the current-version dialog.", "从当前版本弹窗移除内部流程说明区块。"),
+        localizedPair("Improved admin edit-mode button contrast for add, batch, select, and clear actions.", "提升管理员编辑模式中新增、批量、全选和清空选择等按钮的文字对比度。"),
+        localizedPair("Kept version number, release name, date, status, and update details visible.", "保留版本号、版本名称、发布时间、上传状态和更新详情。")
+      ]
+    },
     {
       version: "v0.14.1",
       releasedAt: "2026-05-16",
       nameI18n: localizedPair("Contrast Legibility Hotfix", "对比度可读性热补丁"),
-      statusI18n: localizedPair("Current production build", "当前生产版本"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
       summaryI18n: localizedPair(
         "Improves text contrast across release dialogs, settings panels, staff mode, and admin mode while preserving the existing IMPULSE visual identity.",
         "提升版本弹窗、设置面板、员工模式和管理模式中的文字对比度，同时保留现有 IMPULSE 视觉风格。"
@@ -377,6 +463,14 @@
     "游戏服务商城": { "zh-TW": "遊戲服務商城", en: "Game Service Marketplace", fr: "Marché de services de jeu", ja: "ゲームサービスマーケット", ko: "게임 서비스 마켓", es: "Mercado de servicios de juego" },
     "IMPULSE 游戏服务商城的基础信息页。": { "zh-TW": "IMPULSE 遊戲服務商城的基礎資訊頁。", en: "Basic information for the IMPULSE game service marketplace.", fr: "Informations de base de la plateforme IMPULSE.", ja: "IMPULSE ゲームサービスマーケットの基本情報です。", ko: "IMPULSE 게임 서비스 마켓의 기본 정보입니다.", es: "Información básica del mercado de servicios de juego IMPULSE." },
     "关于 IMPULSE": { "zh-TW": "關於 IMPULSE", en: "About IMPULSE", fr: "À propos d'IMPULSE", ja: "IMPULSE について", ko: "IMPULSE 소개", es: "Acerca de IMPULSE" },
+    "普通界面会继续支持多语言；法律、资金规则、争议结论、提现说明和官方邮件始终以英文为准。": { "zh-TW": "一般介面會繼續支援多語言；法律、資金規則、爭議結論、提現說明和官方郵件一律以英文為準。", en: "General interface text remains multilingual; legal terms, financial rules, dispute outcomes, withdrawal instructions, and official emails always rely on English.", fr: "L'interface générale reste multilingue; les règles juridiques et financières, les conclusions de litige, les instructions de retrait et les e-mails officiels reposent toujours sur l'anglais.", ja: "通常のUIは多言語対応を続けますが、法的条件、資金ルール、紛争結論、出金説明、公式メールは常に英語に基づきます。", ko: "일반 UI는 계속 다국어를 지원하지만 법적 조건, 자금 규칙, 분쟁 결과, 출금 안내, 공식 이메일은 항상 영어를 기준으로 합니다.", es: "La interfaz general sigue siendo multilingue; los términos legales, reglas financieras, decisiones de disputas, instrucciones de retiro y correos oficiales siempre se basan en inglés." },
+    "加急待员工确认": { "zh-TW": "加急待員工確認", en: "Rush pending staff confirmation", fr: "Urgence en attente de confirmation", ja: "至急依頼はスタッフ確認待ち", ko: "긴급 요청 직원 확인 대기", es: "Urgencia pendiente de confirmación" },
+    "加急已接受": { "zh-TW": "加急已接受", en: "Rush accepted", fr: "Urgence acceptée", ja: "至急依頼承認済み", ko: "긴급 요청 수락됨", es: "Urgencia aceptada" },
+    "加急已拒绝": { "zh-TW": "加急已拒絕", en: "Rush declined", fr: "Urgence refusée", ja: "至急依頼却下", ko: "긴급 요청 거절됨", es: "Urgencia rechazada" },
+    "加急已违约": { "zh-TW": "加急已違約", en: "Rush breached", fr: "Urgence non respectée", ja: "至急依頼違反", ko: "긴급 요청 위반", es: "Urgencia incumplida" },
+    "员工申请继续完成": { "zh-TW": "員工申請繼續完成", en: "Staff requested to continue", fr: "L'employé demande à continuer", ja: "スタッフが継続を申請", ko: "직원이 계속 진행 요청", es: "El empleado solicitó continuar" },
+    "顾客已同意继续": { "zh-TW": "顧客已同意繼續", en: "Customer agreed to continue", fr: "Le client accepte de continuer", ja: "顧客が継続に同意", ko: "고객이 계속 진행 동의", es: "El cliente aceptó continuar" },
+    "顾客拒绝继续": { "zh-TW": "顧客拒絕繼續", en: "Customer declined continuation", fr: "Le client refuse la continuation", ja: "顧客が継続を拒否", ko: "고객이 계속 진행 거절", es: "El cliente rechazó continuar" },
     "客户模式": { "zh-TW": "客戶模式", en: "Customer Mode", fr: "Mode client", ja: "顧客モード", ko: "고객 모드", es: "Modo cliente" },
     "员工模式": { "zh-TW": "員工模式", en: "Staff Mode", fr: "Mode employé", ja: "スタッフモード", ko: "직원 모드", es: "Modo empleado" },
     "管理模式": { "zh-TW": "管理模式", en: "Admin Mode", fr: "Mode admin", ja: "管理モード", ko: "관리자 모드", es: "Modo administrador" },
@@ -397,7 +491,6 @@
     "开发日志": { "zh-TW": "開發日誌", en: "Development Log", fr: "Journal de développement", ja: "開発ログ", ko: "개발 로그", es: "Registro de desarrollo" },
     "版本记录": { "zh-TW": "版本記錄", en: "Release History", fr: "Historique des versions", ja: "リリース履歴", ko: "릴리스 기록", es: "Historial de versiones" },
     "查看开发日志": { "zh-TW": "查看開發日誌", en: "View Development Log", fr: "Voir le journal", ja: "開発ログを見る", ko: "개발 로그 보기", es: "Ver registro" },
-    "版本命名规范": { "zh-TW": "版本命名規範", en: "Version Naming", fr: "Nom des versions", ja: "バージョン命名", ko: "버전 명명", es: "Nomenclatura" },
     "版本号": { "zh-TW": "版本號", en: "Version", fr: "Version", ja: "バージョン", ko: "버전", es: "Versión" },
     "版本名称": { "zh-TW": "版本名稱", en: "Release Name", fr: "Nom de version", ja: "リリース名", ko: "릴리스 이름", es: "Nombre de versión" },
     "发布时间": { "zh-TW": "發布時間", en: "Release Date", fr: "Date de sortie", ja: "リリース日", ko: "출시일", es: "Fecha de lanzamiento" },
@@ -893,6 +986,18 @@
     }
     node.classList.add("notranslate");
     node.setAttribute("translate", "no");
+  }
+
+  function protectedText(text, className = "") {
+    return h("span", {
+      className: `${className} notranslate`.trim(),
+      translate: "no",
+      text
+    });
+  }
+
+  function financialText(value, className = "financial-value") {
+    return protectedText(formatPrice(value), className);
   }
 
   const KnownContentTranslations = {
@@ -1456,7 +1561,7 @@
       const code = String(Math.floor(100000 + Math.random() * 900000));
       this.codes[this.key(purpose, email)] = {
         code,
-        expiresAt: Date.now() + 10 * 60 * 1000
+        expiresAt: Date.now() + 5 * 60 * 1000
       };
       return code;
     },
@@ -1518,7 +1623,7 @@
       const subject = "Your IMPULSE verification code";
       const text = [
         `Your IMPULSE verification code is ${code}.`,
-        "It expires in 10 minutes.",
+        "It expires in 5 minutes.",
         "If you did not request this code, you can ignore this email."
       ].join("\n");
       return this.send(to, subject, text);
@@ -3312,7 +3417,7 @@
           if (!parent) {
             return NodeFilter.FILTER_REJECT;
           }
-          if (parent.closest && parent.closest(".translate-engine, .notranslate, [translate='no']")) {
+          if (parent.closest && parent.closest(`.translate-engine, ${ProtectedTranslationSelector}`)) {
             return NodeFilter.FILTER_REJECT;
           }
           return NodeFilter.FILTER_ACCEPT;
@@ -3326,6 +3431,9 @@
       textNodes.forEach(translateTextNode);
 
       root.querySelectorAll?.("[placeholder], [aria-label], [title]").forEach((node) => {
+        if (node.closest && node.closest(ProtectedTranslationSelector)) {
+          return;
+        }
         ["placeholder", "aria-label", "title"].forEach((attr) => {
           const value = node.getAttribute(attr);
           if (!value) {
@@ -3411,7 +3519,7 @@
           }
         };
       }
-      if (["about", "terms", "privacy", "help"].includes(parts[0])) {
+      if (["about", "help", ...LegalInfoPages].includes(parts[0])) {
         return { name: "info", params: { page: parts[0] } };
       }
       return { name: "home", params: {} };
@@ -3679,7 +3787,11 @@
       );
     },
     statusPill(status) {
-      return h("span", { className: `status-pill status-${status}` }, StatusLabels[status] || status);
+      return h("span", {
+        className: `status-pill status-value status-${status} notranslate`,
+        translate: "no",
+        text: localizeStaticPhrase(StatusLabels[status] || status)
+      });
     },
     renderTopbar() {
       clear(Dom.topActions);
@@ -3823,16 +3935,21 @@
       }
 
       if (route.name === "info") {
-        const titles = { about: "关于我们", terms: "服务条款", privacy: "隐私政策", help: "帮助中心" };
+        const isPolicy = LegalInfoPages.includes(route.params.page);
+        const titles = {
+          about: "关于我们",
+          help: "帮助中心",
+          ...Object.fromEntries(LegalInfoPages.map((page) => [page, LegalInfoContent[page]?.title || "Policy"]))
+        };
         return {
           kicker: "IMPULSE",
           title: titles[route.params.page] || "站点信息",
-          description: "IMPULSE 游戏服务商城的基础信息页。",
-          stats: [
-            ["分类", metrics.categories],
-            ["分区", metrics.games],
-            ["商品", metrics.products]
-          ]
+          description: isPolicy
+            ? "English controls this policy page and any related official terms."
+            : "IMPULSE 游戏服务商城的基础信息页。",
+          stats: isPolicy
+            ? [["Categories", metrics.categories], ["Game Sections", metrics.games], ["Products", metrics.products]]
+            : [["分类", metrics.categories], ["分区", metrics.games], ["商品", metrics.products]]
         };
       }
 
@@ -3851,7 +3968,17 @@
     },
     renderHero() {
       const meta = this.pageMeta();
+      const protectedInfo = State.route.name === "info" && LegalInfoPages.includes(State.route.params.page);
       clear(Dom.heroPanel);
+      Dom.heroPanel.classList.toggle("notranslate", protectedInfo);
+      Dom.heroPanel.classList.toggle("policy-hero", protectedInfo);
+      if (protectedInfo) {
+        Dom.heroPanel.setAttribute("translate", "no");
+        Dom.heroPanel.dataset.noMachineTranslate = "true";
+      } else {
+        Dom.heroPanel.removeAttribute("translate");
+        delete Dom.heroPanel.dataset.noMachineTranslate;
+      }
       Dom.heroPanel.append(
         h("div", {},
           h("p", { className: "hero-kicker", text: meta.kicker }),
@@ -4094,7 +4221,7 @@
             localizedContent(product, "badge") ? h("span", { className: "tag", text: localizedContent(product, "badge") }) : null
           )
         ),
-        h("div", { className: "price", text: formatPrice(product.price) }),
+        h("div", { className: "price financial-value notranslate", translate: "no", text: formatPrice(product.price) }),
         h("button", {
           className: "button button-ghost button-small",
           type: "button",
@@ -4138,15 +4265,15 @@
           h("div", { className: "row-meta" },
             h("span", {}, localizeStaticPhrase(OrderTypeLabels[order.type] || "订单"), " ", order.id.slice(-6).toUpperCase()),
             h("span", { text: localizedOrderContent(order, "gameTitle") }),
-            h("span", { text: formatPrice(order.price) }),
+            h("span", { className: "financial-value notranslate", translate: "no", text: formatPrice(order.price) }),
             h("span", { text: formatFullDate(order.createdAt) }),
             order.appointmentAt ? h("span", {}, localizeStaticPhrase("预约"), " ", formatFullDate(order.appointmentAt)) : null,
             order.autoCancelAt && order.status === "pending" ? h("span", {}, localizeStaticPhrase("超时无人接单自动退单"), " ", formatFullDate(order.autoCancelAt)) : null,
             order.acceptedAt ? h("span", {}, localizeStaticPhrase("接单时间"), " ", formatFullDate(order.acceptedAt)) : null,
-            rushStatusLabel(order.rush) ? h("span", { className: "tag", text: rushStatusLabel(order.rush) }) : null,
+            rushStatusLabel(order.rush) ? h("span", { className: "tag status-value notranslate", translate: "no", text: rushStatusLabel(order.rush) }) : null,
             order.handledBy ? h("span", {}, localizeStaticPhrase("接单"), " ", h("span", { className: "notranslate", translate: "no", text: order.handledBy })) : null,
             order.refundedAt ? h("span", {}, localizeStaticPhrase("已退款"), " ", formatFullDate(order.refundedAt)) : null,
-            order.returnRefundedAt ? h("span", {}, localizeStaticPhrase("退单退款"), " ", formatPrice(order.returnRefundAmount)) : null,
+            order.returnRefundedAt ? h("span", {}, localizeStaticPhrase("退单退款"), " ", financialText(order.returnRefundAmount)) : null,
             order.settledAt ? h("span", {}, localizeStaticPhrase("已结算"), " ", formatFullDate(order.settledAt)) : null,
             canManage ? h("span", {}, localizeStaticPhrase("客户"), " ", h("span", { className: "notranslate", translate: "no", text: order.customerUsername })) : null,
             UI.statusPill(order.status)
@@ -4479,8 +4606,8 @@
           users.map((item) => h("button", { className: "admin-table-row user-grid", type: "button", dataset: { action: "open-admin-user-detail", role, userId: item.id } },
             h("span", { className: "mono", text: item.id }),
             h("span", { className: "notranslate", translate: "no", text: item.username }),
-            h("span", { text: formatPrice(item.funds) }),
-            h("span", { text: userStatus(item) })
+            h("span", {}, financialText(item.funds)),
+            h("span", {}, protectedText(userStatus(item), "status-value"))
           ))
         )
       );
@@ -4510,8 +4637,8 @@
         return this.simpleTable(["单号", "充值项目", "充值积分", "充值金额", "充值时间"], rows.map((entry) => [
           entry.id,
           entry.itemName || entry.title,
-          formatPrice(entry.amountPoints),
-          `$${entry.amountMoney || 0}`,
+          financialText(entry.amountPoints),
+          protectedText(`$${entry.amountMoney || 0}`, "financial-value"),
           formatFullDate(entry.createdAt)
         ]));
       }
@@ -4519,7 +4646,7 @@
         const rows = Data.ledger().filter((entry) => entry.userId === profile.id && entry.type === "cashout");
         return this.simpleTable(["单号", "兑现金额", "兑现时间"], rows.map((entry) => [
           entry.id,
-          `¥${entry.amountMoney || Math.abs(entry.amountPoints || 0)}`,
+          protectedText(`¥${entry.amountMoney || Math.abs(entry.amountPoints || 0)}`, "financial-value"),
           formatFullDate(entry.createdAt)
         ]));
       }
@@ -4528,9 +4655,9 @@
         return this.simpleTable(["单号", "订单名称", "订单金额", "下单时间", "结单时间"], rows.map((order) => [
           order.id,
           localizedOrderContent(order, "productTitle"),
-          formatPrice(order.price),
+          financialText(order.price),
           formatFullDate(order.createdAt),
-          order.completedAt ? formatFullDate(order.completedAt) : "未结单"
+          order.completedAt ? formatFullDate(order.completedAt) : protectedText(localizeStaticPhrase("未结单"), "status-value")
         ]));
       }
       if (tab === "adjust") {
@@ -4555,9 +4682,12 @@
       );
     },
     simpleTable(headers, rows) {
+      const cell = (item) => item && item.nodeType
+        ? h("span", {}, item)
+        : h("span", { text: item });
       return h("div", { className: "admin-table simple-table" },
         h("div", { className: "admin-table-head", style: `grid-template-columns: repeat(${headers.length}, minmax(140px, 1fr));` }, headers.map((item) => h("span", { text: item }))),
-        rows.length ? rows.map((row) => h("div", { className: "admin-table-row", style: `grid-template-columns: repeat(${headers.length}, minmax(140px, 1fr));` }, row.map((item) => h("span", { text: item })))) : h("div", { className: "admin-empty-row", text: "暂无记录。" })
+        rows.length ? rows.map((row) => h("div", { className: "admin-table-row", style: `grid-template-columns: repeat(${headers.length}, minmax(140px, 1fr));` }, row.map(cell))) : h("div", { className: "admin-empty-row", text: "暂无记录。" })
       );
     },
     adminRecords() {
@@ -4612,11 +4742,11 @@
           typeLabel[record.type],
           record.name,
           record.user,
-          formatPrice(record.amount),
-          record.status,
+          financialText(record.amount),
+          protectedText(localizeStaticPhrase(record.status), "status-value"),
           formatFullDate(record.createdAt),
-          record.completedAt ? formatFullDate(record.completedAt) : "未结单",
-          record.detail
+          record.completedAt ? formatFullDate(record.completedAt) : protectedText(localizeStaticPhrase("未结单"), "status-value"),
+          protectedText(record.detail, "order-locked-term")
         ]))
       );
     },
@@ -4639,9 +4769,9 @@
           entry.id,
           entry.type,
           entry.username,
-          entry.amountPoints,
-          entry.before,
-          entry.after,
+          protectedText(entry.amountPoints, "financial-value"),
+          protectedText(entry.before, "financial-value"),
+          protectedText(entry.after, "financial-value"),
           entry.orderId || "-",
           entry.operator,
           formatFullDate(entry.createdAt)
@@ -4674,10 +4804,26 @@
       );
     },
     info(page) {
+      if (LegalInfoPages.includes(page)) {
+        const content = LegalInfoContent[page] || LegalInfoContent.terms;
+        return h("section", {
+          className: "panel policy-document official-terms notranslate",
+          translate: "no",
+          dataset: { noMachineTranslate: "true" }
+        },
+          h("p", { className: "policy-control-note", text: ControllingLanguageNotice }),
+          h("h2", { text: content.title }),
+          h("p", { className: "policy-intro", text: content.intro }),
+          h("div", { className: "policy-sections" },
+            content.sections.map(([heading, body]) => h("section", { className: "policy-section" },
+              h("h3", { text: heading }),
+              h("p", { text: body })
+            ))
+          )
+        );
+      }
       const map = {
         about: ["关于 IMPULSE", "IMPULSE 专注游戏服务交易体验，当前版本使用本地数据模拟完整购物流程。"],
-        terms: ["服务条款", "订单、预约、账号交易等信息在本地浏览器保存，正式上线前需接入后端与真实支付、担保和客服流程。"],
-        privacy: ["隐私政策", "当前演示版不会上传数据，用户、订单和商品数据仅存储在本机 localStorage。"],
         help: ["帮助中心", "普通用户可浏览、注册、下单和预约；员工账号可处理订单；管理员账号可维护内容与数据。"]
       };
       const [title, body] = map[page] || map.about;
@@ -4720,8 +4866,8 @@
           if (backendResult.ok) {
             if (backendResult.devCode) {
               codeHint.textContent = contentLanguage() === "zh-CN"
-                ? `演示验证码：${backendResult.devCode}，10 分钟内有效。后端邮件服务未配置。`
-                : `Demo code: ${backendResult.devCode}. Valid for 10 minutes. Backend email is not configured.`;
+                ? `演示验证码：${backendResult.devCode}，5 分钟内有效。后端邮件服务未配置。`
+                : `Demo code: ${backendResult.devCode}. Valid for 5 minutes. Backend email is not configured.`;
               UI.toast("验证码已发送", `演示验证码：${backendResult.devCode}`);
               return;
             }
@@ -4750,8 +4896,8 @@
             return;
           }
           codeHint.textContent = contentLanguage() === "zh-CN"
-            ? `演示验证码：${code}，10 分钟内有效。邮件接口未配置或暂不可用。`
-            : `Demo code: ${code}. Valid for 10 minutes. Email endpoint is not configured or is temporarily unavailable.`;
+            ? `演示验证码：${code}，5 分钟内有效。邮件接口未配置或暂不可用。`
+            : `Demo code: ${code}. Valid for 5 minutes. Email endpoint is not configured or is temporarily unavailable.`;
           UI.toast("验证码已发送", `演示验证码：${code}`);
         };
 
@@ -4908,7 +5054,7 @@
             h("span", { className: "tag", text: localizedContent(game, "title") }),
             localizedContent(product, "duration") ? h("span", { className: "tag", text: localizedContent(product, "duration") }) : null
           ),
-          h("strong", { className: "detail-price", text: formatPrice(product.price) }),
+          h("strong", { className: "detail-price financial-value notranslate", translate: "no", text: formatPrice(product.price) }),
           h("div", { className: "modal-actions" },
             h("button", { className: "button button-primary", type: "button", onClick: () => this.checkout("order", found) }, icon("fa-solid fa-bolt"), "立即下单"),
             h("button", { className: "button button-ghost", type: "button", onClick: () => this.checkout("reservation", found) }, icon("fa-regular fa-calendar-check"), "预约")
@@ -5279,8 +5425,8 @@
             return;
           }
           codeHint.textContent = contentLanguage() === "zh-CN"
-            ? `演示验证码：${code}，发送至原绑定邮箱 ${email}，10 分钟内有效。邮件接口未配置或暂不可用。`
-            : `Demo code: ${code}. Sent to ${email}. Valid for 10 minutes. Email endpoint is not configured or is temporarily unavailable.`;
+            ? `演示验证码：${code}，发送至原绑定邮箱 ${email}，5 分钟内有效。邮件接口未配置或暂不可用。`
+            : `Demo code: ${code}. Sent to ${email}. Valid for 5 minutes. Email endpoint is not configured or is temporarily unavailable.`;
           UI.toast("验证码已发送", `演示验证码：${code}`);
         }
       }, icon("fa-regular fa-envelope"), "发送验证码");
@@ -5720,7 +5866,7 @@
               participantCard("员工", staffProfile)
             )
           ),
-          order.rush ? h("p", { className: "balance-note", text: `${rushStatusLabel(order.rush)}${order.rush.deadlineAt ? ` / 期限：${formatFullDate(order.rush.deadlineAt)}` : ""}` }) : null,
+          order.rush ? h("p", { className: "balance-note order-locked-term notranslate", translate: "no", text: `${rushStatusLabel(order.rush)}${order.rush.deadlineAt ? ` / ${contentLanguage() === "zh-CN" ? "期限" : "Deadline"}: ${formatFullDate(order.rush.deadlineAt)}` : ""}` }) : null,
           h("div", { className: "chat-shell" },
             h("aside", { className: "chat-sidebar" },
               h("h3", { text: "操作" }),
@@ -5922,10 +6068,6 @@
             this.releaseMeta(localizeStaticPhrase("上传状态"), localizedI18n(release.statusI18n))
           ),
           h("section", { className: "release-section" },
-            h("h3", { text: localizeStaticPhrase("版本命名规范") }),
-            h("p", { text: localizedI18n(VersionNamingPolicy) })
-          ),
-          h("section", { className: "release-section" },
             h("h3", { text: localizeStaticPhrase("本次更新") }),
             h("ul", { className: "release-bullets" },
               release.itemsI18n.map((item) => h("li", { text: localizedI18n(item) }))
@@ -5942,7 +6084,6 @@
         h("div", { className: "modal-card modal-wide slide-up" },
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
           h("h2", { text: "开发日志" }),
-          h("p", { text: localizedI18n(VersionNamingPolicy) }),
           h("div", { className: "release-list" },
             DevelopmentRecords.map((release, index) => h("article", { className: `release-card ${index === 0 ? "current" : ""}` },
               h("div", { className: "release-card-head" },
@@ -5990,7 +6131,8 @@
         h("div", { className: "modal-card slide-up" },
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
           h("h2", { text: "语言选择" }),
-          h("p", { text: "选择语言后，英文和简体中文使用本地翻译；其他语言会尝试使用内嵌 Google Translate。" }),
+          h("p", { className: "language-control-note notranslate", translate: "no", text: ControllingLanguageNotice }),
+          h("p", { className: "language-helper-note", text: "普通界面会继续支持多语言；法律、资金规则、争议结论、提现说明和官方邮件始终以英文为准。" }),
           h("div", { className: "language-grid" },
             Languages.map((language) => h("button", {
               className: `language-option ${language.code === current ? "active" : ""}`,

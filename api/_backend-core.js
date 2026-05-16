@@ -2,7 +2,9 @@ const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const { EmailTypes, emailHealth, sendEmail: sendProviderEmail } = require("../src/lib/email");
 
+// AI: additive-only backend. Preserve old localStorage/Supabase JSON data; never wipe users/orders/chats/logs on update.
 const IsVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 const DataDir = process.env.IMPULSE_DATA_DIR || (IsVercel ? path.join(os.tmpdir(), "impulse-data") : path.join(process.cwd(), ".data"));
 const DataFile = path.join(DataDir, "impulse-db.json");
@@ -10,7 +12,12 @@ const DbKey = process.env.BACKEND_DB_KEY || "impulse:db";
 const SupabaseTablePattern = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 const EmailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SessionMaxAgeMs = 30 * 24 * 60 * 60 * 1000;
-const VerificationMaxAgeMs = 10 * 60 * 1000;
+const VerificationMaxAgeMs = 5 * 60 * 1000;
+const VerificationCooldownMs = 60 * 1000;
+const VerificationIpWindowMs = 10 * 60 * 1000;
+const VerificationIpLimit = 5;
+const EmailPrivacyResponse = "If this email is valid, a message has been sent.";
+// AI: mail auth spec: hash-only codes, 5m TTL, 60s/email, 5/10m/IP, generic response, no prod devCode.
 const DayMs = 24 * 60 * 60 * 1000;
 const ChatRetentionMs = 14 * DayMs;
 const ArchiveRetentionMs = 30 * DayMs;
@@ -45,6 +52,7 @@ function clone(value) {
 }
 
 function secret() {
+  // AI: BACKEND_SECRET must exist in prod; RESEND key fallback is legacy local compatibility only.
   return process.env.BACKEND_SECRET || process.env.RESEND_API_KEY || "impulse-local-development-secret";
 }
 
@@ -142,7 +150,9 @@ function emptyDb() {
       backupEmail: "",
       backupHistory: []
     },
-    verifications: {}
+    verifications: {},
+    emailVerifications: [],
+    emailLogs: []
   };
 }
 
@@ -433,6 +443,8 @@ function normalizeDb(input) {
     backupHistory: Array.isArray(db.systemSettings.backupHistory) ? db.systemSettings.backupHistory : []
   } : { backupEmail: "", backupHistory: [] };
   db.verifications = db.verifications && typeof db.verifications === "object" ? db.verifications : {};
+  db.emailVerifications = Array.isArray(db.emailVerifications) ? db.emailVerifications.slice(0, 1000) : [];
+  db.emailLogs = Array.isArray(db.emailLogs) ? db.emailLogs.slice(0, 5000) : [];
   ensureProfiles(db);
   return db;
 }
@@ -598,11 +610,76 @@ function verificationKey(purpose, email) {
   return `${purpose}:${normalizeEmail(email)}`;
 }
 
-function storeVerification(db, purpose, email, code) {
-  db.verifications[verificationKey(purpose, email)] = {
-    hash: hmac(`${purpose}:${normalizeEmail(email)}:${code}`),
-    expiresAt: Date.now() + VerificationMaxAgeMs
+function clientIp(request = {}) {
+  const nodeRequest = request.request || request;
+  const headers = nodeRequest?.headers || {};
+  const forwarded = String(headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || String(headers["x-real-ip"] || nodeRequest?.socket?.remoteAddress || "").trim();
+}
+
+function userAgent(request = {}) {
+  const nodeRequest = request.request || request;
+  return String(nodeRequest?.headers?.["user-agent"] || "").trim();
+}
+
+function privacyHash(label, value) {
+  return value ? hmac(`${label}:${value}`) : "";
+}
+
+function pruneEmailSecurityRecords(db) {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  db.emailVerifications = (db.emailVerifications || [])
+    .filter((record) => timestampMs(record.createdAt) >= cutoff || (!record.consumedAt && timestampMs(record.expiresAt) >= Date.now()))
+    .slice(0, 1000);
+  db.emailLogs = (db.emailLogs || []).slice(0, 5000);
+}
+
+function canRequestVerification(db, email, request) {
+  pruneEmailSecurityRecords(db);
+  const emailHash = privacyHash("email", normalizeEmail(email));
+  const ipHash = privacyHash("ip", clientIp(request));
+  const now = Date.now();
+  const lastEmailRequest = (db.emailVerifications || []).find((record) => (
+    record.emailHash === emailHash && timestampMs(record.createdAt) > now - VerificationCooldownMs
+  ));
+  if (lastEmailRequest) {
+    return { ok: false, message: "Please wait before requesting another code." };
+  }
+  if (ipHash) {
+    const ipRequests = (db.emailVerifications || []).filter((record) => (
+      record.ipHash === ipHash && timestampMs(record.createdAt) > now - VerificationIpWindowMs
+    ));
+    if (ipRequests.length >= VerificationIpLimit) {
+      return { ok: false, message: "Too many verification requests. Please try again later." };
+    }
+  }
+  return { ok: true };
+}
+
+function storeVerification(db, purpose, email, code, request = {}) {
+  // AI: never persist raw code/email/IP/UA; JSON state stores hashes until normalized DB migration.
+  const createdAt = nowIso();
+  const expiresAtMs = Date.now() + VerificationMaxAgeMs;
+  const id = createId("emailv");
+  const record = {
+    id,
+    emailHash: privacyHash("email", normalizeEmail(email)),
+    codeHash: hmac(`${purpose}:${normalizeEmail(email)}:${code}`),
+    purpose,
+    expiresAt: new Date(expiresAtMs).toISOString(),
+    consumedAt: "",
+    ipHash: privacyHash("ip", clientIp(request)),
+    userAgentHash: privacyHash("ua", userAgent(request)),
+    createdAt
   };
+  db.verifications[verificationKey(purpose, email)] = {
+    id,
+    hash: record.codeHash,
+    expiresAt: expiresAtMs,
+    createdAt
+  };
+  db.emailVerifications = [record, ...(db.emailVerifications || [])].slice(0, 1000);
+  return record;
 }
 
 function verifyCode(db, purpose, email, code) {
@@ -615,41 +692,37 @@ function verifyCode(db, purpose, email, code) {
   if (actual !== record.hash) {
     return { ok: false, message: "验证码不正确。" };
   }
+  const verification = (db.emailVerifications || []).find((item) => item.id === record.id);
+  if (verification) {
+    verification.consumedAt = nowIso();
+  }
   delete db.verifications[key];
   return { ok: true };
 }
 
-async function sendEmail(to, subject, text, options = {}) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.MAIL_FROM || process.env.RESEND_FROM;
-  if (!apiKey || !from) {
-    return { ok: false, configured: false };
-  }
-  const attachments = Array.isArray(options.attachments) ? options.attachments.filter((attachment) => (
-    attachment && attachment.filename && attachment.content
-  )) : [];
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "User-Agent": "IMPULSE/1.0"
-    },
-    body: JSON.stringify({
-      from,
-      to: [to],
-      subject,
-      text,
-      attachments: attachments.length ? attachments : undefined
-    })
-  });
-  const result = await response.json().catch(() => ({}));
-  return {
-    ok: response.ok,
-    configured: true,
-    id: result.id || "",
-    error: result.message || result.name || ""
-  };
+function recordEmailLog(db, emailType, recipient, subject, result = {}) {
+  // AI: log provider outcome, not recipient PII. Future normalized table: database/email-service.sql.
+  db.emailLogs = [{
+    id: createId("email"),
+    provider: result.provider || "resend",
+    emailType,
+    recipientHash: privacyHash("email", normalizeEmail(recipient)),
+    subject: subject || result.subject || "",
+    status: result.ok ? "sent" : (result.configured === false ? "not_configured" : "failed"),
+    providerMessageId: result.id || "",
+    errorMessage: result.error || "",
+    createdAt: nowIso()
+  }, ...(db.emailLogs || [])].slice(0, 5000);
+}
+
+async function sendTrackedEmail(db, emailType, payload = {}) {
+  const result = await sendProviderEmail(emailType, payload);
+  recordEmailLog(db, emailType, payload.to || payload.email || payload.recipient, result.subject || payload.subject, result);
+  return result;
+}
+
+function canExposeDevCode(mail) {
+  return !mail.ok && process.env.VERCEL_ENV !== "production" && process.env.NODE_ENV !== "production";
 }
 
 function log(db, action, detail, actor = "SYSTEM") {
@@ -721,7 +794,10 @@ async function sendArchivePackage(db, kind, records, dateFn) {
     `Record count: ${records.length}.`,
     "The JSON archive is attached to this email. Do not share it publicly."
   ].join("\n");
-  const mail = await sendEmail(backupEmail, subject, body, {
+  const mail = await sendTrackedEmail(db, EmailTypes.ADMIN_ALERT, {
+    to: backupEmail,
+    subject,
+    message: body,
     attachments: [archiveAttachment(filename, payload)]
   });
   if (mail.ok) {
@@ -742,6 +818,7 @@ async function sendArchivePackage(db, kind, records, dateFn) {
 }
 
 async function applyRetentionPolicies(db) {
+  // AI: chat=14d purge; logs/orders=30d purge only after backup mail succeeds.
   let changed = false;
   const now = Date.now();
   const chatCutoff = now - ChatRetentionMs;
@@ -768,6 +845,8 @@ async function applyRetentionPolicies(db) {
       db.adminLogs = db.adminLogs.filter((entry) => !expiredIds.has(entry.id));
       log(db, "系统日志备份", `${mail.range.start} 至 ${mail.range.end}，${expiredLogs.length} 条，已发送至 ${db.systemSettings.backupEmail}`);
       changed = true;
+    } else if (!mail.skipped) {
+      changed = true;
     }
   }
 
@@ -784,6 +863,8 @@ async function applyRetentionPolicies(db) {
         delete db.orderChats[orderId];
       });
       log(db, "单号数据备份", `${mail.range.start} 至 ${mail.range.end}，${expiredOrders.length} 条，已发送至 ${db.systemSettings.backupEmail}`);
+      changed = true;
+    } else if (!mail.skipped) {
       changed = true;
     }
   }
@@ -884,6 +965,44 @@ function createOrderOnBackend(db, payload, actor) {
   return { ok: true, order };
 }
 
+function notificationEmailForUsername(db, username) {
+  const user = findUser(db, username);
+  const profile = profileByUsername(db, username);
+  return normalizeEmail(profile?.notificationEmail || userEmail(user));
+}
+
+function emailNoticeEnabled(db, username, key) {
+  const profile = profileByUsername(db, username);
+  return !profile || profile.emailNotices?.[key] !== false;
+}
+
+async function notifyOrderCreated(db, order) {
+  // AI: notification opt-outs live on profile.emailNotices; all user-facing mail content stays English.
+  const to = notificationEmailForUsername(db, order.customerUsername);
+  if (!isEmail(to) || !emailNoticeEnabled(db, order.customerUsername, "orderSuccess")) {
+    return null;
+  }
+  return sendTrackedEmail(db, EmailTypes.ORDER_CREATED, {
+    to,
+    orderId: order.id,
+    orderName: order.productTitle,
+    amount: order.price
+  });
+}
+
+async function notifyOrderCompleted(db, order) {
+  const to = notificationEmailForUsername(db, order.customerUsername);
+  if (!isEmail(to) || !emailNoticeEnabled(db, order.customerUsername, "completionSuccess")) {
+    return null;
+  }
+  return sendTrackedEmail(db, EmailTypes.ORDER_COMPLETED, {
+    to,
+    orderId: order.id,
+    orderName: order.productTitle,
+    completedAt: order.completedAt || nowIso()
+  });
+}
+
 function updateOrderStatusOnBackend(db, orderId, status, actor) {
   const order = db.orders.find((item) => item.id === orderId);
   if (!order) {
@@ -962,7 +1081,8 @@ async function handleAction(action, payload = {}, request = {}) {
   }
 
   if (action === "health") {
-    return { ok: true, storage: storageType(), hasEmail: Boolean(process.env.RESEND_API_KEY && (process.env.MAIL_FROM || process.env.RESEND_FROM)) };
+    const email = emailHealth();
+    return { ok: true, storage: storageType(), hasEmail: email.configured, email };
   }
 
   if (action === "bootstrap") {
@@ -1023,23 +1143,109 @@ async function handleAction(action, payload = {}, request = {}) {
   }
 
   if (action === "sendVerification") {
+    // AI: avoid email enumeration; invalid register/login targets return generic success without sending.
     const purpose = String(payload.purpose || "login");
     const email = normalizeEmail(payload.email);
     if (!isEmail(email)) {
       return { ok: false, message: "请输入有效邮箱。" };
     }
-    if (purpose === "register" && findUserByEmail(db, email)) {
-      return { ok: false, message: "邮箱已被注册。" };
+    const hasUser = Boolean(findUserByEmail(db, email));
+    const shouldSend = purpose === "register" ? !hasUser : hasUser;
+    if (!shouldSend) {
+      log(db, "验证码请求已忽略", `${purpose} / ${privacyHash("email", email).slice(0, 12)}`);
+      await writeDb(db);
+      return { ok: true, message: EmailPrivacyResponse, mail: { ok: false, skipped: true, configured: emailHealth().configured } };
     }
-    if (purpose !== "register" && !findUserByEmail(db, email)) {
-      return { ok: false, message: "该邮箱未注册。" };
+    const limited = canRequestVerification(db, email, request);
+    if (!limited.ok) {
+      log(db, "验证码限流", `${purpose} / ${privacyHash("email", email).slice(0, 12)}`);
+      await writeDb(db);
+      return { ok: false, message: limited.message };
     }
     const code = String(Math.floor(100000 + Math.random() * 900000));
-    storeVerification(db, purpose, email, code);
-    const mail = await sendEmail(email, "Your IMPULSE verification code", `Your IMPULSE verification code is ${code}.\nIt expires in 10 minutes.`);
-    log(db, "验证码发送", `${email} / ${purpose} / mail:${mail.ok ? "sent" : "fallback"}`);
+    storeVerification(db, purpose, email, code, request);
+    const mail = await sendTrackedEmail(db, EmailTypes.AUTH_VERIFICATION_CODE, {
+      to: email,
+      code,
+      purpose,
+      expiresInMinutes: Math.floor(VerificationMaxAgeMs / 60000)
+    });
+    log(db, "验证码发送", `${privacyHash("email", email).slice(0, 12)} / ${purpose} / mail:${mail.ok ? "sent" : "fallback"}`);
     await writeDb(db);
-    return { ok: true, mail, devCode: mail.ok ? "" : code };
+    if (!mail.ok && !canExposeDevCode(mail)) {
+      return { ok: false, message: "邮件服务暂不可用，请稍后重试。", mail: { ok: false, configured: mail.configured !== false } };
+    }
+    return { ok: true, message: EmailPrivacyResponse, mail, devCode: canExposeDevCode(mail) ? code : "" };
+  }
+
+  if (action === "verifyCode") {
+    const purpose = String(payload.purpose || "login");
+    const email = normalizeEmail(payload.email);
+    if (!isEmail(email)) {
+      return { ok: false, message: "请输入有效邮箱。" };
+    }
+    const verified = verifyCode(db, purpose, email, payload.code);
+    if (!verified.ok) {
+      return verified;
+    }
+    await writeDb(db);
+    return { ok: true };
+  }
+
+  if (action === "sendMagicLink") {
+    const email = normalizeEmail(payload.email);
+    if (!isEmail(email)) {
+      return { ok: false, message: "请输入有效邮箱。" };
+    }
+    const user = findUserByEmail(db, email);
+    if (!user) {
+      log(db, "魔法链接请求已忽略", privacyHash("email", email).slice(0, 12));
+      await writeDb(db);
+      return { ok: true, message: EmailPrivacyResponse };
+    }
+    const limited = canRequestVerification(db, email, request);
+    if (!limited.ok) {
+      await writeDb(db);
+      return { ok: false, message: limited.message };
+    }
+    const token = crypto.randomBytes(24).toString("base64url");
+    storeVerification(db, "magic_link", email, token, request);
+    const host = request.request?.headers?.host ? `https://${request.request.headers.host}` : "https://impulse.ccwu.cc";
+    const magicLink = `${host}/?magic_token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+    const mail = await sendTrackedEmail(db, EmailTypes.AUTH_MAGIC_LINK, {
+      to: email,
+      magicLink,
+      expiresInMinutes: Math.floor(VerificationMaxAgeMs / 60000)
+    });
+    await writeDb(db);
+    return { ok: mail.ok, message: mail.ok ? EmailPrivacyResponse : "邮件服务暂不可用，请稍后重试。" };
+  }
+
+  if (action === "passwordReset") {
+    const email = normalizeEmail(payload.email);
+    if (!isEmail(email)) {
+      return { ok: false, message: "请输入有效邮箱。" };
+    }
+    const user = findUserByEmail(db, email);
+    if (!user) {
+      log(db, "密码重置请求已忽略", privacyHash("email", email).slice(0, 12));
+      await writeDb(db);
+      return { ok: true, message: EmailPrivacyResponse };
+    }
+    const limited = canRequestVerification(db, email, request);
+    if (!limited.ok) {
+      await writeDb(db);
+      return { ok: false, message: limited.message };
+    }
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    storeVerification(db, "password_reset", email, code, request);
+    const mail = await sendTrackedEmail(db, EmailTypes.PASSWORD_RESET, {
+      to: email,
+      code,
+      expiresInMinutes: Math.floor(VerificationMaxAgeMs / 60000)
+    });
+    await writeDb(db);
+    return { ok: mail.ok, message: mail.ok ? EmailPrivacyResponse : "邮件服务暂不可用，请稍后重试。", devCode: canExposeDevCode(mail) ? code : "" };
   }
 
   if (action === "loginPassword") {
@@ -1225,6 +1431,7 @@ async function handleAction(action, payload = {}, request = {}) {
     if (!result.ok) {
       return result;
     }
+    await notifyOrderCreated(db, result.order);
     await writeDb(db);
     return { ok: true, order: result.order, snapshot: sanitizeSnapshot(db) };
   }
@@ -1236,6 +1443,9 @@ async function handleAction(action, payload = {}, request = {}) {
     const result = updateOrderStatusOnBackend(db, payload.orderId, payload.status, request.user);
     if (!result.ok) {
       return result;
+    }
+    if (payload.status === "completed") {
+      await notifyOrderCompleted(db, result.order);
     }
     await writeDb(db);
     return { ok: true, order: result.order, snapshot: sanitizeSnapshot(db) };
@@ -1299,5 +1509,8 @@ module.exports = {
   sanitizeSnapshot,
   readDb,
   writeDb,
-  normalizeDb
+  normalizeDb,
+  recordEmailLog,
+  sendTrackedEmail,
+  emailHealth
 };

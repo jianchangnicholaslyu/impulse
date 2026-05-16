@@ -6,6 +6,10 @@ IMPULSE uses Supabase as a persistent backend store when these Vercel environmen
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_STATE_TABLE`
 - `SUPABASE_STORAGE_BUCKET`
+- `RESEND_API_KEY`
+- `RESEND_FROM_AUTH`
+- `RESEND_FROM_NOTIFY`
+- `RESEND_FROM_SUPPORT`
 
 The service role key must stay server-side only. Do not put it in frontend code, `.env.example`, screenshots, issues, or commits.
 
@@ -29,6 +33,10 @@ SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVER_SIDE_SERVICE_ROLE_KEY
 SUPABASE_STATE_TABLE=impulse_state
 SUPABASE_STORAGE_BUCKET=impulse-assets
 BACKEND_SECRET=YOUR_LONG_RANDOM_SECRET
+RESEND_API_KEY=YOUR_RESEND_SERVER_SIDE_KEY
+RESEND_FROM_AUTH=IMPULSE Auth <auth@auth.impulse.ccwu.cc>
+RESEND_FROM_NOTIFY=IMPULSE Notify <notify@auth.impulse.ccwu.cc>
+RESEND_FROM_SUPPORT=IMPULSE Support <support@auth.impulse.ccwu.cc>
 ```
 
 Set them for Production, Preview, and Development if you want all environments to share the same persistent database.
@@ -63,4 +71,6 @@ Expected:
 {"ok":true,"storage":"supabase","hasEmail":false}
 ```
 
-`hasEmail` becomes `true` after configuring `RESEND_API_KEY` and `MAIL_FROM`.
+`hasEmail` becomes `true` after configuring `RESEND_API_KEY`, `RESEND_FROM_AUTH`, `RESEND_FROM_NOTIFY`, and `RESEND_FROM_SUPPORT`.
+
+Email audit data is currently persisted inside the JSON state for compatibility. The future normalized table script is in `database/email-service.sql`.
