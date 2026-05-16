@@ -779,7 +779,7 @@ async function sendArchivePackage(db, kind, records, dateFn) {
   }
   const range = dateRange(records, dateFn);
   const kindLabel = kind === "logs" ? "System Logs" : "Order Records";
-  const subject = `IMPULSE ${kindLabel} Backup ${range.start} to ${range.end}`;
+  const subject = `IMPULSE J ${kindLabel} Backup ${range.start} to ${range.end}`;
   const filename = `impulse-${kind === "logs" ? "system-logs" : "order-records"}-${range.start}-to-${range.end}.json`;
   const payload = {
     exportedAt: nowIso(),
@@ -789,7 +789,7 @@ async function sendArchivePackage(db, kind, records, dateFn) {
     records
   };
   const body = [
-    `IMPULSE ${kindLabel} backup package.`,
+    `IMPULSE J ${kindLabel} backup package.`,
     `Period: ${range.start} to ${range.end}.`,
     `Record count: ${records.length}.`,
     "The JSON archive is attached to this email. Do not share it publicly."

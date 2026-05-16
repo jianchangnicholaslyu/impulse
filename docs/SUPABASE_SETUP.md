@@ -1,6 +1,6 @@
-# IMPULSE Supabase Setup
+# IMPULSE J Supabase Setup
 
-IMPULSE uses Supabase as a persistent backend store when these Vercel environment variables are configured:
+IMPULSE J uses Supabase as a persistent backend store when these Vercel environment variables are configured:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
@@ -34,9 +34,9 @@ SUPABASE_STATE_TABLE=impulse_state
 SUPABASE_STORAGE_BUCKET=impulse-assets
 BACKEND_SECRET=YOUR_LONG_RANDOM_SECRET
 RESEND_API_KEY=YOUR_RESEND_SERVER_SIDE_KEY
-RESEND_FROM_AUTH=IMPULSE Auth <auth@auth.impulse.ccwu.cc>
-RESEND_FROM_NOTIFY=IMPULSE Notify <notify@auth.impulse.ccwu.cc>
-RESEND_FROM_SUPPORT=IMPULSE Support <support@auth.impulse.ccwu.cc>
+RESEND_FROM_AUTH=IMPULSE J Auth <auth@auth.impulse.ccwu.cc>
+RESEND_FROM_NOTIFY=IMPULSE J Notify <notify@auth.impulse.ccwu.cc>
+RESEND_FROM_SUPPORT=IMPULSE J Support <support@auth.impulse.ccwu.cc>
 ```
 
 Set them for Production, Preview, and Development if you want all environments to share the same persistent database.

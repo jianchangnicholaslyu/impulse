@@ -1,6 +1,6 @@
-# IMPULSE Resend Setup
+# IMPULSE J Resend Setup
 
-IMPULSE sends account and transactional email through Resend from Vercel serverless functions.
+IMPULSE J sends account and transactional email through Resend from Vercel serverless functions.
 
 ## Environment Variables
 
@@ -8,9 +8,9 @@ Set these in Vercel Project -> Settings -> Environment Variables for Production 
 
 ```text
 RESEND_API_KEY=YOUR_RESEND_API_KEY
-RESEND_FROM_AUTH=IMPULSE Auth <auth@auth.impulse.ccwu.cc>
-RESEND_FROM_NOTIFY=IMPULSE Notify <notify@auth.impulse.ccwu.cc>
-RESEND_FROM_SUPPORT=IMPULSE Support <support@auth.impulse.ccwu.cc>
+RESEND_FROM_AUTH=IMPULSE J Auth <auth@auth.impulse.ccwu.cc>
+RESEND_FROM_NOTIFY=IMPULSE J Notify <notify@auth.impulse.ccwu.cc>
+RESEND_FROM_SUPPORT=IMPULSE J Support <support@auth.impulse.ccwu.cc>
 ```
 
 The Resend API key must never be committed or exposed in frontend code.

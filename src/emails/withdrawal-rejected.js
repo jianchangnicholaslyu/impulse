@@ -2,7 +2,7 @@
 const { renderEmail, textFromLines } = require("./_layout");
 
 module.exports = function withdrawalRejected(payload = {}) {
-  const subject = "IMPULSE withdrawal rejected";
+  const subject = "IMPULSE J withdrawal rejected";
   const rows = [
     { label: "Request ID", value: payload.withdrawalId || payload.orderId || "" },
     { label: "Reason", value: payload.reason || "" }
@@ -14,7 +14,7 @@ module.exports = function withdrawalRejected(payload = {}) {
   ]);
   const html = renderEmail({
     title: "Withdrawal rejected",
-    preheader: "Your IMPULSE withdrawal request was rejected.",
+    preheader: "Your IMPULSE J withdrawal request was rejected.",
     intro: "Your withdrawal request was rejected.",
     rows
   });

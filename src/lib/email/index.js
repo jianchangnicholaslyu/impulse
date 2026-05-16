@@ -86,7 +86,7 @@ function validateEmailConfiguration(type) {
     return {
       ok: false,
       configured: true,
-      error: "Production email sender must use a verified IMPULSE domain."
+      error: "Production email sender must use a verified IMPULSE J domain."
     };
   }
   return { ok: true, configured: true, apiKey, from, domain };

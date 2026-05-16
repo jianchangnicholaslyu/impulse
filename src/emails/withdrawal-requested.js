@@ -2,7 +2,7 @@
 const { renderEmail, textFromLines } = require("./_layout");
 
 module.exports = function withdrawalRequested(payload = {}) {
-  const subject = "IMPULSE withdrawal requested";
+  const subject = "IMPULSE J withdrawal requested";
   const rows = [
     { label: "Request ID", value: payload.withdrawalId || payload.orderId || "" },
     { label: "Amount", value: payload.amount ? `${payload.amount} points` : "" }
@@ -14,7 +14,7 @@ module.exports = function withdrawalRequested(payload = {}) {
   ]);
   const html = renderEmail({
     title: "Withdrawal requested",
-    preheader: "Your IMPULSE withdrawal request was received.",
+    preheader: "Your IMPULSE J withdrawal request was received.",
     intro: "Your withdrawal request has been received.",
     rows
   });

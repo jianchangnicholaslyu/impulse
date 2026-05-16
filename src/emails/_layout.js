@@ -60,7 +60,7 @@ function renderEmail({ title, preheader, intro = [], code = "", action = null, r
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #eaecf0;border-radius:16px;overflow:hidden;">
             <tr>
               <td style="padding:22px 26px;background:#111827;color:#ffffff;">
-                <div style="font-size:18px;font-weight:800;letter-spacing:0;">IMPULSE</div>
+                <div style="font-size:18px;font-weight:800;letter-spacing:0;">IMPULSE J</div>
               </td>
             </tr>
             <tr>
@@ -75,7 +75,7 @@ function renderEmail({ title, preheader, intro = [], code = "", action = null, r
             </tr>
             <tr>
               <td style="padding:18px 26px;background:#f9fafb;border-top:1px solid #eaecf0;color:#667085;font-size:12px;line-height:1.5;">
-                This message was sent by IMPULSE. If you did not request it, you can safely ignore it.
+                This message was sent by IMPULSE J. If you did not request it, you can safely ignore it.
               </td>
             </tr>
           </table>

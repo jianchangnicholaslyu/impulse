@@ -62,24 +62,26 @@
   const DefaultLanguage = "en";
   const LocalLanguageCodes = ["en", "zh-CN"];
   const LocalContentLanguageCodes = ["en", "zh-CN"];
+  const BrandName = "IMPULSE J";
+  const BrandTagline = "Driven by Gamers' Momentum";
   const ControllingLanguageNotice = "English is the controlling language for all legal, payment, refund, dispute, withdrawal, and official communication terms. Any translation is provided for convenience only and does not modify the English terms.";
   const ProtectedTranslationSelector = ".notranslate, [translate='no'], .policy-document, .official-communication, .financial-value, .status-value, .order-locked-term, [data-no-machine-translate='true']";
   const LegalInfoPages = ["terms", "privacy", "refund", "payment", "points", "dispute", "withdrawal"];
   const LegalInfoContent = {
     terms: {
       title: "Terms of Service",
-      intro: "These Terms of Service govern access to and use of IMPULSE. The English version controls all rights, duties, account rules, purchases, refunds, disputes, and platform communications.",
+      intro: `These Terms of Service govern access to and use of ${BrandName}. The English version controls all rights, duties, account rules, purchases, refunds, disputes, and platform communications.`,
       sections: [
-        ["Service Scope", "IMPULSE provides a marketplace-style interface for game coaching, companion play, order coordination, account listing workflows, and related digital services. Some features may remain simulated or pending backend expansion until officially launched."],
-        ["Accounts", "Users are responsible for accurate account information, account security, and all activity performed through their account. IMPULSE may restrict, suspend, or terminate accounts for fraud, abuse, payment risk, policy violations, or security concerns."],
+        ["Service Scope", `${BrandName} provides a marketplace-style interface for game coaching, companion play, order coordination, account listing workflows, and related digital services. Some features may remain simulated or pending backend expansion until officially launched.`],
+        ["Accounts", `Users are responsible for accurate account information, account security, and all activity performed through their account. ${BrandName} may restrict, suspend, or terminate accounts for fraud, abuse, payment risk, policy violations, or security concerns.`],
         ["Orders", "Orders, reservations, chats, and operational records are handled according to the displayed English order terms, payment rules, refund rules, dispute rules, and withdrawal rules."]
       ]
     },
     privacy: {
       title: "Privacy Policy",
-      intro: "This Privacy Policy describes how IMPULSE handles account, order, payment, communication, and operational data. The English version controls.",
+      intro: `This Privacy Policy describes how ${BrandName} handles account, order, payment, communication, and operational data. The English version controls.`,
       sections: [
-        ["Data We Process", "IMPULSE may process account identifiers, email addresses, profile fields, order records, wallet or point balance records, chat messages, uploaded images, system logs, and support records needed to operate the service."],
+        ["Data We Process", `${BrandName} may process account identifiers, email addresses, profile fields, order records, wallet or point balance records, chat messages, uploaded images, system logs, and support records needed to operate the service.`],
         ["Purpose", "Data is used for authentication, account safety, order fulfillment, payment and refund handling, dispute review, support, anti-abuse controls, compliance, and service improvement."],
         ["Retention", "Chat records are intended to be retained for 14 days. System logs and order-number records are intended to be retained for 30 days, then archived or removed according to the active operational policy."]
       ]
@@ -106,9 +108,9 @@
       title: "Points Rules",
       intro: "These Points Rules explain point balances, recharges, spending, manual corrections, tips, refunds, and account reviews. The English version controls.",
       sections: [
-        ["Balance", "Available points represent the user balance shown inside IMPULSE. Manual corrections require administrator authorization and should be logged."],
+        ["Balance", `Available points represent the user balance shown inside ${BrandName}. Manual corrections require administrator authorization and should be logged.`],
         ["Use", "Points may be spent on eligible orders, reservations, rush requests, tips, and other enabled platform services."],
-        ["Review", "IMPULSE may review point activity for fraud, abuse, error, or disputed transactions and may adjust records according to the English policy terms."]
+        ["Review", `${BrandName} may review point activity for fraud, abuse, error, or disputed transactions and may adjust records according to the English policy terms.`]
       ]
     },
     dispute: {
@@ -125,7 +127,7 @@
       intro: "These Withdrawal Rules govern staff cash-out requests, review, approval, rejection, timing, and notices. The English version controls.",
       sections: [
         ["Eligibility", "Withdrawals may require completed orders, available staff balance, identity or risk review, and compliance with internal payout rules."],
-        ["Review", "IMPULSE may delay, reject, or adjust a withdrawal request if records are incomplete, disputed, suspicious, or inconsistent with the English rules."],
+        ["Review", `${BrandName} may delay, reject, or adjust a withdrawal request if records are incomplete, disputed, suspicious, or inconsistent with the English rules.`],
         ["Notices", "Withdrawal requested, approved, and rejected notices are official communications and are sent in English."]
       ]
     }
@@ -152,6 +154,54 @@
 
   const DevelopmentRecords = [
     // AI: top item = next release draft. Do not mark Uploaded or push until user explicitly says upload.
+    {
+      version: "v0.18.0",
+      releasedAt: "2026-05-17",
+      nameI18n: localizedPair("Release Log Refinement", "开发日志精简"),
+      statusI18n: localizedPair("Local draft, not uploaded", "本地草案，未上传"),
+      summaryI18n: localizedPair(
+        "Refines version visibility so account menus stay concise while administrators can inspect detailed release notes on demand.",
+        "精简账户版本展示，同时让管理员按需查看更完整的版本细节。"
+      ),
+      itemsI18n: [
+        localizedPair("Simplified the customer current-version dialog by removing update-detail bullets from the default account flow.", "精简顾客当前版本弹窗，从默认账户流程中移除更新细节列表。"),
+        localizedPair("Changed the admin development log to show only version number, release theme, summary, and date in each list entry.", "将管理员开发日志列表改为每条仅显示版本号、主题、概要和日期。"),
+        localizedPair("Moved detailed release notes into a dedicated modal opened from each development-log entry.", "将版本细节移动到每条开发日志点开后的独立弹窗中。"),
+        localizedPair("Expanded release details with a more operational structure covering delivery scope, platform impact, and deployment notes.", "以交付范围、平台影响和部署备注的结构扩展版本细节，使其更加专业。")
+      ]
+    },
+    {
+      version: "v0.17.0",
+      releasedAt: "2026-05-17",
+      nameI18n: localizedPair("Brand Refresh", "品牌焕新"),
+      statusI18n: localizedPair("Local draft, not uploaded", "本地草案，未上传"),
+      summaryI18n: localizedPair(
+        "Renames the visible brand to IMPULSE J and introduces the new driven-by-gamers tagline.",
+        "将可见品牌名更新为 IMPULSE J，并引入新的玩家动能副标题。"
+      ),
+      itemsI18n: [
+        localizedPair("Changed the top-left wordmark to a Roman-style IMPULSE plus a larger handwritten J.", "将左上角文字标识改为罗马体 IMPULSE 加更大号手写体 J。"),
+        localizedPair("Updated the site subtitle to Driven by Gamers' Momentum.", "将站点副标题更新为 Driven by Gamers' Momentum。"),
+        localizedPair("Synced visible account, about, title, footer, legal, and official email brand mentions to IMPULSE J.", "将账户、关于、标题、页脚、法律和官方邮件中的可见品牌名同步为 IMPULSE J。"),
+        localizedPair("Kept the icon mark as a pending placeholder for the later logo decision.", "保留图标标识为待定占位，等待后续 Logo 决策。")
+      ]
+    },
+    {
+      version: "v0.16.0",
+      releasedAt: "2026-05-17",
+      nameI18n: localizedPair("Loading Experience", "加载体验"),
+      statusI18n: localizedPair("Local draft, not uploaded", "本地草案，未上传"),
+      summaryI18n: localizedPair(
+        "Adds a branded animated loading layer that appears before the first interface render is complete.",
+        "新增品牌化动态加载层，在首轮界面渲染完成前显示。"
+      ),
+      itemsI18n: [
+        localizedPair("Added an immediate full-screen loading layer in the HTML shell.", "在 HTML 外壳中加入立即显示的全屏加载层。"),
+        localizedPair("Added a continuously jumping IMPULSE J loading mark and staggered dot animation.", "新增持续跳跃的 IMPULSE J 加载标识和错峰圆点动画。"),
+        localizedPair("Automatically fades the loading layer out after app initialization and first render.", "应用初始化和首轮渲染完成后自动淡出加载层。"),
+        localizedPair("Added reduced-motion support so animation can pause for users who prefer less motion.", "加入减少动态效果支持，尊重用户的系统动效偏好。")
+      ]
+    },
     {
       version: "v0.15.0",
       releasedAt: "2026-05-17",
@@ -460,9 +510,9 @@
     "搜索游戏、服务、账号": { "zh-TW": "搜尋遊戲、服務、帳號", en: "Search games, services, accounts", fr: "Rechercher jeux, services, comptes", ja: "ゲーム、サービス、アカウントを検索", ko: "게임, 서비스, 계정 검색", es: "Buscar juegos, servicios y cuentas" },
     "搜索": { "zh-TW": "搜尋", en: "Search", fr: "Rechercher", ja: "検索", ko: "검색", es: "Buscar" },
     "当前位置": { "zh-TW": "目前位置", en: "Current Location", fr: "Emplacement actuel", ja: "現在地", ko: "현재 위치", es: "Ubicación actual" },
-    "游戏服务商城": { "zh-TW": "遊戲服務商城", en: "Game Service Marketplace", fr: "Marché de services de jeu", ja: "ゲームサービスマーケット", ko: "게임 서비스 마켓", es: "Mercado de servicios de juego" },
-    "IMPULSE 游戏服务商城的基础信息页。": { "zh-TW": "IMPULSE 遊戲服務商城的基礎資訊頁。", en: "Basic information for the IMPULSE game service marketplace.", fr: "Informations de base de la plateforme IMPULSE.", ja: "IMPULSE ゲームサービスマーケットの基本情報です。", ko: "IMPULSE 게임 서비스 마켓의 기본 정보입니다.", es: "Información básica del mercado de servicios de juego IMPULSE." },
-    "关于 IMPULSE": { "zh-TW": "關於 IMPULSE", en: "About IMPULSE", fr: "À propos d'IMPULSE", ja: "IMPULSE について", ko: "IMPULSE 소개", es: "Acerca de IMPULSE" },
+    "玩家动能驱动": { "zh-TW": "Driven by Gamers' Momentum", en: "Driven by Gamers' Momentum", fr: "Driven by Gamers' Momentum", ja: "Driven by Gamers' Momentum", ko: "Driven by Gamers' Momentum", es: "Driven by Gamers' Momentum" },
+    "IMPULSE J 玩家动能驱动的基础信息页。": { "zh-TW": "IMPULSE J 的基礎資訊頁。", en: "Basic information for IMPULSE J.", fr: "Informations de base de IMPULSE J.", ja: "IMPULSE J の基本情報です。", ko: "IMPULSE J 기본 정보입니다.", es: "Información básica de IMPULSE J." },
+    "关于 IMPULSE J": { "zh-TW": "關於 IMPULSE J", en: "About IMPULSE J", fr: "À propos d'IMPULSE J", ja: "IMPULSE J について", ko: "IMPULSE J 소개", es: "Acerca de IMPULSE J" },
     "普通界面会继续支持多语言；法律、资金规则、争议结论、提现说明和官方邮件始终以英文为准。": { "zh-TW": "一般介面會繼續支援多語言；法律、資金規則、爭議結論、提現說明和官方郵件一律以英文為準。", en: "General interface text remains multilingual; legal terms, financial rules, dispute outcomes, withdrawal instructions, and official emails always rely on English.", fr: "L'interface générale reste multilingue; les règles juridiques et financières, les conclusions de litige, les instructions de retrait et les e-mails officiels reposent toujours sur l'anglais.", ja: "通常のUIは多言語対応を続けますが、法的条件、資金ルール、紛争結論、出金説明、公式メールは常に英語に基づきます。", ko: "일반 UI는 계속 다국어를 지원하지만 법적 조건, 자금 규칙, 분쟁 결과, 출금 안내, 공식 이메일은 항상 영어를 기준으로 합니다.", es: "La interfaz general sigue siendo multilingue; los términos legales, reglas financieras, decisiones de disputas, instrucciones de retiro y correos oficiales siempre se basan en inglés." },
     "加急待员工确认": { "zh-TW": "加急待員工確認", en: "Rush pending staff confirmation", fr: "Urgence en attente de confirmation", ja: "至急依頼はスタッフ確認待ち", ko: "긴급 요청 직원 확인 대기", es: "Urgencia pendiente de confirmación" },
     "加急已接受": { "zh-TW": "加急已接受", en: "Rush accepted", fr: "Urgence acceptée", ja: "至急依頼承認済み", ko: "긴급 요청 수락됨", es: "Urgencia aceptada" },
@@ -537,8 +587,8 @@
     "登录": { "zh-TW": "登入", en: "Sign In", fr: "Connexion", ja: "ログイン", ko: "로그인", es: "Iniciar sesión" },
     "注册": { "zh-TW": "註冊", en: "Register", fr: "Inscription", ja: "登録", ko: "가입", es: "Registrarse" },
     "注册并登录": { "zh-TW": "註冊並登入", en: "Register and Sign In", fr: "S'inscrire et se connecter", ja: "登録してログイン", ko: "가입 후 로그인", es: "Registrarse e iniciar sesión" },
-    "登录 IMPULSE": { "zh-TW": "登入 IMPULSE", en: "Sign In to IMPULSE", fr: "Connexion à IMPULSE", ja: "IMPULSE にログイン", ko: "IMPULSE 로그인", es: "Iniciar sesión en IMPULSE" },
-    "注册 IMPULSE": { "zh-TW": "註冊 IMPULSE", en: "Register for IMPULSE", fr: "Inscription à IMPULSE", ja: "IMPULSE に登録", ko: "IMPULSE 가입", es: "Registrarse en IMPULSE" },
+    "登录 IMPULSE J": { "zh-TW": "登入 IMPULSE J", en: "Sign In to IMPULSE J", fr: "Connexion à IMPULSE J", ja: "IMPULSE J にログイン", ko: "IMPULSE J 로그인", es: "Iniciar sesión en IMPULSE J" },
+    "注册 IMPULSE J": { "zh-TW": "註冊 IMPULSE J", en: "Register for IMPULSE J", fr: "Inscription à IMPULSE J", ja: "IMPULSE J に登録", ko: "IMPULSE J 가입", es: "Registrarse en IMPULSE J" },
     "用户名": { "zh-TW": "使用者名稱", en: "Username", fr: "Nom d'utilisateur", ja: "ユーザー名", ko: "사용자 이름", es: "Usuario" },
     "用户名或邮箱": { "zh-TW": "使用者名稱或電子郵件", en: "Username or Email", fr: "Nom d'utilisateur ou e-mail", ja: "ユーザー名またはメール", ko: "사용자 이름 또는 이메일", es: "Usuario o correo" },
     "账号或邮箱": { "zh-TW": "帳號或電子郵件", en: "Username or Email", fr: "Nom d'utilisateur ou e-mail", ja: "ユーザー名またはメール", ko: "사용자 이름 또는 이메일", es: "Usuario o correo" },
@@ -1620,9 +1670,9 @@
       }
     },
     async sendVerificationCode(to, code) {
-      const subject = "Your IMPULSE verification code";
+      const subject = "Your IMPULSE J verification code";
       const text = [
-        `Your IMPULSE verification code is ${code}.`,
+        `Your IMPULSE J verification code is ${code}.`,
         "It expires in 5 minutes.",
         "If you did not request this code, you can ignore this email."
       ].join("\n");
@@ -2393,8 +2443,8 @@
       if (profile && (!profile.notificationEmail || normalizeEmail(profile.notificationEmail) === previousEmail)) {
         this.saveProfile({ ...profile, notificationEmail: normalizedEmail });
       }
-      this.recordEnglishEmail(previousEmail, "IMPULSE email binding changed", "Your IMPULSE account email address has been changed. If this was not you, please contact support immediately.");
-      this.recordEnglishEmail(normalizedEmail, "IMPULSE email binding confirmed", "Your IMPULSE account is now bound to this email address.");
+      this.recordEnglishEmail(previousEmail, "IMPULSE J email binding changed", "Your IMPULSE J account email address has been changed. If this was not you, please contact support immediately.");
+      this.recordEnglishEmail(normalizedEmail, "IMPULSE J email binding confirmed", "Your IMPULSE J account is now bound to this email address.");
       this.log("修改绑定邮箱", `${currentUsername} ${previousEmail} -> ${normalizedEmail}`);
       return { ok: true, previousEmail, email: normalizedEmail };
     },
@@ -2427,7 +2477,7 @@
         context.orderId ? `Order ID: ${context.orderId}.` : "",
         context.itemName ? `Item: ${context.itemName}.` : "",
         context.amount ? `Amount: ${context.amount}.` : "",
-        "This is an IMPULSE account notification."
+        "This is an IMPULSE J account notification."
       ].filter(Boolean).join(" ");
       return this.recordEnglishEmail(to, notice.subject, body);
     },
@@ -3584,6 +3634,15 @@
   };
 
   const UI = {
+    hideAppLoader() {
+      const loader = Dom.appLoader || $("#appLoader");
+      document.body.classList.remove("app-loading");
+      document.body.classList.add("app-ready");
+      if (!loader) {
+        return;
+      }
+      window.setTimeout(() => loader.remove(), 320);
+    },
     toast(title, message = "") {
       const item = h("div", { className: "toast" }, h("strong", { text: title }), message ? h("span", { text: message }) : null);
       Dom.toastRoot.appendChild(item);
@@ -3942,11 +4001,11 @@
           ...Object.fromEntries(LegalInfoPages.map((page) => [page, LegalInfoContent[page]?.title || "Policy"]))
         };
         return {
-          kicker: "IMPULSE",
+          kicker: BrandName,
           title: titles[route.params.page] || "站点信息",
           description: isPolicy
             ? "English controls this policy page and any related official terms."
-            : "IMPULSE 游戏服务商城的基础信息页。",
+            : `${BrandName} - ${BrandTagline}`,
           stats: isPolicy
             ? [["Categories", metrics.categories], ["Game Sections", metrics.games], ["Products", metrics.products]]
             : [["分类", metrics.categories], ["分区", metrics.games], ["商品", metrics.products]]
@@ -4823,7 +4882,7 @@
         );
       }
       const map = {
-        about: ["关于 IMPULSE", "IMPULSE 专注游戏服务交易体验，当前版本使用本地数据模拟完整购物流程。"],
+        about: ["关于 IMPULSE J", `${BrandName} is driven by gamers' momentum and focuses on a cleaner game-service commerce experience.`],
         help: ["帮助中心", "普通用户可浏览、注册、下单和预约；员工账号可处理订单；管理员账号可维护内容与数据。"]
       };
       const [title, body] = map[page] || map.about;
@@ -4889,7 +4948,7 @@
           }
           const code = Verification.generate(purpose, email);
           const result = await Mail.sendVerificationCode(email, code);
-          Data.log("English email", `To: ${email} / Subject: Your IMPULSE verification code / Body: Your verification code is ${code}.`);
+          Data.log("English email", `To: ${email} / Subject: Your IMPULSE J verification code / Body: Your verification code is ${code}.`);
           if (result.ok) {
             codeHint.textContent = localizeStaticPhrase("验证码已发送，请查看邮箱。");
             UI.toast("验证码已发送", "验证码已发送，请查看邮箱。");
@@ -5016,7 +5075,7 @@
 
         const card = h("div", { className: "modal-card auth-card slide-up" },
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
-          h("h2", { text: isLogin ? "登录 IMPULSE" : "注册 IMPULSE" }),
+          h("h2", { text: isLogin ? "登录 IMPULSE J" : "注册 IMPULSE J" }),
           h("p", { className: "auth-subtitle", text: isLogin ? "可以使用账户密码登录，也可以切换为邮箱验证码登录。" : "注册时填写账户资料；带 * 的项目为必填，注册后不可修改。" }),
           h("div", { className: "tabs" },
             h("button", { className: `tab ${isLogin ? "active" : ""}`, type: "button", onClick: () => { mode = "login"; render(); } }, "登录"),
@@ -5417,7 +5476,7 @@
           codeHint.textContent = localizeStaticPhrase("正在发送验证码...");
           sendCodeButton.disabled = true;
           const result = await Mail.sendVerificationCode(email, code);
-          Data.log("English email", `To: ${email} / Subject: Your IMPULSE verification code / Body: Your verification code is ${code}.`);
+          Data.log("English email", `To: ${email} / Subject: Your IMPULSE J verification code / Body: Your verification code is ${code}.`);
           sendCodeButton.disabled = false;
           if (result.ok) {
             codeHint.textContent = localizeStaticPhrase("验证码已发送，请查看邮箱。");
@@ -6051,6 +6110,30 @@
         h("strong", { className: noTranslate ? "notranslate" : "", translate: noTranslate ? "no" : null, text: value })
       );
     },
+    releaseDetailSections(release) {
+      const theme = localizedI18n(release.nameI18n);
+      const summary = localizedI18n(release.summaryI18n);
+      const status = localizedI18n(release.statusI18n);
+      const notes = (release.itemsI18n || []).map((item) => localizedI18n(item));
+      return [
+        {
+          title: "交付范围",
+          body: `本版本围绕「${theme}」展开，目标是在不改变现有主要业务路径的前提下提升对应模块的可用性、可维护性和发布可追踪性。概要：${summary}`
+        },
+        {
+          title: "关键变更",
+          items: notes
+        },
+        {
+          title: "平台影响",
+          body: "本版本保持既有数据结构和用户存量数据兼容，避免破坏已注册账户、订单记录、资金记录和管理配置。界面调整优先控制在展示层，降低对业务逻辑的影响。"
+        },
+        {
+          title: "部署备注",
+          body: `版本日期：${release.releasedAt}。当前状态：${status}。如处于本地草案阶段，需要在最终确认后统一合并、提交并上传；如为生产版本，则表示该记录对应已经上线的可用版本。`
+        }
+      ];
+    },
     openCurrentVersion() {
       const release = CurrentRelease;
       UI.openModal(
@@ -6067,15 +6150,39 @@
             this.releaseMeta(localizeStaticPhrase("发布时间"), release.releasedAt, true),
             this.releaseMeta(localizeStaticPhrase("上传状态"), localizedI18n(release.statusI18n))
           ),
-          h("section", { className: "release-section" },
-            h("h3", { text: localizeStaticPhrase("本次更新") }),
-            h("ul", { className: "release-bullets" },
-              release.itemsI18n.map((item) => h("li", { text: localizedI18n(item) }))
-            )
-          ),
           State.currentUser?.role === "admin" ? h("div", { className: "modal-actions" },
             h("button", { className: "button button-primary", type: "button", onClick: () => this.openDevelopmentLog() }, icon("fa-solid fa-clock-rotate-left"), "查看开发日志")
           ) : null
+        )
+      );
+    },
+    openReleaseDetails(release) {
+      const sections = this.releaseDetailSections(release);
+      UI.openModal(
+        h("div", { className: "modal-card modal-wide slide-up" },
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("div", { className: "release-hero" },
+            h("span", { className: "release-badge" }, icon("fa-solid fa-code-branch"), "版本细节"),
+            h("h2", {}, h("span", { className: "notranslate", translate: "no", text: release.version }), " · ", localizedI18n(release.nameI18n)),
+            h("p", { text: localizedI18n(release.summaryI18n) })
+          ),
+          h("div", { className: "release-meta-grid" },
+            this.releaseMeta(localizeStaticPhrase("版本号"), release.version, true),
+            this.releaseMeta(localizeStaticPhrase("版本名称"), localizedI18n(release.nameI18n)),
+            this.releaseMeta(localizeStaticPhrase("发布时间"), release.releasedAt, true),
+            this.releaseMeta(localizeStaticPhrase("上传状态"), localizedI18n(release.statusI18n))
+          ),
+          h("div", { className: "release-detail-stack" },
+            sections.map((section) => h("section", { className: "release-section" },
+              h("h3", { text: section.title }),
+              section.items
+                ? h("ul", { className: "release-bullets" }, section.items.map((item) => h("li", { text: item })))
+                : h("p", { text: section.body })
+            ))
+          ),
+          h("div", { className: "modal-actions" },
+            h("button", { className: "button button-ghost", type: "button", onClick: () => this.openDevelopmentLog() }, icon("fa-solid fa-arrow-left"), "返回开发日志")
+          )
         )
       );
     },
@@ -6085,17 +6192,18 @@
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
           h("h2", { text: "开发日志" }),
           h("div", { className: "release-list" },
-            DevelopmentRecords.map((release, index) => h("article", { className: `release-card ${index === 0 ? "current" : ""}` },
+            DevelopmentRecords.map((release, index) => h("button", {
+              className: `release-card release-card-button ${index === 0 ? "current" : ""}`,
+              type: "button",
+              ariaLabel: `${release.version} ${localizedI18n(release.nameI18n)} 版本细节`,
+              onClick: () => this.openReleaseDetails(release)
+            },
               h("div", { className: "release-card-head" },
-                h("strong", { className: "notranslate", translate: "no", text: release.version }),
-                h("span", { className: "tag", text: localizedI18n(release.statusI18n) })
+                h("strong", { className: "notranslate", translate: "no", text: release.version })
               ),
               h("h3", { text: localizedI18n(release.nameI18n) }),
               h("p", { text: localizedI18n(release.summaryI18n) }),
-              h("div", { className: "release-date" }, localizeStaticPhrase("发布时间"), "：", h("span", { className: "notranslate", translate: "no", text: release.releasedAt })),
-              h("ul", { className: "release-bullets" },
-                release.itemsI18n.map((item) => h("li", { text: localizedI18n(item) }))
-              )
+              h("div", { className: "release-date" }, "日期：", h("span", { className: "notranslate", translate: "no", text: release.releasedAt }))
             ))
           )
         )
@@ -6698,6 +6806,7 @@
       Dom.modalRoot = $("#modalRoot");
       Dom.contextMenu = $("#contextMenu");
       Dom.toastRoot = $("#toastRoot");
+      Dom.appLoader = $("#appLoader");
 
       Data.initialize();
       await Backend.bootstrap();
@@ -6713,6 +6822,7 @@
         }
       }, 30000);
       this.render();
+      window.requestAnimationFrame(() => UI.hideAppLoader());
     },
     bindEvents() {
       window.addEventListener("hashchange", () => this.render());
@@ -6930,7 +7040,7 @@
       document.body.classList.remove("customer-mode", "staff-mode", "admin-mode");
       document.body.classList.add(`${State.mode}-mode`);
       document.documentElement.lang = Translation.selected();
-      document.title = `IMPULSE ${localizeStaticPhrase("游戏服务商城")}`;
+      document.title = `${BrandName} - ${BrandTagline}`;
       Dom.searchInput.value = State.route.name === "search" ? State.route.params.q : "";
       UI.renderTopbar();
       UI.renderHero();
