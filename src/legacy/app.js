@@ -89,10 +89,25 @@
 
   const DevelopmentRecords = [
     {
+      version: "v0.14.1",
+      releasedAt: "2026-05-16",
+      nameI18n: localizedPair("Contrast Legibility Hotfix", "对比度可读性热补丁"),
+      statusI18n: localizedPair("Current production build", "当前生产版本"),
+      summaryI18n: localizedPair(
+        "Improves text contrast across release dialogs, settings panels, staff mode, and admin mode while preserving the existing IMPULSE visual identity.",
+        "提升版本弹窗、设置面板、员工模式和管理模式中的文字对比度，同时保留现有 IMPULSE 视觉风格。"
+      ),
+      itemsI18n: [
+        localizedPair("Changed the current-version hero from white-on-white to a high-contrast brand gradient.", "将当前版本头部从白字白底改为高对比品牌渐变。"),
+        localizedPair("Replaced low-contrast muted text on light panels with the darker ink-muted token.", "将浅色面板上的低对比说明文字改为更深的 ink-muted 色值。"),
+        localizedPair("Darkened staff and admin mode gradient endpoints so white interface text remains readable.", "加深员工和管理模式渐变末端，保证白色界面文字仍然清晰。")
+      ]
+    },
+    {
       version: "v0.14.0",
       releasedAt: "2026-05-16",
       nameI18n: localizedPair("Architecture Bridge", "主流架构桥接"),
-      statusI18n: localizedPair("Local draft, not uploaded", "本地草案，未上传"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
       summaryI18n: localizedPair(
         "Introduces a Vite-based application entry, keeps the current IMPULSE interface intact, and prepares Supabase asset storage plus a normalized data model plan.",
         "引入基于 Vite 的应用入口，保持当前 IMPULSE 界面一致，并准备 Supabase 资产存储和正规化数据模型方案。"
@@ -124,7 +139,7 @@
       version: "v0.12.1",
       releasedAt: "2026-05-16",
       nameI18n: localizedPair("Bootstrap Preservation Hotfix", "启动数据保护热修复"),
-      statusI18n: localizedPair("Current production build", "当前生产版本"),
+      statusI18n: localizedPair("Uploaded", "已上传"),
       summaryI18n: localizedPair(
         "Ensures existing browser-local accounts and orders are merged into Supabase during app startup instead of being overwritten by an already-initialized database.",
         "确保启动网站时会把浏览器本地已有账号和订单合并进 Supabase，避免被已初始化数据库覆盖。"

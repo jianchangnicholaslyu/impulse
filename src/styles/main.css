@@ -41,7 +41,8 @@ body {
 
 body.staff-mode {
   --bg-start: #ff8a00;
-  --bg-end: #ffd166;
+  --bg-end: #b54708;
+  --muted: rgba(255, 255, 255, 0.88);
   --button-text: #7a3a00;
   --accent: #fff6b3;
   --card: rgba(255, 255, 255, 0.2);
@@ -51,11 +52,12 @@ body.staff-mode {
 
 body.admin-mode {
   --bg-start: #2f3437;
-  --bg-end: #aeb4bb;
+  --bg-end: #59616a;
+  --muted: rgba(255, 255, 255, 0.86);
   --button-text: #2f3437;
   --accent: #f2f4f7;
-  --card: rgba(255, 255, 255, 0.18);
-  --card-strong: rgba(255, 255, 255, 0.28);
+  --card: rgba(17, 24, 39, 0.28);
+  --card-strong: rgba(17, 24, 39, 0.38);
   --border: rgba(255, 255, 255, 0.34);
 }
 
@@ -1223,7 +1225,7 @@ button.admin-table-row:hover {
 .settings-row span,
 .notice-toggle small {
   display: block;
-  color: var(--muted);
+  color: var(--ink-muted);
   font-size: 0.88rem;
 }
 
@@ -1245,12 +1247,14 @@ button.admin-table-row:hover {
   padding: 22px;
   color: #ffffff;
   border-radius: var(--radius);
-  background: var(--button);
+  background: linear-gradient(135deg, var(--bg-start), var(--bg-end));
+  background-color: #2d49c4;
   box-shadow: 0 18px 38px rgba(16, 24, 40, 0.18);
 }
 
 .release-hero h2 {
   margin: 10px 0;
+  color: #ffffff;
 }
 
 .release-hero p {
@@ -1287,7 +1291,7 @@ button.admin-table-row:hover {
 
 .release-meta span,
 .release-date {
-  color: var(--muted);
+  color: var(--ink-muted);
   font-size: 0.86rem;
   font-weight: 850;
 }
@@ -1312,7 +1316,7 @@ button.admin-table-row:hover {
 .release-section p,
 .release-card p {
   margin: 0;
-  color: var(--muted);
+  color: var(--ink-muted);
   line-height: 1.65;
 }
 
