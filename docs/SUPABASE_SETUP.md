@@ -5,6 +5,7 @@ IMPULSE uses Supabase as a persistent backend store when these Vercel environmen
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_STATE_TABLE`
+- `SUPABASE_STORAGE_BUCKET`
 
 The service role key must stay server-side only. Do not put it in frontend code, `.env.example`, screenshots, issues, or commits.
 
@@ -26,16 +27,27 @@ In Vercel Project -> Settings -> Environment Variables, add:
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVER_SIDE_SERVICE_ROLE_KEY
 SUPABASE_STATE_TABLE=impulse_state
+SUPABASE_STORAGE_BUCKET=impulse-assets
 BACKEND_SECRET=YOUR_LONG_RANDOM_SECRET
 ```
 
 Set them for Production, Preview, and Development if you want all environments to share the same persistent database.
 
-## 3. Redeploy
+## 3. Enable Asset Storage
+
+For admin display-image uploads, open Supabase Dashboard -> SQL Editor and run:
+
+```sql
+-- See database/storage-bucket.sql
+```
+
+Use the full SQL in `database/storage-bucket.sql`. It creates a public `impulse-assets` bucket with a 5MB server-side image limit.
+
+## 4. Redeploy
 
 After saving the environment variables, redeploy the latest Vercel deployment.
 
-## 4. Verify
+## 5. Verify
 
 Run:
 

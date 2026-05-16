@@ -1,0 +1,17 @@
+{
+  "name": "impulse-marketplace",
+  "version": "0.14.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "check": "node --check src/legacy/app.js && node --check api/_backend-core.js && node --check api/backend.js && node --check api/send-email.js"
+  },
+  "devDependencies": {
+    "vite": "^8.0.13"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}

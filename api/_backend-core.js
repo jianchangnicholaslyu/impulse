@@ -11,6 +11,10 @@ const SupabaseTablePattern = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 const EmailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SessionMaxAgeMs = 30 * 24 * 60 * 60 * 1000;
 const VerificationMaxAgeMs = 10 * 60 * 1000;
+const DayMs = 24 * 60 * 60 * 1000;
+const ChatRetentionMs = 14 * DayMs;
+const ArchiveRetentionMs = 30 * DayMs;
+const AssetMaxBytes = Number(process.env.MAX_ASSET_BYTES || 5 * 1024 * 1024);
 const BuiltInUsers = [
   { username: "ADMIN", email: "admin@impulse.local", password: "********", role: "admin" },
   { username: "EMPL001", email: "empl001@impulse.local", password: "12345678", role: "staff" }
@@ -134,6 +138,10 @@ function emptyDb() {
     orderChats: {},
     ledger: [],
     adminLogs: [],
+    systemSettings: {
+      backupEmail: "",
+      backupHistory: []
+    },
     verifications: {}
   };
 }
@@ -169,8 +177,101 @@ function supabaseTable() {
   return table;
 }
 
+function supabaseAssetBucket() {
+  return String(process.env.SUPABASE_STORAGE_BUCKET || "impulse-assets").trim();
+}
+
 function hasSupabaseStorage() {
   return Boolean(supabaseUrl() && supabaseKey());
+}
+
+function safeAssetSegment(value, fallback = "asset") {
+  const cleaned = String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return cleaned || fallback;
+}
+
+function assetExtension(mimeType, filename = "") {
+  const known = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif"
+  };
+  if (known[mimeType]) {
+    return known[mimeType];
+  }
+  const match = String(filename).toLowerCase().match(/\.([a-z0-9]{2,5})$/);
+  return match ? match[1] : "img";
+}
+
+function parseImageDataUrl(dataUrl, filename = "") {
+  const match = String(dataUrl || "").match(/^data:([^;,]+);base64,(.+)$/);
+  if (!match) {
+    return { ok: false, message: "Invalid image data." };
+  }
+  const mimeType = match[1].toLowerCase();
+  if (!mimeType.startsWith("image/")) {
+    return { ok: false, message: "Only image uploads are supported." };
+  }
+  const buffer = Buffer.from(match[2], "base64");
+  if (!buffer.length) {
+    return { ok: false, message: "Image data is empty." };
+  }
+  if (buffer.length > AssetMaxBytes) {
+    return { ok: false, message: `Image is larger than ${Math.round(AssetMaxBytes / 1024 / 1024)}MB.` };
+  }
+  return {
+    ok: true,
+    buffer,
+    mimeType,
+    extension: assetExtension(mimeType, filename)
+  };
+}
+
+function encodeStoragePath(pathname) {
+  return String(pathname)
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+async function uploadSupabaseAsset(payload, actor) {
+  if (!hasSupabaseStorage()) {
+    return { ok: false, configured: false, message: "Supabase storage is not configured." };
+  }
+  const bucket = supabaseAssetBucket();
+  if (!bucket) {
+    return { ok: false, configured: false, message: "SUPABASE_STORAGE_BUCKET is not configured." };
+  }
+  const parsed = parseImageDataUrl(payload.dataUrl, payload.filename);
+  if (!parsed.ok) {
+    return parsed;
+  }
+  const scope = safeAssetSegment(payload.scope || "content", "content");
+  const owner = safeAssetSegment(actor?.username || "system", "system");
+  const basename = safeAssetSegment(payload.filename || "image", "image").replace(/\.[a-z0-9]{2,5}$/i, "");
+  const objectPath = `${scope}/${owner}/${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}-${basename}.${parsed.extension}`;
+  const encodedBucket = encodeURIComponent(bucket);
+  const encodedPath = encodeStoragePath(objectPath);
+  await supabaseRequest(`/storage/v1/object/${encodedBucket}/${encodedPath}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": parsed.mimeType,
+      "Cache-Control": "3600",
+      "x-upsert": "true"
+    },
+    body: parsed.buffer
+  });
+  return {
+    ok: true,
+    bucket,
+    path: objectPath,
+    url: `${supabaseUrl()}/storage/v1/object/public/${encodedBucket}/${encodedPath}`
+  };
 }
 
 async function supabaseRequest(pathname, options = {}) {
@@ -301,7 +402,8 @@ function sanitizeSnapshot(db) {
     orders: db.orders,
     orderChats: db.orderChats,
     ledger: db.ledger,
-    adminLogs: db.adminLogs
+    adminLogs: db.adminLogs,
+    systemSettings: db.systemSettings
   };
 }
 
@@ -326,6 +428,10 @@ function normalizeDb(input) {
   db.orderChats = db.orderChats && typeof db.orderChats === "object" && !Array.isArray(db.orderChats) ? db.orderChats : {};
   db.ledger = Array.isArray(db.ledger) ? db.ledger : [];
   db.adminLogs = Array.isArray(db.adminLogs) ? db.adminLogs : [];
+  db.systemSettings = db.systemSettings && typeof db.systemSettings === "object" && !Array.isArray(db.systemSettings) ? {
+    backupEmail: normalizeEmail(db.systemSettings.backupEmail || ""),
+    backupHistory: Array.isArray(db.systemSettings.backupHistory) ? db.systemSettings.backupHistory : []
+  } : { backupEmail: "", backupHistory: [] };
   db.verifications = db.verifications && typeof db.verifications === "object" ? db.verifications : {};
   ensureProfiles(db);
   return db;
@@ -404,6 +510,15 @@ function mergeChatRecords(existingChats = {}, incomingChats = {}) {
   ));
 }
 
+function mergeSystemSettings(existing = {}, incoming = {}) {
+  return {
+    ...incoming,
+    ...existing,
+    backupEmail: normalizeEmail(existing.backupEmail || incoming.backupEmail || ""),
+    backupHistory: mergeArrayBy(existing.backupHistory, incoming.backupHistory, (entry) => entry?.id || `${entry?.type || ""}:${entry?.createdAt || ""}:${entry?.subject || ""}`)
+  };
+}
+
 function importSnapshot(db, snapshot = {}) {
   const mergedUsers = mergeArrayBy(db.users, snapshot.users, (user) => normalize(user?.username || user?.email), (existing, user) => ({
     ...existing,
@@ -420,7 +535,8 @@ function importSnapshot(db, snapshot = {}) {
     orders: mergeArrayBy(db.orders, snapshot.orders, (order) => order?.id),
     orderChats: mergeChatRecords(db.orderChats, snapshot.orderChats),
     ledger: mergeArrayBy(db.ledger, snapshot.ledger, (entry) => entry?.id),
-    adminLogs: mergeArrayBy(db.adminLogs, snapshot.adminLogs, (entry) => entry?.id)
+    adminLogs: mergeArrayBy(db.adminLogs, snapshot.adminLogs, (entry) => entry?.id),
+    systemSettings: mergeSystemSettings(db.systemSettings, snapshot.systemSettings)
   });
   return imported;
 }
@@ -503,12 +619,15 @@ function verifyCode(db, purpose, email, code) {
   return { ok: true };
 }
 
-async function sendEmail(to, subject, text) {
+async function sendEmail(to, subject, text, options = {}) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.MAIL_FROM || process.env.RESEND_FROM;
   if (!apiKey || !from) {
     return { ok: false, configured: false };
   }
+  const attachments = Array.isArray(options.attachments) ? options.attachments.filter((attachment) => (
+    attachment && attachment.filename && attachment.content
+  )) : [];
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -516,7 +635,13 @@ async function sendEmail(to, subject, text) {
       "Content-Type": "application/json",
       "User-Agent": "IMPULSE/1.0"
     },
-    body: JSON.stringify({ from, to: [to], subject, text })
+    body: JSON.stringify({
+      from,
+      to: [to],
+      subject,
+      text,
+      attachments: attachments.length ? attachments : undefined
+    })
   });
   const result = await response.json().catch(() => ({}));
   return {
@@ -534,7 +659,136 @@ function log(db, action, detail, actor = "SYSTEM") {
     action,
     detail,
     createdAt: nowIso()
-  }, ...db.adminLogs].slice(0, 1000);
+  }, ...db.adminLogs];
+}
+
+function timestampMs(value) {
+  const time = new Date(value || "").getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function isoDateOnly(value) {
+  const time = timestampMs(value);
+  return time ? new Date(time).toISOString().slice(0, 10) : "unknown";
+}
+
+function dateRange(records, dateFn) {
+  const times = records.map(dateFn).map(timestampMs).filter(Boolean).sort((a, b) => a - b);
+  if (!times.length) {
+    const today = nowIso();
+    return { start: isoDateOnly(today), end: isoDateOnly(today) };
+  }
+  return {
+    start: isoDateOnly(times[0]),
+    end: isoDateOnly(times[times.length - 1])
+  };
+}
+
+function archiveAttachment(filename, payload) {
+  return {
+    filename,
+    content: Buffer.from(JSON.stringify(payload, null, 2), "utf8").toString("base64"),
+    content_type: "application/json"
+  };
+}
+
+function closedOrderArchiveDate(order) {
+  if (!["completed", "cancelled"].includes(order?.status)) {
+    return "";
+  }
+  return order.completedAt || order.settledAt || order.updatedAt || order.createdAt || "";
+}
+
+async function sendArchivePackage(db, kind, records, dateFn) {
+  const backupEmail = normalizeEmail(db.systemSettings?.backupEmail || "");
+  if (!isEmail(backupEmail) || !records.length) {
+    return { ok: false, skipped: true };
+  }
+  const range = dateRange(records, dateFn);
+  const kindLabel = kind === "logs" ? "System Logs" : "Order Records";
+  const subject = `IMPULSE ${kindLabel} Backup ${range.start} to ${range.end}`;
+  const filename = `impulse-${kind === "logs" ? "system-logs" : "order-records"}-${range.start}-to-${range.end}.json`;
+  const payload = {
+    exportedAt: nowIso(),
+    type: kind,
+    period: range,
+    count: records.length,
+    records
+  };
+  const body = [
+    `IMPULSE ${kindLabel} backup package.`,
+    `Period: ${range.start} to ${range.end}.`,
+    `Record count: ${records.length}.`,
+    "The JSON archive is attached to this email. Do not share it publicly."
+  ].join("\n");
+  const mail = await sendEmail(backupEmail, subject, body, {
+    attachments: [archiveAttachment(filename, payload)]
+  });
+  if (mail.ok) {
+    db.systemSettings.backupHistory = [{
+      id: createId("backup"),
+      type: kind,
+      email: backupEmail,
+      subject,
+      filename,
+      periodStart: range.start,
+      periodEnd: range.end,
+      count: records.length,
+      providerId: mail.id || "",
+      createdAt: nowIso()
+    }, ...(db.systemSettings.backupHistory || [])].slice(0, 120);
+  }
+  return { ...mail, range, filename };
+}
+
+async function applyRetentionPolicies(db) {
+  let changed = false;
+  const now = Date.now();
+  const chatCutoff = now - ChatRetentionMs;
+  const archiveCutoff = now - ArchiveRetentionMs;
+
+  Object.keys(db.orderChats || {}).forEach((orderId) => {
+    const current = Array.isArray(db.orderChats[orderId]) ? db.orderChats[orderId] : [];
+    const next = current.filter((message) => timestampMs(message.createdAt) >= chatCutoff);
+    if (next.length !== current.length) {
+      changed = true;
+      if (next.length) {
+        db.orderChats[orderId] = next;
+      } else {
+        delete db.orderChats[orderId];
+      }
+    }
+  });
+
+  const expiredLogs = db.adminLogs.filter((entry) => timestampMs(entry.createdAt) && timestampMs(entry.createdAt) < archiveCutoff);
+  if (expiredLogs.length) {
+    const mail = await sendArchivePackage(db, "logs", expiredLogs, (entry) => entry.createdAt);
+    if (mail.ok) {
+      const expiredIds = new Set(expiredLogs.map((entry) => entry.id));
+      db.adminLogs = db.adminLogs.filter((entry) => !expiredIds.has(entry.id));
+      log(db, "系统日志备份", `${mail.range.start} 至 ${mail.range.end}，${expiredLogs.length} 条，已发送至 ${db.systemSettings.backupEmail}`);
+      changed = true;
+    }
+  }
+
+  const expiredOrders = db.orders.filter((order) => {
+    const archivedAt = closedOrderArchiveDate(order);
+    return archivedAt && timestampMs(archivedAt) < archiveCutoff;
+  });
+  if (expiredOrders.length) {
+    const mail = await sendArchivePackage(db, "orders", expiredOrders, closedOrderArchiveDate);
+    if (mail.ok) {
+      const expiredIds = new Set(expiredOrders.map((order) => order.id));
+      db.orders = db.orders.filter((order) => !expiredIds.has(order.id));
+      expiredIds.forEach((orderId) => {
+        delete db.orderChats[orderId];
+      });
+      log(db, "单号数据备份", `${mail.range.start} 至 ${mail.range.end}，${expiredOrders.length} 条，已发送至 ${db.systemSettings.backupEmail}`);
+      changed = true;
+    }
+  }
+
+  return { changed, expiredLogs: expiredLogs.length, expiredOrders: expiredOrders.length };
 }
 
 function addLedger(db, profile, delta, reason, meta = {}, actor = "SYSTEM") {
@@ -700,6 +954,12 @@ function updateOrderStatusOnBackend(db, orderId, status, actor) {
 
 async function handleAction(action, payload = {}, request = {}) {
   let db = await readDb();
+  if (!["setBackupEmail", "runRetentionCleanup"].includes(action)) {
+    const retention = await applyRetentionPolicies(db);
+    if (retention.changed) {
+      await writeDb(db);
+    }
+  }
 
   if (action === "health") {
     return { ok: true, storage: storageType(), hasEmail: Boolean(process.env.RESEND_API_KEY && (process.env.MAIL_FROM || process.env.RESEND_FROM)) };
@@ -708,6 +968,7 @@ async function handleAction(action, payload = {}, request = {}) {
   if (action === "bootstrap") {
     if (payload.snapshot) {
       db = importSnapshot(db, payload.snapshot);
+      await applyRetentionPolicies(db);
       log(db, "后端初始化", "从前端快照导入初始数据");
       await writeDb(db);
     }
@@ -716,9 +977,49 @@ async function handleAction(action, payload = {}, request = {}) {
 
   if (action === "saveSnapshot") {
     db = importSnapshot(db, payload.snapshot || {});
+    await applyRetentionPolicies(db);
     log(db, "后端同步", payload.reason || "前端同步快照", request.user?.username || "CLIENT");
     await writeDb(db);
     return { ok: true, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "uploadAsset") {
+    if (!request.user) {
+      return { ok: false, message: "请先登录" };
+    }
+    const uploaded = await uploadSupabaseAsset(payload || {}, request.user);
+    if (!uploaded.ok) {
+      return uploaded;
+    }
+    log(db, "上传资产", `${uploaded.bucket}/${uploaded.path}`, request.user.username);
+    await writeDb(db);
+    return uploaded;
+  }
+
+  if (action === "setBackupEmail") {
+    if (!request.user || request.user.role !== "admin") {
+      return { ok: false, message: "需要管理员权限。" };
+    }
+    const email = normalizeEmail(payload.email);
+    if (!isEmail(email)) {
+      return { ok: false, message: "请输入有效邮箱。" };
+    }
+    db.systemSettings.backupEmail = email;
+    log(db, "设置备份邮箱", email, request.user.username);
+    const nextRetention = await applyRetentionPolicies(db);
+    await writeDb(db);
+    return { ok: true, retention: nextRetention, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "runRetentionCleanup") {
+    if (!request.user || request.user.role !== "admin") {
+      return { ok: false, message: "需要管理员权限。" };
+    }
+    const nextRetention = await applyRetentionPolicies(db);
+    if (nextRetention.changed) {
+      await writeDb(db);
+    }
+    return { ok: true, retention: nextRetention, snapshot: sanitizeSnapshot(db) };
   }
 
   if (action === "sendVerification") {

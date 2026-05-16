@@ -6,8 +6,22 @@
   <title>IMPULSE Game Service Marketplace</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="styles.css">
-  <script src="app.js" defer></script>
+  <link rel="stylesheet" href="/src/styles/main.css">
+  <script type="module" src="/src/main.js"></script>
+  <script>
+    if (window.location.protocol === "file:") {
+      var legacyStyles = document.createElement("link");
+      legacyStyles.rel = "stylesheet";
+      legacyStyles.href = "styles.css";
+      document.head.appendChild(legacyStyles);
+
+      window.addEventListener("DOMContentLoaded", function () {
+        var legacyScript = document.createElement("script");
+        legacyScript.src = "app.js";
+        document.body.appendChild(legacyScript);
+      });
+    }
+  </script>
 </head>
 <body class="customer-mode">
   <header class="topbar">

@@ -11,7 +11,7 @@ function parseBody(request) {
     let raw = "";
     request.on("data", (chunk) => {
       raw += chunk;
-      if (raw.length > 64 * 1024) {
+      if (raw.length > 1024 * 1024 * 4) {
         reject(new Error("Request body is too large."));
         request.destroy();
       }
@@ -69,6 +69,13 @@ module.exports = async function handler(request, response) {
   const subject = String(body.subject || "").trim();
   const text = String(body.text || "").trim();
   const html = String(body.html || "").trim();
+  const attachments = Array.isArray(body.attachments) ? body.attachments.filter((attachment) => (
+    attachment && attachment.filename && attachment.content
+  )).map((attachment) => ({
+    filename: String(attachment.filename),
+    content: String(attachment.content),
+    content_type: attachment.content_type ? String(attachment.content_type) : undefined
+  })) : [];
 
   if (!EmailPattern.test(to)) {
     sendJson(response, 400, { ok: false, error: "Invalid recipient email." });
@@ -93,7 +100,8 @@ module.exports = async function handler(request, response) {
         to: [to],
         subject,
         text,
-        html: html || undefined
+        html: html || undefined,
+        attachments: attachments.length ? attachments : undefined
       })
     });
 
