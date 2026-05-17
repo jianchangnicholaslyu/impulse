@@ -1039,7 +1039,7 @@ function addMailboxMessage(db, username, payload = {}) {
     createdAt: payload.createdAt || nowIso()
   };
   const list = Array.isArray(db.mailboxMessages[key]) ? db.mailboxMessages[key] : [];
-  db.mailboxMessages[key] = [entry, ...list.filter((item) => item.id !== entry.id)];
+  db.mailboxMessages[key] = [entry, ...list.filter((item) => !item || typeof item !== "object" || item.id !== entry.id)];
   return entry;
 }
 

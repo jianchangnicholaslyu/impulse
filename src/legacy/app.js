@@ -2353,8 +2353,20 @@
     },
     mailbox(username) {
       const key = normalize(username);
-      return (this.mailboxes()[key] || [])
+      const list = this.mailboxes()[key];
+      return (Array.isArray(list) ? list : [])
+        .filter((message) => message && typeof message === "object" && !Array.isArray(message))
         .filter((message) => !message.deletedAt)
+        .map((message, index) => ({
+          ...message,
+          id: String(message.id || `mail-${timestampMs(message.createdAt) || 0}-${index}`),
+          category: mailboxCategory(message.category || "system").id,
+          subject: String(message.subject || "系统通知"),
+          preview: String(message.preview || message.body || "系统通知"),
+          body: String(message.body || message.preview || ""),
+          sender: String(message.sender || "IMPULSE J System"),
+          createdAt: message.createdAt || new Date(0).toISOString()
+        }))
         .slice()
         .sort((a, b) => timestampMs(b.createdAt) - timestampMs(a.createdAt));
     },
@@ -2390,7 +2402,7 @@
       };
       const boxes = this.mailboxes();
       const list = Array.isArray(boxes[key]) ? boxes[key] : [];
-      boxes[key] = [entry, ...list.filter((item) => item.id !== entry.id)];
+      boxes[key] = [entry, ...list.filter((item) => !item || typeof item !== "object" || item.id !== entry.id)];
       this.saveMailboxes(boxes);
       return entry;
     },
@@ -2404,6 +2416,9 @@
       let selected = null;
       const now = new Date().toISOString();
       boxes[key] = list.map((message) => {
+        if (!message || typeof message !== "object" || Array.isArray(message)) {
+          return message;
+        }
         if (message.id !== messageId) {
           return message;
         }
@@ -2423,6 +2438,9 @@
       const now = new Date().toISOString();
       let updated = 0;
       boxes[key] = list.map((message) => {
+        if (!message || typeof message !== "object" || Array.isArray(message)) {
+          return message;
+        }
         if ((categoryId === "all" || message.category === categoryId) && !message.deletedAt && !message.readAt) {
           updated += 1;
           return { ...message, readAt: now };
@@ -2442,6 +2460,9 @@
       const now = new Date().toISOString();
       let deleted = 0;
       boxes[key] = list.map((message) => {
+        if (!message || typeof message !== "object" || Array.isArray(message)) {
+          return message;
+        }
         if (!message.deletedAt && message.readAt && (categoryId === "all" || message.category === categoryId)) {
           deleted += 1;
           return { ...message, deletedAt: now };
@@ -6682,7 +6703,25 @@
       const username = State.currentUser.username;
       let activeCategory = "all";
       let selectedId = "";
+      let modalMounted = false;
+      let topbarRefreshPending = false;
       const card = h("div", { className: "modal-card modal-wide mailbox-modal slide-up" });
+      const flushTopbarRefresh = () => {
+        window.setTimeout(() => {
+          if (!topbarRefreshPending) {
+            return;
+          }
+          topbarRefreshPending = false;
+          Components.renderTopbar();
+        }, 0);
+      };
+      const queueTopbarRefresh = () => {
+        topbarRefreshPending = true;
+        if (!modalMounted) {
+          return;
+        }
+        flushTopbarRefresh();
+      };
       const renderMailbox = () => {
         const allMessages = Data.mailbox(username);
         const filteredMessages = activeCategory === "all"
@@ -6692,8 +6731,11 @@
           selectedId = filteredMessages[0]?.id || "";
         }
         if (selectedId) {
-          Data.markMailboxRead(username, selectedId);
-          Components.renderTopbar();
+          const selectedBeforeRead = allMessages.find((message) => message.id === selectedId);
+          if (selectedBeforeRead && !selectedBeforeRead.readAt) {
+            Data.markMailboxRead(username, selectedId);
+            queueTopbarRefresh();
+          }
         }
         const refreshedMessages = Data.mailbox(username);
         const visibleMessages = activeCategory === "all"
@@ -6817,6 +6859,8 @@
 
       renderMailbox();
       UI.openModal(card);
+      modalMounted = true;
+      flushTopbarRefresh();
     },
     guestMenu(anchor) {
       UI.showMenuFromElement(anchor, [
@@ -7451,8 +7495,9 @@
           Actions.openMailbox();
           loader?.doneSoon();
         } catch (error) {
+          console.error(error);
           loader?.done();
-          throw error;
+          UI.toast("邮件打开失败", "请刷新页面后重试。");
         }
       }, true);
 
