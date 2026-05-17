@@ -26,6 +26,29 @@ const BuiltInUsers = [
   { username: "ADMIN", email: "admin@impulse.local", password: "********", role: "admin" },
   { username: "EMPL001", email: "empl001@impulse.local", password: "12345678", role: "staff" }
 ];
+const EmailNoticeSubjects = {
+  rechargeSuccess: "Recharge successful",
+  orderSuccess: "Order placed successfully",
+  orderAccepted: "Your order has been accepted",
+  serviceReminder: "Service reminder",
+  progressReminder: "Progress update",
+  completionRequest: "Completion request",
+  rushReply: "Rush request update",
+  completionSuccess: "Order completed",
+  returnSuccess: "Order return completed"
+};
+const MailboxNoticeCategories = {
+  rechargeSuccess: "funds",
+  orderSuccess: "orders",
+  orderAccepted: "orders",
+  serviceReminder: "system",
+  progressReminder: "orders",
+  completionRequest: "orders",
+  rushReply: "orders",
+  completionSuccess: "orders",
+  returnSuccess: "orders"
+};
+const MailboxCategories = new Set(["system", "security", "orders", "funds", "chat"]);
 
 function nowIso() {
   return new Date().toISOString();
@@ -144,6 +167,7 @@ function emptyDb() {
     products: {},
     orders: [],
     orderChats: {},
+    mailboxMessages: {},
     ledger: [],
     adminLogs: [],
     systemSettings: {
@@ -411,6 +435,7 @@ function sanitizeSnapshot(db) {
     products: db.products,
     orders: db.orders,
     orderChats: db.orderChats,
+    mailboxMessages: db.mailboxMessages,
     ledger: db.ledger,
     adminLogs: db.adminLogs,
     systemSettings: db.systemSettings
@@ -436,6 +461,7 @@ function normalizeDb(input) {
   db.products = db.products && typeof db.products === "object" && !Array.isArray(db.products) ? db.products : {};
   db.orders = Array.isArray(db.orders) ? db.orders : [];
   db.orderChats = db.orderChats && typeof db.orderChats === "object" && !Array.isArray(db.orderChats) ? db.orderChats : {};
+  db.mailboxMessages = db.mailboxMessages && typeof db.mailboxMessages === "object" && !Array.isArray(db.mailboxMessages) ? db.mailboxMessages : {};
   db.ledger = Array.isArray(db.ledger) ? db.ledger : [];
   db.adminLogs = Array.isArray(db.adminLogs) ? db.adminLogs : [];
   db.systemSettings = db.systemSettings && typeof db.systemSettings === "object" && !Array.isArray(db.systemSettings) ? {
@@ -546,6 +572,7 @@ function importSnapshot(db, snapshot = {}) {
     products: mergeRecordLists(db.products, snapshot.products, (product) => product?.id),
     orders: mergeArrayBy(db.orders, snapshot.orders, (order) => order?.id),
     orderChats: mergeChatRecords(db.orderChats, snapshot.orderChats),
+    mailboxMessages: mergeChatRecords(db.mailboxMessages, snapshot.mailboxMessages),
     ledger: mergeArrayBy(db.ledger, snapshot.ledger, (entry) => entry?.id),
     adminLogs: mergeArrayBy(db.adminLogs, snapshot.adminLogs, (entry) => entry?.id),
     systemSettings: mergeSystemSettings(db.systemSettings, snapshot.systemSettings)
@@ -917,6 +944,7 @@ function addChatMessage(db, orderId, message, actor = "SYSTEM") {
     createdAt: nowIso()
   };
   db.orderChats[orderId] = [...(db.orderChats[orderId] || []), next];
+  addChatMailboxNotifications(db, order, next);
   return { ok: true, message: next };
 }
 
@@ -976,8 +1004,115 @@ function emailNoticeEnabled(db, username, key) {
   return !profile || profile.emailNotices?.[key] !== false;
 }
 
+function mailboxNoticeBody(profile, noticeKey, context = {}) {
+  return [
+    `Hello ${profile?.username || "there"},`,
+    context.orderId ? `Order ID: ${context.orderId}.` : "",
+    context.itemName ? `Item: ${context.itemName}.` : "",
+    context.amount ? `Amount: ${context.amount}.` : "",
+    "This notice is also stored in your IMPULSE J in-app mailbox and cannot be unsent."
+  ].filter(Boolean).join(" ");
+}
+
+function addMailboxMessage(db, username, payload = {}) {
+  const recipient = findUser(db, username);
+  const recipientUsername = recipient?.username || username;
+  const key = normalize(recipientUsername);
+  if (!key) {
+    return null;
+  }
+  const body = String(payload.body || payload.preview || "").trim();
+  const category = MailboxCategories.has(payload.category) ? payload.category : "system";
+  const entry = {
+    id: payload.id || createId("mail"),
+    recipientUsername,
+    category,
+    subject: String(payload.subject || "System Notice").trim(),
+    preview: String(payload.preview || body.slice(0, 120) || "System Notice").trim(),
+    body,
+    sender: String(payload.sender || "IMPULSE J System").trim(),
+    source: String(payload.source || "system").trim(),
+    sourceId: String(payload.sourceId || "").trim(),
+    orderId: String(payload.orderId || "").trim(),
+    readAt: payload.readAt || "",
+    createdAt: payload.createdAt || nowIso()
+  };
+  const list = Array.isArray(db.mailboxMessages[key]) ? db.mailboxMessages[key] : [];
+  db.mailboxMessages[key] = [entry, ...list.filter((item) => item.id !== entry.id)];
+  return entry;
+}
+
+function addNoticeMailboxMessage(db, username, noticeKey, context = {}) {
+  const profile = profileByUsername(db, username);
+  if (!profile || profile.deleted) {
+    return null;
+  }
+  const subject = EmailNoticeSubjects[noticeKey];
+  if (!subject) {
+    return null;
+  }
+  return addMailboxMessage(db, profile.username, {
+    category: MailboxNoticeCategories[noticeKey] || "system",
+    subject,
+    preview: [context.itemName, context.amount, context.orderId].filter(Boolean).join(" / ") || subject,
+    body: mailboxNoticeBody(profile, noticeKey, context),
+    sender: "IMPULSE J System",
+    source: "notice",
+    sourceId: noticeKey,
+    orderId: context.orderId || ""
+  });
+}
+
+function chatMailboxBody(order, message) {
+  const content = message.text
+    ? message.text
+    : message.imageData
+      ? "[Image attachment]"
+      : "[No text content]";
+  return [
+    `Order ID: ${order?.id || "unknown"}.`,
+    `From: ${message.sender || "SYSTEM"}.`,
+    `Message: ${content}`
+  ].join(" ");
+}
+
+function chatMailboxRecipients(order, message) {
+  if (!order) {
+    return [];
+  }
+  const participants = [order.customerUsername, order.handledBy].filter(Boolean);
+  if (!participants.length) {
+    return [];
+  }
+  if (message.sender === "SYSTEM" || message.role === "system" || message.type === "system") {
+    return participants;
+  }
+  const senderKey = normalize(message.sender);
+  return participants.filter((name) => normalize(name) !== senderKey);
+}
+
+function addChatMailboxNotifications(db, order, message) {
+  chatMailboxRecipients(order, message).forEach((username) => {
+    addMailboxMessage(db, username, {
+      category: "chat",
+      subject: message.sender === "SYSTEM" || message.type === "system" ? "Order Chat Update" : "New Chat Message",
+      preview: message.text || (message.imageData ? "[Image attachment]" : "Order Chat Update"),
+      body: chatMailboxBody(order, message),
+      sender: message.sender || "SYSTEM",
+      source: "chat",
+      sourceId: message.id,
+      orderId: order?.id || ""
+    });
+  });
+}
+
 async function notifyOrderCreated(db, order) {
   // AI: notification opt-outs live on profile.emailNotices; all user-facing mail content stays English.
+  addNoticeMailboxMessage(db, order.customerUsername, "orderSuccess", {
+    orderId: order.id,
+    itemName: order.productTitle,
+    amount: `${order.price} points`
+  });
   const to = notificationEmailForUsername(db, order.customerUsername);
   if (!isEmail(to) || !emailNoticeEnabled(db, order.customerUsername, "orderSuccess")) {
     return null;
@@ -991,6 +1126,11 @@ async function notifyOrderCreated(db, order) {
 }
 
 async function notifyOrderCompleted(db, order) {
+  addNoticeMailboxMessage(db, order.customerUsername, "completionSuccess", {
+    orderId: order.id,
+    itemName: order.productTitle,
+    amount: `${order.price} points`
+  });
   const to = notificationEmailForUsername(db, order.customerUsername);
   if (!isEmail(to) || !emailNoticeEnabled(db, order.customerUsername, "completionSuccess")) {
     return null;
@@ -1025,6 +1165,11 @@ function updateOrderStatusOnBackend(db, orderId, status, actor) {
       role: "system",
       type: "system",
       text: `${order.handledBy} accepted the order. Chat is now available.`
+    });
+    addNoticeMailboxMessage(db, order.customerUsername, "orderAccepted", {
+      orderId: order.id,
+      itemName: order.productTitle,
+      amount: `Accepted by ${order.handledBy}`
     });
   } else if (status === "completed") {
     if (order.status !== "processing" || !order.handledBy) {
@@ -1061,6 +1206,11 @@ function updateOrderStatusOnBackend(db, orderId, status, actor) {
         }, actor.username);
         order.refundedAt = updatedAt;
         order.refundReason = "订单取消退款";
+        addNoticeMailboxMessage(db, order.customerUsername, "returnSuccess", {
+          orderId: order.id,
+          itemName: order.productTitle,
+          amount: `${Number(order.price || 0)} points`
+        });
       }
     }
   } else {
@@ -1417,6 +1567,12 @@ async function handleAction(action, payload = {}, request = {}) {
     const result = addLedger(db, profile, Number(payload.amountPoints || 0), payload.reason || "资金变动", payload.meta || {}, request.user.username);
     if (!result.ok) {
       return { ok: false, reason: result.reason, message: "余额不足，请先充值。", before: result.before, after: result.after };
+    }
+    if (isSelfRecharge && Number(payload.amountPoints || 0) > 0) {
+      addNoticeMailboxMessage(db, result.profile.username, "rechargeSuccess", {
+        itemName: payload.meta?.itemName || payload.reason || "Recharge",
+        amount: `${Number(payload.amountPoints || 0)} points`
+      });
     }
     await writeDb(db);
     return { ok: true, profile: result.profile, entry: result.entry, snapshot: sanitizeSnapshot(db) };

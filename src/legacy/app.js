@@ -8,6 +8,7 @@
     products: "products",
     orders: "orders",
     orderChats: "orderChats",
+    mailboxMessages: "mailboxMessages",
     profiles: "userProfiles",
     ledger: "ledger",
     adminLogs: "adminLogs",
@@ -26,15 +27,15 @@
   ];
 
   const AdminSections = [
-    { id: "users", title: "用户", password: "yonghu", icon: "fa-solid fa-users", description: "顾客、员工账户、资金、封禁与注销管理。" },
+    { id: "users", title: "用户", password: "yonghu", icon: "fa-solid fa-users", description: "Gamer / Vector 账户、资金、封禁与注销管理。" },
     { id: "orders", title: "订单", password: "dingdan", icon: "fa-solid fa-receipt", description: "统一检索充值单、消费单与兑现单。" },
     { id: "ledger", title: "账本", password: "zhangben", icon: "fa-solid fa-chart-line", description: "实时资金流水与统计参考。" },
     { id: "logs", title: "日志", password: "rizhi", icon: "fa-solid fa-clipboard-list", description: "记录后台与关键业务操作。" }
   ];
 
   const Modes = {
-    customer: "客户模式",
-    staff: "员工模式",
+    customer: "Gamer 模式",
+    staff: "Vector 模式",
     admin: "管理模式"
   };
 
@@ -64,6 +65,11 @@
   const LocalContentLanguageCodes = ["en", "zh-CN"];
   const BrandName = "IMPULSE J";
   const BrandTagline = "Driven by Gamers' Momentum";
+  const RoleDisplayNames = {
+    customer: "Gamer",
+    staff: "Vector",
+    admin: "Admin"
+  };
   const ControllingLanguageNotice = "English is the controlling language for all legal, payment, refund, dispute, withdrawal, and official communication terms. Any translation is provided for convenience only and does not modify the English terms.";
   const ProtectedTranslationSelector = ".notranslate, [translate='no'], .policy-document, .official-communication, .financial-value, .status-value, .order-locked-term, [data-no-machine-translate='true']";
   const LegalInfoPages = ["terms", "privacy", "refund", "payment", "points", "dispute", "withdrawal"];
@@ -117,7 +123,7 @@
       title: "Dispute Rules",
       intro: "These Dispute Rules govern reports, evidence review, service complaints, refund decisions, staff penalties, and final dispute conclusions. The English version controls.",
       sections: [
-        ["Reports", "Customers may report service issues through the provided report flow. Reports should include a clear description, timing, evidence, and the related order number."],
+        ["Reports", "Gamers may report service issues through the provided report flow. Reports should include a clear description, timing, evidence, and the related order number."],
         ["Review", "Administrators may review order records, chat history, uploaded evidence, staff activity, payment records, and prior account history."],
         ["Decision", "Dispute outcomes may include no action, warning, partial refund, full refund, staff compensation adjustment, account restriction, or other operational remedies stated in English."]
       ]
@@ -151,9 +157,46 @@
     { key: "completionSuccess", label: "结单成功", subject: "Order completed" },
     { key: "returnSuccess", label: "退单成功", subject: "Order return completed" }
   ];
+  const MailboxCategories = [
+    { id: "all", label: "全部邮件", icon: "fa-solid fa-inbox" },
+    { id: "system", label: "系统邮件", icon: "fa-regular fa-envelope" },
+    { id: "security", label: "安全邮件", icon: "fa-solid fa-shield-halved" },
+    { id: "orders", label: "订单邮件", icon: "fa-solid fa-receipt" },
+    { id: "funds", label: "资金通知", icon: "fa-solid fa-coins" },
+    { id: "chat", label: "聊天提醒", icon: "fa-regular fa-comments" }
+  ];
+  const MailboxNoticeCategories = {
+    rechargeSuccess: "funds",
+    orderSuccess: "orders",
+    orderAccepted: "orders",
+    serviceReminder: "system",
+    progressReminder: "orders",
+    completionRequest: "orders",
+    rushReply: "orders",
+    completionSuccess: "orders",
+    returnSuccess: "orders"
+  };
 
   const DevelopmentRecords = [
     // AI: top item = next release draft. Do not mark Uploaded or push until user explicitly says upload.
+    {
+      version: "v0.19.0",
+      releasedAt: "2026-05-17",
+      nameI18n: localizedPair("Account Role and Mailbox", "账户角色与邮件中心"),
+      statusI18n: localizedPair("Local draft, not uploaded", "本地草案，未上传"),
+      summaryI18n: localizedPair(
+        "Renames customer-facing users as Gamer, staff users as Vector, and adds a permanent in-app mailbox for account notifications.",
+        "将 Gamer 与 Vector 作为用户角色专用名，并新增不可关闭的账户站内邮件中心。"
+      ),
+      itemsI18n: [
+        localizedPair("Updated account menus, mode labels, admin user views, order chat labels, and operational prompts to use Gamer and Vector.", "更新账户菜单、模式名称、管理员用户视图、订单聊天标签和业务提示中的 Gamer / Vector 称呼。"),
+        localizedPair("Changed the staff-application entry into a Become a Vector flow.", "将成为 Vector 入口改为 Become a Vector 流程。"),
+        localizedPair("Added translation protection for role terms so machine translation does not rewrite Gamer or Vector.", "为角色专用名加入翻译保护，避免机器翻译改写 Gamer 或 Vector。"),
+        localizedPair("Restricted admin user details and manual exports to safe account fields so plaintext passwords are never displayed.", "将管理员用户详情和手动导出限制为安全账户字段，避免展示明文密码。"),
+        localizedPair("Simplified the Gamer current-version dialog by hiding release name and upload status outside admin views.", "精简 Gamer 当前版本弹窗，在非管理员视图中隐藏版本名称和上传状态。"),
+        localizedPair("Added a three-column in-app mailbox beside the account avatar for system notices and chat-message alerts.", "在账户头像左侧新增三栏站内邮件弹窗，用于同步系统通知与聊天新消息提醒。")
+      ]
+    },
     {
       version: "v0.18.0",
       releasedAt: "2026-05-17",
@@ -164,7 +207,7 @@
         "精简账户版本展示，同时让管理员按需查看更完整的版本细节。"
       ),
       itemsI18n: [
-        localizedPair("Simplified the customer current-version dialog by removing update-detail bullets from the default account flow.", "精简顾客当前版本弹窗，从默认账户流程中移除更新细节列表。"),
+        localizedPair("Simplified the account current-version dialog by removing update-detail bullets from the default account flow.", "精简账户当前版本弹窗，从默认账户流程中移除更新细节列表。"),
         localizedPair("Changed the admin development log to show only version number, release theme, summary, and date in each list entry.", "将管理员开发日志列表改为每条仅显示版本号、主题、概要和日期。"),
         localizedPair("Moved detailed release notes into a dedicated modal opened from each development-log entry.", "将版本细节移动到每条开发日志点开后的独立弹窗中。"),
         localizedPair("Expanded release details with a more operational structure covering delivery scope, platform impact, and deployment notes.", "以交付范围、平台影响和部署备注的结构扩展版本细节，使其更加专业。")
@@ -231,12 +274,12 @@
       statusI18n: localizedPair("Uploaded", "已上传"),
       summaryI18n: localizedPair(
         "Improves text contrast across release dialogs, settings panels, staff mode, and admin mode while preserving the existing IMPULSE visual identity.",
-        "提升版本弹窗、设置面板、员工模式和管理模式中的文字对比度，同时保留现有 IMPULSE 视觉风格。"
+        "提升版本弹窗、设置面板、Vector 模式和管理模式中的文字对比度，同时保留现有 IMPULSE 视觉风格。"
       ),
       itemsI18n: [
         localizedPair("Changed the current-version hero from white-on-white to a high-contrast brand gradient.", "将当前版本头部从白字白底改为高对比品牌渐变。"),
         localizedPair("Replaced low-contrast muted text on light panels with the darker ink-muted token.", "将浅色面板上的低对比说明文字改为更深的 ink-muted 色值。"),
-        localizedPair("Darkened staff and admin mode gradient endpoints so white interface text remains readable.", "加深员工和管理模式渐变末端，保证白色界面文字仍然清晰。")
+        localizedPair("Darkened Vector and admin mode gradient endpoints so white interface text remains readable.", "加深 Vector 和管理模式渐变末端，保证白色界面文字仍然清晰。")
       ]
     },
     {
@@ -323,7 +366,7 @@
       statusI18n: localizedPair("Uploaded", "已上传"),
       summaryI18n: localizedPair(
         "Fixes checkout failures when Vercel temporary storage does not yet have the customer's local profile and balance.",
-        "修复 Vercel 临时存储未同步顾客本地资料和余额时导致的下单失败。"
+        "修复 Vercel 临时存储未同步 Gamer 本地资料和余额时导致的下单失败。"
       ),
       itemsI18n: [
         localizedPair("Sends a safe frontend snapshot with recharge and checkout requests when persistent KV is not configured.", "在未配置持久化 KV 时，充值和下单请求会携带安全的前端快照作为兜底。"),
@@ -371,7 +414,7 @@
         "扩展用户资料、设置、头像、注册信息、通知偏好和中英文可编辑内容。"
       ),
       itemsI18n: [
-        localizedPair("Added user info, account security, contact settings, staff application, and sign-out settings.", "新增用户信息、账户安全、联系设置、我要入职和退出登录设置。"),
+        localizedPair("Added user info, account security, contact settings, Vector application, and sign-out settings.", "新增用户信息、账户安全、联系设置、成为 Vector 和退出登录设置。"),
         localizedPair("Added image avatar upload with a 5 MB limit and circular crop preview.", "新增不大于 5MB 的头像上传与圆形截取预览。"),
         localizedPair("Required English and Simplified Chinese content for new categories, sections, and products.", "新增分类、分区和商品时要求分别填写英文和简体中文。")
       ]
@@ -411,12 +454,12 @@
       nameI18n: localizedPair("Order Funds & Chat", "订单资金与聊天"),
       statusI18n: localizedPair("Uploaded", "已上传"),
       summaryI18n: localizedPair(
-        "Added point-based checkout, recharge options, auto-return, order chat, read state, and customer order actions.",
-        "新增积分下单、充值档位、自动退单、订单聊天、已读状态与顾客订单操作。"
+        "Added point-based checkout, recharge options, auto-return, order chat, read state, and Gamer order actions.",
+        "新增积分下单、充值档位、自动退单、订单聊天、已读状态与 Gamer 订单操作。"
       ),
       itemsI18n: [
         localizedPair("Added 1:1 USD-to-points recharge options.", "新增美元与积分 1:1 的充值档位。"),
-        localizedPair("Added customer-to-staff chat with text and image messages.", "新增顾客与员工之间可发送文字和图片的订单聊天。"),
+        localizedPair("Added Gamer-to-Vector chat with text and image messages.", "新增 Gamer 与 Vector 之间可发送文字和图片的订单聊天。"),
         localizedPair("Added rush, return, report, and tip actions requiring account verification.", "新增加急、退单、举报和小费操作，并要求账户验证。")
       ]
     },
@@ -430,7 +473,7 @@
         "建立用户、订单、账本、日志四个管理分区，并加入二级密码。"
       ),
       itemsI18n: [
-        localizedPair("Added customer and staff user management views.", "新增顾客与员工用户管理视图。"),
+        localizedPair("Added Gamer and Vector user management views.", "新增 Gamer 与 Vector 用户管理视图。"),
         localizedPair("Added order search, ledger records, operation logs, and clear-log action.", "新增订单检索、账本流水、操作日志和一键清空日志。")
       ]
     },
@@ -486,7 +529,7 @@
         "创建 IMPULSE 游戏服务三层商城基础结构。"
       ),
       itemsI18n: [
-        localizedPair("Added customer, staff, and admin visual modes.", "新增客户、员工和管理员三种视觉模式。"),
+        localizedPair("Added Gamer, Vector, and admin visual modes.", "新增 Gamer、Vector 和管理员三种视觉模式。"),
         localizedPair("Added categories, game sections, product rows, and detail modals.", "新增一级分类、游戏分区、商品行和详情弹窗。"),
         localizedPair("Added localStorage-backed seed data and management editing flows.", "新增 localStorage 种子数据和管理编辑流程。")
       ]
@@ -514,17 +557,27 @@
     "IMPULSE J 玩家动能驱动的基础信息页。": { "zh-TW": "IMPULSE J 的基礎資訊頁。", en: "Basic information for IMPULSE J.", fr: "Informations de base de IMPULSE J.", ja: "IMPULSE J の基本情報です。", ko: "IMPULSE J 기본 정보입니다.", es: "Información básica de IMPULSE J." },
     "关于 IMPULSE J": { "zh-TW": "關於 IMPULSE J", en: "About IMPULSE J", fr: "À propos d'IMPULSE J", ja: "IMPULSE J について", ko: "IMPULSE J 소개", es: "Acerca de IMPULSE J" },
     "普通界面会继续支持多语言；法律、资金规则、争议结论、提现说明和官方邮件始终以英文为准。": { "zh-TW": "一般介面會繼續支援多語言；法律、資金規則、爭議結論、提現說明和官方郵件一律以英文為準。", en: "General interface text remains multilingual; legal terms, financial rules, dispute outcomes, withdrawal instructions, and official emails always rely on English.", fr: "L'interface générale reste multilingue; les règles juridiques et financières, les conclusions de litige, les instructions de retrait et les e-mails officiels reposent toujours sur l'anglais.", ja: "通常のUIは多言語対応を続けますが、法的条件、資金ルール、紛争結論、出金説明、公式メールは常に英語に基づきます。", ko: "일반 UI는 계속 다국어를 지원하지만 법적 조건, 자금 규칙, 분쟁 결과, 출금 안내, 공식 이메일은 항상 영어를 기준으로 합니다.", es: "La interfaz general sigue siendo multilingue; los términos legales, reglas financieras, decisiones de disputas, instrucciones de retiro y correos oficiales siempre se basan en inglés." },
-    "加急待员工确认": { "zh-TW": "加急待員工確認", en: "Rush pending staff confirmation", fr: "Urgence en attente de confirmation", ja: "至急依頼はスタッフ確認待ち", ko: "긴급 요청 직원 확인 대기", es: "Urgencia pendiente de confirmación" },
+    "加急待员工确认": { "zh-TW": "加急待 Vector 確認", en: "Rush pending Vector confirmation", fr: "Urgence en attente de confirmation Vector", ja: "Vector の至急確認待ち", ko: "Vector 긴급 확인 대기", es: "Urgencia pendiente de confirmación de Vector" },
+    "加急待 Vector 确认": { "zh-TW": "加急待 Vector 確認", en: "Rush pending Vector confirmation", fr: "Urgence en attente de confirmation Vector", ja: "Vector の至急確認待ち", ko: "Vector 긴급 확인 대기", es: "Urgencia pendiente de confirmación de Vector" },
     "加急已接受": { "zh-TW": "加急已接受", en: "Rush accepted", fr: "Urgence acceptée", ja: "至急依頼承認済み", ko: "긴급 요청 수락됨", es: "Urgencia aceptada" },
     "加急已拒绝": { "zh-TW": "加急已拒絕", en: "Rush declined", fr: "Urgence refusée", ja: "至急依頼却下", ko: "긴급 요청 거절됨", es: "Urgencia rechazada" },
     "加急已违约": { "zh-TW": "加急已違約", en: "Rush breached", fr: "Urgence non respectée", ja: "至急依頼違反", ko: "긴급 요청 위반", es: "Urgencia incumplida" },
-    "员工申请继续完成": { "zh-TW": "員工申請繼續完成", en: "Staff requested to continue", fr: "L'employé demande à continuer", ja: "スタッフが継続を申請", ko: "직원이 계속 진행 요청", es: "El empleado solicitó continuar" },
-    "顾客已同意继续": { "zh-TW": "顧客已同意繼續", en: "Customer agreed to continue", fr: "Le client accepte de continuer", ja: "顧客が継続に同意", ko: "고객이 계속 진행 동의", es: "El cliente aceptó continuar" },
-    "顾客拒绝继续": { "zh-TW": "顧客拒絕繼續", en: "Customer declined continuation", fr: "Le client refuse la continuation", ja: "顧客が継続を拒否", ko: "고객이 계속 진행 거절", es: "El cliente rechazó continuar" },
-    "客户模式": { "zh-TW": "客戶模式", en: "Customer Mode", fr: "Mode client", ja: "顧客モード", ko: "고객 모드", es: "Modo cliente" },
-    "员工模式": { "zh-TW": "員工模式", en: "Staff Mode", fr: "Mode employé", ja: "スタッフモード", ko: "직원 모드", es: "Modo empleado" },
+    "员工申请继续完成": { "zh-TW": "Vector 申請繼續完成", en: "Vector requested to continue", fr: "Vector demande à continuer", ja: "Vector が継続を申請", ko: "Vector 계속 진행 요청", es: "Vector solicitó continuar" },
+    "顾客已同意继续": { "zh-TW": "Gamer 已同意繼續", en: "Gamer agreed to continue", fr: "Gamer accepte de continuer", ja: "Gamer が継続に同意", ko: "Gamer 계속 진행 동의", es: "Gamer aceptó continuar" },
+    "顾客拒绝继续": { "zh-TW": "Gamer 拒絕繼續", en: "Gamer declined continuation", fr: "Gamer refuse la continuation", ja: "Gamer が継続を拒否", ko: "Gamer 계속 진행 거절", es: "Gamer rechazó continuar" },
+    "Vector 申请继续完成": { "zh-TW": "Vector 申請繼續完成", en: "Vector requested to continue", fr: "Vector demande à continuer", ja: "Vector が継続を申請", ko: "Vector 계속 진행 요청", es: "Vector solicitó continuar" },
+    "Gamer 已同意继续": { "zh-TW": "Gamer 已同意繼續", en: "Gamer agreed to continue", fr: "Gamer accepte de continuer", ja: "Gamer が継続に同意", ko: "Gamer 계속 진행 동의", es: "Gamer aceptó continuar" },
+    "Gamer 拒绝继续": { "zh-TW": "Gamer 拒絕繼續", en: "Gamer declined continuation", fr: "Gamer refuse la continuation", ja: "Gamer が継続を拒否", ko: "Gamer 계속 진행 거절", es: "Gamer rechazó continuar" },
+    "Gamer 模式": { "zh-TW": "Gamer 模式", en: "Gamer Mode", fr: "Mode Gamer", ja: "Gamer モード", ko: "Gamer 모드", es: "Modo Gamer" },
+    "Vector 模式": { "zh-TW": "Vector 模式", en: "Vector Mode", fr: "Mode Vector", ja: "Vector モード", ko: "Vector 모드", es: "Modo Vector" },
+    "客户模式": { "zh-TW": "Gamer 模式", en: "Gamer Mode", fr: "Mode Gamer", ja: "Gamer モード", ko: "Gamer 모드", es: "Modo Gamer" },
+    "员工模式": { "zh-TW": "Vector 模式", en: "Vector Mode", fr: "Mode Vector", ja: "Vector モード", ko: "Vector 모드", es: "Modo Vector" },
     "管理模式": { "zh-TW": "管理模式", en: "Admin Mode", fr: "Mode admin", ja: "管理モード", ko: "관리자 모드", es: "Modo administrador" },
-    "客户": { "zh-TW": "客戶", en: "Customer", fr: "Client", ja: "顧客", ko: "고객", es: "Cliente" },
+    "客户": { "zh-TW": "Gamer", en: "Gamer", fr: "Gamer", ja: "Gamer", ko: "Gamer", es: "Gamer" },
+    "顾客": { "zh-TW": "Gamer", en: "Gamer", fr: "Gamer", ja: "Gamer", ko: "Gamer", es: "Gamer" },
+    "员工": { "zh-TW": "Vector", en: "Vector", fr: "Vector", ja: "Vector", ko: "Vector", es: "Vector" },
+    "Gamer": { "zh-TW": "Gamer", en: "Gamer", fr: "Gamer", ja: "Gamer", ko: "Gamer", es: "Gamer" },
+    "Vector": { "zh-TW": "Vector", en: "Vector", fr: "Vector", ja: "Vector", ko: "Vector", es: "Vector" },
     "访客": { "zh-TW": "訪客", en: "Guest", fr: "Invité", ja: "ゲスト", ko: "게스트", es: "Invitado" },
     "待处理": { "zh-TW": "待處理", en: "Pending", fr: "En attente", ja: "保留中", ko: "대기 중", es: "Pendiente" },
     "进行中": { "zh-TW": "進行中", en: "In Progress", fr: "En cours", ja: "進行中", ko: "진행 중", es: "En curso" },
@@ -537,6 +590,28 @@
     "登录账户": { "zh-TW": "登入帳戶", en: "Sign In", fr: "Connexion", ja: "ログイン", ko: "로그인", es: "Iniciar sesión" },
     "登录方式": { "zh-TW": "登入方式", en: "Sign-In Method", fr: "Méthode de connexion", ja: "ログイン方法", ko: "로그인 방식", es: "Método de acceso" },
     "账户菜单": { "zh-TW": "帳戶選單", en: "Account Menu", fr: "Menu du compte", ja: "アカウントメニュー", ko: "계정 메뉴", es: "Menú de cuenta" },
+    "邮件": { "zh-TW": "郵件", en: "Mail", fr: "Courrier", ja: "メール", ko: "메일", es: "Correo" },
+    "邮件中心": { "zh-TW": "郵件中心", en: "Mail Center", fr: "Centre de courrier", ja: "メールセンター", ko: "메일 센터", es: "Centro de correo" },
+    "全部邮件": { "zh-TW": "全部郵件", en: "All Mail", fr: "Tout le courrier", ja: "すべてのメール", ko: "전체 메일", es: "Todo el correo" },
+    "系统邮件": { "zh-TW": "系統郵件", en: "System Mail", fr: "Courrier système", ja: "システムメール", ko: "시스템 메일", es: "Correo del sistema" },
+    "安全邮件": { "zh-TW": "安全郵件", en: "Security Mail", fr: "Courrier de sécurité", ja: "セキュリティメール", ko: "보안 메일", es: "Correo de seguridad" },
+    "订单邮件": { "zh-TW": "訂單郵件", en: "Order Mail", fr: "Courrier de commande", ja: "注文メール", ko: "주문 메일", es: "Correo de pedidos" },
+    "资金通知": { "zh-TW": "資金通知", en: "Funds Notice", fr: "Notification de fonds", ja: "資金通知", ko: "자금 알림", es: "Aviso de fondos" },
+    "聊天提醒": { "zh-TW": "聊天提醒", en: "Chat Alerts", fr: "Alertes de chat", ja: "チャット通知", ko: "채팅 알림", es: "Alertas de chat" },
+    "发件人": { "zh-TW": "寄件者", en: "Sender", fr: "Expéditeur", ja: "送信者", ko: "발신자", es: "Remitente" },
+    "发送时间": { "zh-TW": "發送時間", en: "Sent", fr: "Envoyé", ja: "送信時刻", ko: "전송 시간", es: "Enviado" },
+    "关联订单": { "zh-TW": "關聯訂單", en: "Related Order", fr: "Commande liée", ja: "関連注文", ko: "관련 주문", es: "Pedido relacionado" },
+    "未读": { "zh-TW": "未讀", en: "Unread", fr: "Non lu", ja: "未読", ko: "읽지 않음", es: "No leído" },
+    "已读": { "zh-TW": "已讀", en: "Read", fr: "Lu", ja: "既読", ko: "읽음", es: "Leído" },
+    "暂无邮件": { "zh-TW": "暫無郵件", en: "No Mail", fr: "Aucun courrier", ja: "メールはありません", ko: "메일 없음", es: "Sin correo" },
+    "选择一封邮件查看详情。": { "zh-TW": "選擇一封郵件查看詳情。", en: "Select a message to view details.", fr: "Sélectionnez un message pour afficher les détails.", ja: "詳細を見るメールを選択してください。", ko: "상세 내용을 보려면 메일을 선택하세요.", es: "Selecciona un mensaje para ver detalles." },
+    "站内邮件用于同步系统通知和聊天提醒，无法在联系设置中关闭。": { "zh-TW": "站內郵件用於同步系統通知和聊天提醒，無法在聯絡設定中關閉。", en: "In-app mail syncs system notices and chat alerts and cannot be disabled in contact settings.", fr: "Le courrier intégré synchronise les avis système et alertes de chat; il ne peut pas être désactivé.", ja: "アプリ内メールはシステム通知とチャット通知を同期し、連絡設定では無効にできません。", ko: "앱 내 메일은 시스템 알림과 채팅 알림을 동기화하며 연락 설정에서 끌 수 없습니다.", es: "El correo interno sincroniza avisos del sistema y alertas de chat y no se puede desactivar." },
+    "该邮件由系统自动同步，不能取消发送。": { "zh-TW": "此郵件由系統自動同步，不能取消發送。", en: "This message is synced automatically by the system and cannot be unsent.", fr: "Ce message est synchronisé automatiquement par le système et ne peut pas être annulé.", ja: "このメッセージはシステムにより自動同期され、送信取消はできません。", ko: "이 메시지는 시스템이 자동 동기화하며 전송 취소할 수 없습니다.", es: "Este mensaje se sincroniza automáticamente y no se puede cancelar." },
+    "系统通知": { "zh-TW": "系統通知", en: "System Notice", fr: "Notification système", ja: "システム通知", ko: "시스템 알림", es: "Aviso del sistema" },
+    "订单通知": { "zh-TW": "訂單通知", en: "Order Notice", fr: "Notification de commande", ja: "注文通知", ko: "주문 알림", es: "Aviso de pedido" },
+    "新聊天消息": { "zh-TW": "新聊天訊息", en: "New Chat Message", fr: "Nouveau message", ja: "新しいチャットメッセージ", ko: "새 채팅 메시지", es: "Nuevo mensaje de chat" },
+    "订单聊天更新": { "zh-TW": "訂單聊天更新", en: "Order Chat Update", fr: "Mise à jour du chat", ja: "注文チャット更新", ko: "주문 채팅 업데이트", es: "Actualización de chat" },
+    "无正文内容。": { "zh-TW": "無正文內容。", en: "No message body.", fr: "Aucun contenu.", ja: "本文はありません。", ko: "본문 없음.", es: "Sin contenido." },
     "当前版本": { "zh-TW": "目前版本", en: "Current Version", fr: "Version actuelle", ja: "現在のバージョン", ko: "현재 버전", es: "Versión actual" },
     "开发日志": { "zh-TW": "開發日誌", en: "Development Log", fr: "Journal de développement", ja: "開発ログ", ko: "개발 로그", es: "Registro de desarrollo" },
     "版本记录": { "zh-TW": "版本記錄", en: "Release History", fr: "Historique des versions", ja: "リリース履歴", ko: "릴리스 기록", es: "Historial de versiones" },
@@ -553,10 +628,10 @@
     "用户信息": { "zh-TW": "使用者資訊", en: "User Info", fr: "Infos utilisateur", ja: "ユーザー情報", ko: "사용자 정보", es: "Información de usuario" },
     "账户安全": { "zh-TW": "帳戶安全", en: "Account Security", fr: "Sécurité du compte", ja: "アカウントセキュリティ", ko: "계정 보안", es: "Seguridad de cuenta" },
     "联系设置": { "zh-TW": "聯絡設定", en: "Contact Settings", fr: "Paramètres de contact", ja: "連絡設定", ko: "연락 설정", es: "Ajustes de contacto" },
-    "我要入职": { "zh-TW": "我要入職", en: "Join as Staff", fr: "Rejoindre l'équipe", ja: "スタッフ応募", ko: "입사 신청", es: "Unirme al equipo" },
+    "我要入职": { "zh-TW": "成為 Vector", en: "Become a Vector", fr: "Devenir Vector", ja: "Vector になる", ko: "Vector 되기", es: "Convertirse en Vector" },
     "退出登录": { "zh-TW": "登出", en: "Sign Out", fr: "Déconnexion", ja: "ログアウト", ko: "로그아웃", es: "Cerrar sesión" },
     "确认退出登录？": { "zh-TW": "確認登出？", en: "Sign out?", fr: "Se déconnecter ?", ja: "ログアウトしますか？", ko: "로그아웃할까요?", es: "¿Cerrar sesión?" },
-    "退出后将回到客户模式。": { "zh-TW": "登出後將回到客戶模式。", en: "After signing out, you will return to customer mode.", fr: "Après déconnexion, vous reviendrez au mode client.", ja: "ログアウト後は顧客モードに戻ります。", ko: "로그아웃하면 고객 모드로 돌아갑니다.", es: "Al cerrar sesión volverás al modo cliente." },
+    "退出后将回到客户模式。": { "zh-TW": "登出後將回到 Gamer 模式。", en: "After signing out, you will return to Gamer Mode.", fr: "Après déconnexion, vous reviendrez au mode Gamer.", ja: "ログアウト後は Gamer モードに戻ります。", ko: "로그아웃하면 Gamer 모드로 돌아갑니다.", es: "Al cerrar sesión volverás al modo Gamer." },
     "取消": { "zh-TW": "取消", en: "Cancel", fr: "Annuler", ja: "キャンセル", ko: "취소", es: "Cancelar" },
     "确认": { "zh-TW": "確認", en: "Confirm", fr: "Confirmer", ja: "確認", ko: "확인", es: "Confirmar" },
     "保存": { "zh-TW": "儲存", en: "Save", fr: "Enregistrer", ja: "保存", ko: "저장", es: "Guardar" },
@@ -747,9 +822,11 @@
     "微信 / QQ / 手机号": { en: "WeChat / QQ / phone number" },
     "订单不存在": { en: "Order Not Found" },
     "尚未有人接单": { en: "Not Accepted Yet" },
-    "员工接单后即可打开聊天框。": { en: "The chat opens after a staff member accepts the order." },
+    "员工接单后即可打开聊天框。": { en: "The chat opens after a Vector accepts the order." },
+    "Vector 接单后即可打开聊天框。": { "zh-TW": "Vector 接單後即可打開聊天框。", en: "The chat opens after a Vector accepts the order.", fr: "Le chat s'ouvre après acceptation par un Vector.", ja: "Vector が受注するとチャットを開けます。", ko: "Vector가 주문을 수락하면 채팅이 열립니다.", es: "El chat se abre cuando un Vector acepta el pedido." },
     "无权查看": { en: "No Permission" },
-    "只有订单顾客、接单员工或管理员可以打开聊天。": { en: "Only the customer, assigned staff, or admin can open this chat." },
+    "只有订单顾客、接单员工或管理员可以打开聊天。": { en: "Only the order Gamer, assigned Vector, or admin can open this chat." },
+    "只有订单 Gamer、接单 Vector 或管理员可以打开聊天。": { "zh-TW": "只有訂單 Gamer、接單 Vector 或管理員可以打開聊天。", en: "Only the order Gamer, assigned Vector, or admin can open this chat.", fr: "Seuls le Gamer de la commande, le Vector assigné ou un admin peuvent ouvrir ce chat.", ja: "注文の Gamer、担当 Vector、または管理者だけがこのチャットを開けます。", ko: "주문 Gamer, 담당 Vector 또는 관리자만 이 채팅을 열 수 있습니다.", es: "Solo el Gamer del pedido, el Vector asignado o un administrador pueden abrir este chat." },
     "联系": { en: "Contact" },
     "接单": { en: "Accept" },
     "接单时间": { en: "Accepted At" },
@@ -773,7 +850,10 @@
     "小费": { en: "Tip" },
     "申请加急": { en: "Request Rush" },
     "申请退单": { en: "Request Return" },
-    "举报员工": { en: "Report Staff" },
+    "举报员工": { en: "Report Vector" },
+    "举报 Vector": { "zh-TW": "舉報 Vector", en: "Report Vector", fr: "Signaler Vector", ja: "Vector を報告", ko: "Vector 신고", es: "Reportar Vector" },
+    "员工接单后才可以举报。": { en: "You can report only after a Vector accepts the order." },
+    "Vector 接单后才可以举报。": { "zh-TW": "Vector 接單後才可以舉報。", en: "You can report only after a Vector accepts the order.", fr: "Vous pouvez signaler seulement après acceptation par un Vector.", ja: "Vector が受注した後にのみ報告できます。", ko: "Vector가 주문을 수락한 후에만 신고할 수 있습니다.", es: "Solo puedes reportar después de que un Vector acepte el pedido." },
     "支付小费": { en: "Pay Tip" },
     "账户密码": { en: "Account Password" },
     "确认支付": { en: "Confirm Payment" },
@@ -788,6 +868,12 @@
     "其他": { en: "Other" },
     "请描述具体情况、时间和证据": { en: "Describe what happened, timing, and evidence" },
     "小费积分": { en: "Tip Points" },
+    "等待 Vector 确认。": { "zh-TW": "等待 Vector 確認。", en: "Waiting for Vector confirmation.", fr: "En attente de confirmation Vector.", ja: "Vector の確認待ちです。", ko: "Vector 확인 대기 중입니다.", es: "Esperando confirmación de Vector." },
+    "接受后需要在 Gamer 规定期限内结单。": { "zh-TW": "接受後需要在 Gamer 規定期限內結單。", en: "After accepting, the order must be completed within the Gamer deadline.", fr: "Après acceptation, la commande doit être terminée dans le délai fixé par Gamer.", ja: "承認後は Gamer が指定した期限内に完了する必要があります。", ko: "수락 후 Gamer가 정한 기한 내에 완료해야 합니다.", es: "Tras aceptar, el pedido debe completarse dentro del plazo de Gamer." },
+    "拒绝后加急费用会退回 Gamer。": { "zh-TW": "拒絕後加急費用會退回 Gamer。", en: "If declined, the rush fee returns to the Gamer.", fr: "En cas de refus, les frais d'urgence reviennent au Gamer.", ja: "拒否すると至急料金は Gamer に返金されます。", ko: "거절하면 긴급 비용은 Gamer에게 반환됩니다.", es: "Si se rechaza, la tarifa urgente vuelve al Gamer." },
+    "Gamer 同意后，违约订单结单时 Vector 可额外获得原费用的 50%。": { "zh-TW": "Gamer 同意後，違約訂單結單時 Vector 可額外獲得原費用的 50%。", en: "If the Gamer agrees, the Vector can receive an additional 50% of the original fee when the breached order is completed.", fr: "Si le Gamer accepte, le Vector peut recevoir 50 % supplémentaires du prix initial à la clôture de la commande en retard.", ja: "Gamer が同意すると、違反済み注文の完了時に Vector は元料金の追加 50% を受け取れます。", ko: "Gamer가 동의하면 위반 주문 완료 시 Vector는 원래 금액의 추가 50%를 받을 수 있습니다.", es: "Si el Gamer acepta, el Vector puede recibir un 50 % adicional del precio original al completar el pedido incumplido." },
+    "订单需要先由 Vector 接单。": { "zh-TW": "訂單需要先由 Vector 接單。", en: "The order must be accepted by a Vector first.", fr: "La commande doit d'abord être acceptée par un Vector.", ja: "注文は先に Vector が受注する必要があります。", ko: "주문은 먼저 Vector가 수락해야 합니다.", es: "El pedido debe ser aceptado primero por un Vector." },
+    "积分已返还至 Gamer 账户。": { "zh-TW": "積分已返還至 Gamer 帳戶。", en: "Points were returned to the Gamer account.", fr: "Les points ont été renvoyés au compte Gamer.", ja: "ポイントは Gamer アカウントに返還されました。", ko: "포인트가 Gamer 계정으로 반환되었습니다.", es: "Los puntos se devolvieron a la cuenta Gamer." },
     "一键核对": { en: "One-Click Audit" },
     "一键清空日志": { en: "Clear Logs" },
     "今日概览": { en: "Today Overview" },
@@ -795,21 +881,31 @@
     "已结单目": { en: "Completed Orders" },
     "预约单目": { en: "Reservations" },
     "个人日志": { en: "Personal Log" },
-    "员工工作台": { en: "Staff Workspace" },
+    "员工工作台": { en: "Vector Workspace" },
+    "Vector 工作台": { "zh-TW": "Vector 工作台", en: "Vector Workspace", fr: "Espace Vector", ja: "Vector ワークスペース", ko: "Vector 작업 공간", es: "Espacio Vector" },
     "查看当前进行中的订单，跟进交付进度和沟通状态。": { en: "View active orders and follow delivery progress and communication status." },
     "复查历史完成订单，确认结算、评价与售后记录。": { en: "Review completed orders, settlement, ratings, and after-sales records." },
-    "管理未来预约，确认服务时间、人员与客户备注。": { en: "Manage upcoming reservations, service time, staffing, and customer notes." },
+    "管理未来预约，确认服务时间、人员与客户备注。": { en: "Manage upcoming reservations, service time, staffing, and Gamer notes." },
+    "管理未来预约，确认服务时间、人员与 Gamer 备注。": { en: "Manage upcoming reservations, service time, staffing, and Gamer notes." },
     "记录本日工作进展、异常事项与交付备注。": { en: "Record today’s work progress, exceptions, and delivery notes." },
+    "记录服务进展、Gamer 备注或异常事项": { "zh-TW": "記錄服務進度、Gamer 備註或異常事項", en: "Record service progress, Gamer notes, or exceptions", fr: "Noter l'avancement, les remarques Gamer ou les exceptions", ja: "サービス進捗、Gamer メモ、例外事項を記録", ko: "서비스 진행, Gamer 메모 또는 예외 사항 기록", es: "Registra progreso, notas de Gamer o incidencias" },
     "订单处理、预约跟进、结单记录与个人日志集中在一个工作视图里。": { en: "Order handling, reservation follow-up, completion records, and logs in one workspace." },
-    "顾客": { en: "Customers" },
+    "普通 Gamer 可浏览、注册、下单和预约；Vector 账号可处理订单；管理员账号可维护内容与数据。": { "zh-TW": "普通 Gamer 可瀏覽、註冊、下單和預約；Vector 帳號可處理訂單；管理員帳號可維護內容與資料。", en: "Gamers can browse, register, place orders, and reserve services; Vector accounts can handle orders; admin accounts maintain content and data.", fr: "Les Gamers peuvent parcourir, s'inscrire, commander et réserver; les comptes Vector traitent les commandes; les administrateurs maintiennent le contenu et les données.", ja: "Gamer は閲覧、登録、注文、予約ができ、Vector アカウントは注文を処理し、管理者はコンテンツとデータを管理します。", ko: "Gamer는 탐색, 가입, 주문, 예약을 할 수 있고 Vector 계정은 주문을 처리하며 관리자는 콘텐츠와 데이터를 관리합니다.", es: "Los Gamers pueden explorar, registrarse, pedir y reservar; las cuentas Vector gestionan pedidos; los administradores mantienen contenido y datos." },
+    "顾客": { "zh-TW": "Gamer", en: "Gamer", fr: "Gamer", ja: "Gamer", ko: "Gamer", es: "Gamer" },
+    "员工": { "zh-TW": "Vector", en: "Vector", fr: "Vector", ja: "Vector", ko: "Vector", es: "Vector" },
     "用户": { en: "Users" },
     "账本": { en: "Ledger" },
     "日志": { en: "Logs" },
-    "顾客、员工账户、资金、封禁与注销管理。": { en: "Manage customer and staff accounts, funds, bans, and deletion." },
-    "查看顾客账户、积分、订单与限制状态。": { en: "View customer accounts, points, orders, and restrictions." },
-    "查看员工账户、积分、订单与兑现记录。": { en: "View staff accounts, points, orders, and payout records." },
-    "查看顾客": { en: "View Customers" },
-    "查看员工": { en: "View Staff" },
+    "顾客、员工账户、资金、封禁与注销管理。": { en: "Manage Gamer and Vector accounts, funds, bans, and deletion." },
+    "Gamer / Vector 账户、资金、封禁与注销管理。": { en: "Manage Gamer and Vector accounts, funds, bans, and deletion." },
+    "查看顾客账户、积分、订单与限制状态。": { en: "View Gamer accounts, points, orders, and restrictions." },
+    "查看员工账户、积分、订单与兑现记录。": { en: "View Vector accounts, points, orders, and payout records." },
+    "查看 Gamer 账户、积分、订单与限制状态。": { en: "View Gamer accounts, points, orders, and restrictions." },
+    "查看 Vector 账户、积分、订单与兑现记录。": { en: "View Vector accounts, points, orders, and payout records." },
+    "查看顾客": { en: "View Gamer" },
+    "查看员工": { en: "View Vector" },
+    "查看 Gamer": { en: "View Gamer" },
+    "查看 Vector": { en: "View Vector" },
     "统一检索充值单、消费单与兑现单。": { en: "Search recharge, consumption, and payout orders in one place." },
     "实时资金流水与统计参考。": { en: "Real-time fund flows and statistical reference." },
     "记录后台与关键业务操作。": { en: "Record admin and key business actions." },
@@ -818,6 +914,14 @@
     "兑现单": { en: "Payout Orders" },
     "全部": { en: "All" },
     "用户ID": { en: "User ID" },
+    "账户概览": { en: "Account Overview" },
+    "角色": { en: "Role" },
+    "邮箱": { en: "Email" },
+    "通知邮箱": { en: "Notification Email" },
+    "账户状态": { en: "Account Status" },
+    "已隐藏": { en: "Hidden" },
+    "正常": { en: "Normal" },
+    "账户密码已隐藏，管理员界面不会展示或导出明文密码。": { en: "Account password is hidden. The admin interface does not display or export plaintext passwords." },
     "资金": { en: "Funds" },
     "在线状态": { en: "Online Status" },
     "注册时间": { en: "Registration Time" },
@@ -857,7 +961,8 @@
     "邮件接口未配置或暂不可用。": { en: "Email endpoint is not configured or is temporarily unavailable." },
     "演示验证码": { en: "Demo code" },
     "已退出登录": { en: "Signed Out" },
-    "当前已回到客户模式。": { en: "You are back in customer mode." },
+    "当前已回到客户模式。": { en: "You are back in Gamer Mode." },
+    "当前已回到 Gamer 模式。": { en: "You are back in Gamer Mode." },
     "欢迎回来": { en: "Welcome Back" },
     "用户名已存在。": { en: "Username already exists." },
     "邮箱已被注册。": { en: "Email is already registered." },
@@ -912,12 +1017,18 @@
     "联系设置已保存": { en: "Contact Settings Saved" },
     "邮件通知语言固定为英语。": { en: "Email notifications are always sent in English." },
     "通知邮箱默认为绑定邮箱，可单独修改。所有邮件通知均以英语发送。": { en: "Notification email defaults to the bound email and can be changed. All email notifications are sent in English." },
-    "提交入职申请": { en: "Submit Employment Application" },
+    "提交入职申请": { en: "Submit Vector Application" },
+    "提交 Vector 申请": { en: "Submit Vector Application" },
+    "成为 Vector": { "zh-TW": "成為 Vector", en: "Become a Vector", fr: "Devenir Vector", ja: "Vector になる", ko: "Vector 되기", es: "Convertirse en Vector" },
+    "退出后将回到 Gamer 模式。": { "zh-TW": "登出後將回到 Gamer 模式。", en: "After signing out, you will return to Gamer Mode.", fr: "Après déconnexion, vous reviendrez au mode Gamer.", ja: "ログアウト後は Gamer モードに戻ります。", ko: "로그아웃하면 Gamer 모드로 돌아갑니다.", es: "Al cerrar sesión volverás al modo Gamer." },
+    "管理账户资料、安全验证、通知邮箱与 Vector 申请。": { "zh-TW": "管理帳戶資料、安全驗證、通知信箱與 Vector 申請。", en: "Manage account details, security verification, notification email, and Vector application.", fr: "Gérer les informations du compte, la sécurité, l'e-mail de notification et la candidature Vector.", ja: "アカウント情報、認証、通知メール、Vector 申請を管理します。", ko: "계정 정보, 보안 인증, 알림 이메일, Vector 신청을 관리합니다.", es: "Gestiona datos de cuenta, seguridad, email de notificación y solicitud Vector." },
+    "陪玩/代打 Vector": { "zh-TW": "陪玩/代打 Vector", en: "Companion / Boosting Vector", fr: "Vector accompagnement / boosting", ja: "コンパニオン / 代行 Vector", ko: "동행 / 대리 Vector", es: "Vector de acompañamiento / boosting" },
     "申请方向": { en: "Application Direction" },
     "游戏经历与可服务项目": { en: "Game Experience and Services" },
     "联系邮箱或方式": { en: "Contact Email or Method" },
     "提交申请": { en: "Submit Application" },
-    "入职申请已提交": { en: "Employment Application Submitted" },
+    "入职申请已提交": { en: "Vector Application Submitted" },
+    "Vector 申请已提交": { en: "Vector Application Submitted" },
     "管理员可在日志中查看记录。": { en: "Admins can view the record in logs." },
     "归档备份邮箱": { en: "Archive Backup Email" },
     "最近备份：": { en: "Latest backup: " },
@@ -1044,6 +1155,10 @@
       translate: "no",
       text
     });
+  }
+
+  function hasProtectedRoleTerm(text) {
+    return /\b(?:Gamer|Vector)\b/.test(String(text || ""));
   }
 
   function financialText(value, className = "financial-value") {
@@ -1209,7 +1324,7 @@
     {
       id: "reserved",
       title: "预约单目",
-      description: "管理未来预约，确认服务时间、人员与客户备注。",
+      description: "管理未来预约，确认服务时间、人员与 Gamer 备注。",
       icon: "fa-regular fa-calendar-check"
     },
     {
@@ -1558,15 +1673,61 @@
       return "";
     }
     const labels = {
-      pending: "加急待员工确认",
+      pending: "加急待 Vector 确认",
       accepted: "加急已接受",
       declined: "加急已拒绝",
       breached: "加急已违约",
-      continue_requested: "员工申请继续完成",
-      continued: "顾客已同意继续",
-      continue_declined: "顾客拒绝继续"
+      continue_requested: "Vector 申请继续完成",
+      continued: "Gamer 已同意继续",
+      continue_declined: "Gamer 拒绝继续"
     };
     return labels[rush.status] ? localizeStaticPhrase(labels[rush.status]) : "";
+  }
+
+  function mailboxCategory(categoryId) {
+    return MailboxCategories.find((item) => item.id === categoryId) || MailboxCategories[1];
+  }
+
+  function mailboxNoticeBody(profile, notice, context = {}) {
+    return [
+      `Hello ${profile?.username || "there"},`,
+      context.orderId ? `Order ID: ${context.orderId}.` : "",
+      context.itemName ? `Item: ${context.itemName}.` : "",
+      context.amount ? `Amount: ${context.amount}.` : "",
+      "This notice is also stored in your IMPULSE J in-app mailbox and cannot be unsent."
+    ].filter(Boolean).join(" ");
+  }
+
+  function chatMailboxBody(order, message) {
+    const sender = message.sender || "SYSTEM";
+    const content = message.text
+      ? message.text
+      : message.imageData
+        ? "[Image attachment]"
+        : "[No text content]";
+    return [
+      `Order ID: ${order?.id || "unknown"}.`,
+      `From: ${sender}.`,
+      `Message: ${content}`
+    ].join(" ");
+  }
+
+  function chatMailboxRecipients(order, message) {
+    if (!order) {
+      return [];
+    }
+    const participants = [order.customerUsername, order.handledBy].filter(Boolean);
+    if (!participants.length) {
+      return [];
+    }
+    if (message.sender === "SYSTEM" || message.role === "system" || message.type === "system") {
+      return participants;
+    }
+    const senderKey = normalize(message.sender);
+    if (!senderKey || !participants.some((name) => normalize(name) === senderKey)) {
+      return participants;
+    }
+    return participants.filter((name) => normalize(name) !== senderKey);
   }
 
   function userStatus(profile) {
@@ -1690,7 +1851,7 @@
     hydrating: false,
     storage: "unknown",
     syncTimer: null,
-    managedKeys: new Set([Keys.users, Keys.profiles, Keys.categories, Keys.games, Keys.products, Keys.orders, Keys.orderChats, Keys.ledger, Keys.adminLogs, Keys.systemSettings]),
+    managedKeys: new Set([Keys.users, Keys.profiles, Keys.categories, Keys.games, Keys.products, Keys.orders, Keys.orderChats, Keys.mailboxMessages, Keys.ledger, Keys.adminLogs, Keys.systemSettings]),
     token() {
       return localStorage.getItem(Keys.backendToken) || "";
     },
@@ -1710,6 +1871,7 @@
         products: Storage.get(Keys.products, {}),
         orders: Storage.get(Keys.orders, []),
         orderChats: Storage.get(Keys.orderChats, {}),
+        mailboxMessages: Storage.get(Keys.mailboxMessages, {}),
         ledger: Storage.get(Keys.ledger, []),
         adminLogs: Storage.get(Keys.adminLogs, []),
         systemSettings: Storage.get(Keys.systemSettings, {})
@@ -1752,6 +1914,7 @@
         products: this.mergeRecordLists(local.products, remoteSnapshot.products),
         orders: this.mergeArrayBy(local.orders, remoteSnapshot.orders, (item) => item?.id),
         orderChats: this.mergeChats(local.orderChats, remoteSnapshot.orderChats),
+        mailboxMessages: this.mergeChats(local.mailboxMessages, remoteSnapshot.mailboxMessages),
         ledger: this.mergeArrayBy(local.ledger, remoteSnapshot.ledger, (item) => item?.id),
         adminLogs: this.mergeArrayBy(local.adminLogs, remoteSnapshot.adminLogs, (item) => item?.id),
         systemSettings: {
@@ -1779,6 +1942,7 @@
         if (nextSnapshot.products && typeof nextSnapshot.products === "object") Storage.set(Keys.products, nextSnapshot.products);
         if (Array.isArray(nextSnapshot.orders)) Storage.set(Keys.orders, nextSnapshot.orders);
         if (nextSnapshot.orderChats && typeof nextSnapshot.orderChats === "object") Storage.set(Keys.orderChats, nextSnapshot.orderChats);
+        if (nextSnapshot.mailboxMessages && typeof nextSnapshot.mailboxMessages === "object") Storage.set(Keys.mailboxMessages, nextSnapshot.mailboxMessages);
         if (Array.isArray(nextSnapshot.ledger)) Storage.set(Keys.ledger, nextSnapshot.ledger);
         if (Array.isArray(nextSnapshot.adminLogs)) Storage.set(Keys.adminLogs, nextSnapshot.adminLogs);
         if (nextSnapshot.systemSettings && typeof nextSnapshot.systemSettings === "object") Storage.set(Keys.systemSettings, nextSnapshot.systemSettings);
@@ -2065,6 +2229,9 @@
       if (!Storage.get(Keys.orderChats, null) || Array.isArray(Storage.get(Keys.orderChats, null))) {
         Storage.set(Keys.orderChats, {});
       }
+      if (!Storage.get(Keys.mailboxMessages, null) || typeof Storage.get(Keys.mailboxMessages, null) !== "object" || Array.isArray(Storage.get(Keys.mailboxMessages, null))) {
+        Storage.set(Keys.mailboxMessages, {});
+      }
       if (!Array.isArray(Storage.get(Keys.ledger, null))) {
         Storage.set(Keys.ledger, []);
       }
@@ -2126,7 +2293,7 @@
       users.push({ ...user, email: normalizeEmail(user.email), createdAt: user.createdAt || new Date().toISOString() });
       Storage.set(Keys.users, users);
       this.ensureProfiles();
-      this.log("用户注册", `${user.username} 注册为${user.role === "staff" ? "员工" : "顾客"}`);
+      this.log("用户注册", `${user.username} 注册为${RoleDisplayNames[user.role] || "Gamer"}`);
     },
     profiles() {
       return Storage.get(Keys.profiles, []);
@@ -2145,6 +2312,103 @@
     },
     saveChats(chats) {
       Storage.set(Keys.orderChats, chats);
+    },
+    mailboxes() {
+      const boxes = Storage.get(Keys.mailboxMessages, {});
+      return boxes && typeof boxes === "object" && !Array.isArray(boxes) ? boxes : {};
+    },
+    saveMailboxes(mailboxes) {
+      Storage.set(Keys.mailboxMessages, mailboxes && typeof mailboxes === "object" && !Array.isArray(mailboxes) ? mailboxes : {});
+    },
+    mailbox(username) {
+      const key = normalize(username);
+      return (this.mailboxes()[key] || [])
+        .slice()
+        .sort((a, b) => timestampMs(b.createdAt) - timestampMs(a.createdAt));
+    },
+    unreadMailboxCount(username) {
+      return this.mailbox(username).filter((message) => !message.readAt).length;
+    },
+    addMailboxMessage(username, payload = {}) {
+      const recipient = this.findUser(username);
+      const recipientUsername = recipient?.username || username;
+      if (!recipientUsername) {
+        return null;
+      }
+      const key = normalize(recipientUsername);
+      if (!key) {
+        return null;
+      }
+      const now = new Date().toISOString();
+      const category = mailboxCategory(payload.category || "system").id;
+      const body = String(payload.body || payload.preview || "").trim();
+      const entry = {
+        id: payload.id || createId("mail"),
+        recipientUsername,
+        category,
+        subject: String(payload.subject || "系统通知").trim(),
+        preview: String(payload.preview || body.slice(0, 120) || "系统通知").trim(),
+        body,
+        sender: String(payload.sender || "IMPULSE J System").trim(),
+        source: String(payload.source || "system").trim(),
+        sourceId: String(payload.sourceId || "").trim(),
+        orderId: String(payload.orderId || "").trim(),
+        readAt: payload.readAt || "",
+        createdAt: payload.createdAt || now
+      };
+      const boxes = this.mailboxes();
+      const list = Array.isArray(boxes[key]) ? boxes[key] : [];
+      boxes[key] = [entry, ...list.filter((item) => item.id !== entry.id)];
+      this.saveMailboxes(boxes);
+      return entry;
+    },
+    markMailboxRead(username, messageId) {
+      const key = normalize(username);
+      if (!key || !messageId) {
+        return null;
+      }
+      const boxes = this.mailboxes();
+      const list = Array.isArray(boxes[key]) ? boxes[key] : [];
+      let selected = null;
+      const now = new Date().toISOString();
+      boxes[key] = list.map((message) => {
+        if (message.id !== messageId) {
+          return message;
+        }
+        selected = { ...message, readAt: message.readAt || now };
+        return selected;
+      });
+      this.saveMailboxes(boxes);
+      return selected;
+    },
+    markMailboxCategoryRead(username, categoryId = "all") {
+      const key = normalize(username);
+      if (!key) {
+        return;
+      }
+      const boxes = this.mailboxes();
+      const list = Array.isArray(boxes[key]) ? boxes[key] : [];
+      const now = new Date().toISOString();
+      boxes[key] = list.map((message) => (
+        (categoryId === "all" || message.category === categoryId) && !message.readAt
+          ? { ...message, readAt: now }
+          : message
+      ));
+      this.saveMailboxes(boxes);
+    },
+    addChatMailboxNotifications(order, message) {
+      chatMailboxRecipients(order, message).forEach((username) => {
+        this.addMailboxMessage(username, {
+          category: "chat",
+          subject: message.sender === "SYSTEM" || message.type === "system" ? "订单聊天更新" : "新聊天消息",
+          preview: message.text || (message.imageData ? "[Image attachment]" : "订单聊天更新"),
+          body: chatMailboxBody(order, message),
+          sender: message.sender || "SYSTEM",
+          source: "chat",
+          sourceId: message.id,
+          orderId: order?.id || ""
+        });
+      });
     },
     chatMessages(orderId) {
       return this.chats()[orderId] || [];
@@ -2191,6 +2455,7 @@
       };
       chats[orderId] = [...(chats[orderId] || []), entry];
       this.saveChats(chats);
+      this.addChatMailboxNotifications(this.orderById(orderId), entry);
       return entry;
     },
     markChatRead(orderId, username) {
@@ -2410,6 +2675,20 @@
         });
       });
       this.saveChats(chats);
+      const mailboxes = this.mailboxes();
+      const oldMailboxKey = normalize(oldUsername);
+      const nextMailboxKey = normalize(nextUsername);
+      if (oldMailboxKey && nextMailboxKey && oldMailboxKey !== nextMailboxKey) {
+        const oldMessages = Array.isArray(mailboxes[oldMailboxKey]) ? mailboxes[oldMailboxKey] : [];
+        const nextMessages = Array.isArray(mailboxes[nextMailboxKey]) ? mailboxes[nextMailboxKey] : [];
+        mailboxes[nextMailboxKey] = [...oldMessages, ...nextMessages].map((message) => ({
+          ...message,
+          recipientUsername: normalize(message.recipientUsername) === oldMailboxKey ? nextUsername : message.recipientUsername,
+          sender: normalize(message.sender) === oldMailboxKey ? nextUsername : message.sender
+        }));
+        delete mailboxes[oldMailboxKey];
+        this.saveMailboxes(mailboxes);
+      }
       if (State.currentUser && normalize(State.currentUser.username) === normalize(oldUsername)) {
         State.currentUser = { ...State.currentUser, username: nextUsername };
         Storage.set(Keys.currentUser, State.currentUser);
@@ -2460,25 +2739,32 @@
       return this.log("English email", `To: ${to} / Subject: ${subject} / Body: ${body}`);
     },
     notifyUser(profile, noticeKey, context = {}) {
-      if (!profile || profile.deleted || profile.emailNotices?.[noticeKey] === false) {
-        return null;
-      }
-      const user = this.findUser(profile.username);
-      const to = normalizeEmail(profile.notificationEmail || userEmail(user));
-      if (!isEmail(to)) {
+      if (!profile || profile.deleted) {
         return null;
       }
       const notice = EmailNoticeTypes.find((item) => item.key === noticeKey);
       if (!notice) {
         return null;
       }
-      const body = [
-        `Hello ${profile.username},`,
-        context.orderId ? `Order ID: ${context.orderId}.` : "",
-        context.itemName ? `Item: ${context.itemName}.` : "",
-        context.amount ? `Amount: ${context.amount}.` : "",
-        "This is an IMPULSE J account notification."
-      ].filter(Boolean).join(" ");
+      const body = mailboxNoticeBody(profile, notice, context);
+      const mailboxEntry = this.addMailboxMessage(profile.username, {
+        category: MailboxNoticeCategories[noticeKey] || "system",
+        subject: notice.subject,
+        preview: [context.itemName, context.amount, context.orderId].filter(Boolean).join(" / ") || notice.subject,
+        body,
+        sender: "IMPULSE J System",
+        source: "notice",
+        sourceId: noticeKey,
+        orderId: context.orderId || ""
+      });
+      if (profile.emailNotices?.[noticeKey] === false) {
+        return mailboxEntry;
+      }
+      const user = this.findUser(profile.username);
+      const to = normalizeEmail(profile.notificationEmail || userEmail(user));
+      if (!isEmail(to)) {
+        return mailboxEntry;
+      }
       return this.recordEnglishEmail(to, notice.subject, body);
     },
     touchCurrentUser() {
@@ -2805,7 +3091,7 @@
           sender: "SYSTEM",
           role: "system",
           type: "system",
-          text: "加急期限已违约，顾客退单权限已恢复。"
+          text: "加急期限已违约，Gamer 退单权限已恢复。"
         });
         this.log("加急违约", `${order.id} 超过 ${formatFullDate(order.rush.deadlineAt)}`);
       });
@@ -2849,7 +3135,7 @@
         sender: "SYSTEM",
         role: "system",
         type: "system",
-        text: `顾客已支付 ${fee} 积分申请加急，要求 ${formatFullDate(deadlineAt)} 前结单。`
+        text: `Gamer 已支付 ${fee} 积分申请加急，要求 ${formatFullDate(deadlineAt)} 前结单。`
       });
       this.log("申请加急", `${order.customerUsername} 为 ${order.id} 支付 ${fee} 积分`);
       return { ok: true, fee, deadlineAt };
@@ -2885,7 +3171,7 @@
         sender: "SYSTEM",
         role: "system",
         type: "system",
-        text: accepted ? `员工已接受加急，结单期限为 ${formatFullDate(order.rush.deadlineAt)}。` : "员工已拒绝加急申请，加急费用已退回。"
+        text: accepted ? `Vector 已接受加急，结单期限为 ${formatFullDate(order.rush.deadlineAt)}。` : "Vector 已拒绝加急申请，加急费用已退回。"
       });
       this.log(accepted ? "接受加急" : "拒绝加急", `${order.id} ${State.currentUser?.username || ""}`);
       this.notifyUser(this.profileByUsername(order.customerUsername), "rushReply", {
@@ -2910,7 +3196,7 @@
         sender: "SYSTEM",
         role: "system",
         type: "system",
-        text: "员工申请继续完成违约加急订单，等待顾客确认。"
+        text: "Vector 申请继续完成违约加急订单，等待 Gamer 确认。"
       });
       this.log("申请继续完成", `${order.id} ${State.currentUser?.username || ""}`);
       return { ok: true };
@@ -2935,7 +3221,7 @@
         sender: "SYSTEM",
         role: "system",
         type: "system",
-        text: accepted ? "顾客已同意员工继续完成订单。" : "顾客已拒绝员工继续完成申请。"
+        text: accepted ? "Gamer 已同意 Vector 继续完成订单。" : "Gamer 已拒绝 Vector 继续完成申请。"
       });
       this.log(accepted ? "同意继续完成" : "拒绝继续完成", `${order.id} ${order.customerUsername}`);
       return { ok: true };
@@ -2966,16 +3252,16 @@
         completedAt: current.completedAt || refundedAt,
         returnRefundedAt: refundedAt,
         returnRefundAmount: refundAmount,
-        refundReason: "顾客接单后退单",
+        refundReason: "Vector 接单后 Gamer 退单",
         updatedAt: refundedAt
       }));
       this.addChatMessage(order.id, {
         sender: "SYSTEM",
         role: "system",
         type: "system",
-        text: `顾客已退单，系统返还 ${refundAmount} 积分。`
+        text: `Gamer 已退单，系统返还 ${refundAmount} 积分。`
       });
-      this.log("顾客退单", `${order.id} 返还 ${refundAmount} 积分`);
+      this.log("Gamer 退单", `${order.id} 返还 ${refundAmount} 积分`);
       this.notifyUser(customer, "returnSuccess", {
         orderId: order.id,
         itemName: order.productTitle,
@@ -3010,7 +3296,7 @@
         sender: "SYSTEM",
         role: "system",
         type: "system",
-        text: `顾客已向员工支付 ${tip} 积分小费。`
+        text: `Gamer 已向 Vector 支付 ${tip} 积分小费。`
       });
       this.log("支付小费", `${order.id} ${order.customerUsername} -> ${order.handledBy} ${tip} 积分`);
       return { ok: true, tip };
@@ -3038,7 +3324,7 @@
         sender: "SYSTEM",
         role: "system",
         type: "system",
-        text: "顾客已提交举报，管理员可在日志和订单记录中追踪。"
+        text: "Gamer 已提交举报，管理员可在日志和订单记录中追踪。"
       });
       this.log("提交举报", `${order.id} ${report.reporter} 举报 ${order.handledBy}：${reason}`);
       return { ok: true, report };
@@ -3099,9 +3385,9 @@
         sender: "SYSTEM",
         role: "system",
         type: "system",
-        text: `${settlementNote}：员工获得 ${staffPayout} 积分${customerRefund ? `，顾客退回 ${customerRefund} 积分` : ""}。`
+        text: `${settlementNote}：Vector 获得 ${staffPayout} 积分${customerRefund ? `，Gamer 退回 ${customerRefund} 积分` : ""}。`
       });
-      this.log("订单结算", `${order.id} ${settlementNote}，员工 ${staffPayout}，顾客退款 ${customerRefund}`);
+      this.log("订单结算", `${order.id} ${settlementNote}，Vector ${staffPayout}，Gamer 退款 ${customerRefund}`);
       if (customer) {
         this.notifyUser(customer, "completionSuccess", {
           orderId: order.id,
@@ -3127,13 +3413,14 @@
     exportSnapshot() {
       return {
         exportedAt: new Date().toISOString(),
-        users: this.users(),
+        users: this.users().map(({ password, passwordHash, ...safe }) => safe),
         profiles: this.profiles(),
         categories: this.categories(),
         gameCategories: this.games(),
         products: this.products(),
         orders: this.orders(),
         orderChats: this.chats(),
+        mailboxMessages: this.mailboxes(),
         ledger: this.ledger(),
         adminLogs: this.adminLogs(),
         systemSettings: this.systemSettings()
@@ -3367,7 +3654,7 @@
       Storage.remove(Keys.currentUser);
       Storage.remove(Keys.currentMode);
       Router.go("home");
-      UI.toast("已退出登录", "当前已回到客户模式。");
+      UI.toast("已退出登录", "当前已回到 Gamer 模式。");
     }
   };
 
@@ -3452,6 +3739,9 @@
         const trimmed = original.trim();
         if (!trimmed) {
           return;
+        }
+        if (hasProtectedRoleTerm(trimmed)) {
+          markNoTranslate(node.parentElement || node.parentNode);
         }
         const localized = localizeStaticPhrase(trimmed);
         if (localized === trimmed) {
@@ -3882,6 +4172,13 @@
       }
 
       const profile = Data.profileByUsername(State.currentUser.username);
+      const unreadMail = Data.unreadMailboxCount(State.currentUser.username);
+      Dom.topActions.appendChild(
+        h("button", { className: "icon-button square mail-button", type: "button", dataset: { action: "open-mailbox" }, ariaLabel: "邮件中心", title: "邮件中心" },
+          icon("fa-regular fa-envelope"),
+          unreadMail ? h("span", { className: "unread-badge mail-unread-badge", text: unreadMail > 99 ? "99+" : String(unreadMail) }) : null
+        )
+      );
       const avatar = h("button", { className: "avatar-button notranslate", translate: "no", type: "button", dataset: { action: "open-user-menu" }, ariaLabel: "账户菜单", title: "账户菜单" },
         profile?.avatarImage
           ? h("img", { src: profile.avatarImage, alt: "头像" })
@@ -3916,7 +4213,7 @@
         }
         return {
           kicker: Modes[State.mode],
-          title: "员工工作台",
+          title: "Vector 工作台",
           description: "订单处理、预约跟进、结单记录与个人日志集中在一个工作视图里。",
           stats: [
             ["待处理", metrics.pending],
@@ -4240,6 +4537,9 @@
     card({ item, action, dataset = {}, buttonText }) {
       const batchActive = isAdminBatchTarget(dataset.manageType);
       const selected = batchActive && isAdminBatchSelected(dataset.manageType, item.id);
+      const cardTitle = localizedContent(item, "title");
+      const cardDescription = localizedContent(item, "description", "暂无描述。") || "暂无描述。";
+      const cardButton = localizeStaticPhrase(buttonText);
       return h("article", {
         className: `card ${dataset.manageType === "game" ? "game-card" : ""} ${batchActive ? "admin-selectable" : ""} ${selected ? "selected" : ""}`,
         role: "button",
@@ -4248,15 +4548,15 @@
       },
         batchActive ? h("span", { className: "batch-check" }, selected ? icon("fa-solid fa-check") : null) : null,
         item.imageData
-          ? h("div", { className: "card-image" }, h("img", { src: item.imageData, alt: localizedContent(item, "title") || "展示图片" }))
+          ? h("div", { className: "card-image" }, h("img", { src: item.imageData, alt: cardTitle || "展示图片" }))
           : h("div", { className: "card-icon" }, icon(item.icon || "fa-solid fa-star")),
         h("div", {},
-          h("h2", { text: localizedContent(item, "title") }),
-          h("p", { text: localizedContent(item, "description", "暂无描述。") || "暂无描述。" }),
+          h("h2", { className: hasProtectedRoleTerm(cardTitle) ? "notranslate" : "", translate: hasProtectedRoleTerm(cardTitle) ? "no" : null, text: cardTitle }),
+          h("p", { className: hasProtectedRoleTerm(cardDescription) ? "notranslate" : "", translate: hasProtectedRoleTerm(cardDescription) ? "no" : null, text: cardDescription }),
           localizedContent(item, "platform") ? h("div", { className: "tag-row" }, h("span", { className: "tag", text: localizedContent(item, "platform") })) : null
         ),
         h("div", { className: "card-footer" },
-          h("span", { className: "tag", text: buttonText })
+          h("span", { className: `tag ${hasProtectedRoleTerm(cardButton) ? "notranslate" : ""}`, translate: hasProtectedRoleTerm(cardButton) ? "no" : null, text: cardButton })
         )
       );
     },
@@ -4334,7 +4634,7 @@
             order.refundedAt ? h("span", {}, localizeStaticPhrase("已退款"), " ", formatFullDate(order.refundedAt)) : null,
             order.returnRefundedAt ? h("span", {}, localizeStaticPhrase("退单退款"), " ", financialText(order.returnRefundAmount)) : null,
             order.settledAt ? h("span", {}, localizeStaticPhrase("已结算"), " ", formatFullDate(order.settledAt)) : null,
-            canManage ? h("span", {}, localizeStaticPhrase("客户"), " ", h("span", { className: "notranslate", translate: "no", text: order.customerUsername })) : null,
+            canManage ? h("span", {}, protectedText("Gamer", "role-term"), " ", h("span", { className: "notranslate", translate: "no", text: order.customerUsername })) : null,
             UI.statusPill(order.status)
           ),
           order.note ? h("p", { text: order.note }) : null
@@ -4526,7 +4826,7 @@
               "工作记录",
               h("textarea", {
                 value: localStorage.getItem(key) || "",
-                placeholder: "记录服务进展、客户备注或异常事项",
+                placeholder: "记录服务进展、Gamer 备注或异常事项",
                 onInput: (event) => localStorage.setItem(key, event.target.value)
               })
             )
@@ -4607,26 +4907,26 @@
         return h("div", { className: "grid grid-two" },
           Components.card({
             item: {
-              title: "顾客",
-              description: "查看顾客账户、积分、订单与限制状态。",
-              titleI18n: localizedPair(staticPhraseIn("顾客", "en"), "顾客"),
-              descriptionI18n: localizedPair(staticPhraseIn("查看顾客账户、积分、订单与限制状态。", "en"), "查看顾客账户、积分、订单与限制状态。"),
+              title: "Gamer",
+              description: "查看 Gamer 账户、积分、订单与限制状态。",
+              titleI18n: localizedPair("Gamer", "Gamer"),
+              descriptionI18n: localizedPair(staticPhraseIn("查看 Gamer 账户、积分、订单与限制状态。", "en"), "查看 Gamer 账户、积分、订单与限制状态。"),
               icon: "fa-solid fa-user"
             },
             action: "open-admin-user-role",
-            buttonText: "查看顾客",
+            buttonText: "查看 Gamer",
             dataset: { role: "customer" }
           }),
           Components.card({
             item: {
-              title: "员工",
-              description: "查看员工账户、积分、订单与兑现记录。",
-              titleI18n: localizedPair(staticPhraseIn("员工", "en"), "员工"),
-              descriptionI18n: localizedPair(staticPhraseIn("查看员工账户、积分、订单与兑现记录。", "en"), "查看员工账户、积分、订单与兑现记录。"),
+              title: "Vector",
+              description: "查看 Vector 账户、积分、订单与兑现记录。",
+              titleI18n: localizedPair("Vector", "Vector"),
+              descriptionI18n: localizedPair(staticPhraseIn("查看 Vector 账户、积分、订单与兑现记录。", "en"), "查看 Vector 账户、积分、订单与兑现记录。"),
               icon: "fa-solid fa-user-tie"
             },
             action: "open-admin-user-role",
-            buttonText: "查看员工",
+            buttonText: "查看 Vector",
             dataset: { role: "staff" }
           })
         );
@@ -4684,10 +4984,48 @@
           ),
           h("button", { className: "button button-ghost", type: "button", dataset: { action: "open-admin-user-role", role: profile.role } }, "返回列表")
         ),
+        this.adminUserOverview(profile),
         h("div", { className: "tabs" },
           tabs.map(([key, label]) => h("button", { className: `tab ${tab === key ? "active" : ""}`, type: "button", dataset: { action: "open-admin-user-tab", role: profile.role, userId: profile.id, tab: key } }, label))
         ),
         this.adminUserTab(profile, tab)
+      );
+    },
+    adminUserOverview(profile) {
+      const user = Data.findUser(profile.username) || {};
+      const roleLabel = RoleDisplayNames[profile.role] || profile.role || "Gamer";
+      const accountState = profile.deleted
+        ? localizeStaticPhrase("已注销")
+        : isBanned(profile)
+          ? `${localizeStaticPhrase("封禁")} ${formatFullDate(profile.bannedUntil)}`
+          : localizeStaticPhrase("正常");
+      const row = ({ label, value, valueNode, muted = false }) => h("div", { className: "settings-row" },
+        h("div", {},
+          h("span", { text: `${localizeStaticPhrase(label)}：` }),
+          valueNode || h("strong", {
+            className: muted ? "muted" : "",
+            text: value ? localizeStaticPhrase(value) : localizeStaticPhrase("未设置")
+          })
+        )
+      );
+
+      return h("div", { className: "settings-list admin-user-overview" },
+        h("h3", { text: "账户概览" }),
+        row({ label: "用户ID", valueNode: protectedText(profile.id, "mono") }),
+        row({ label: "用户名", valueNode: protectedText(profile.username) }),
+        row({ label: "角色", valueNode: protectedText(roleLabel, "role-term") }),
+        row({ label: "邮箱", valueNode: protectedText(userEmail(user) || "未设置") }),
+        row({ label: "通知邮箱", valueNode: protectedText(profile.notificationEmail || userEmail(user) || "未设置") }),
+        row({ label: "用户等级", value: `Lv${clampUserLevel(profile.level)}` }),
+        row({ label: "剩余资金", valueNode: financialText(profile.funds) }),
+        row({ label: "国家或地区", valueNode: protectedText(profile.countryRegion || "未设置") }),
+        row({ label: "生日", valueNode: protectedText(profile.birthday || "未设置") }),
+        row({ label: "性别", value: genderLabel(profile.gender) }),
+        row({ label: "注册时间", value: formatFullDate(profile.createdAt) }),
+        row({ label: "在线状态", valueNode: protectedText(userStatus(profile), "status-value") }),
+        row({ label: "账户状态", valueNode: protectedText(accountState, "status-value") }),
+        row({ label: "账户密码", value: "已隐藏", muted: true }),
+        h("p", { className: "policy-control-note", text: "账户密码已隐藏，管理员界面不会展示或导出明文密码。" })
       );
     },
     adminUserTab(profile, tab) {
@@ -4883,7 +5221,7 @@
       }
       const map = {
         about: ["关于 IMPULSE J", `${BrandName} is driven by gamers' momentum and focuses on a cleaner game-service commerce experience.`],
-        help: ["帮助中心", "普通用户可浏览、注册、下单和预约；员工账号可处理订单；管理员账号可维护内容与数据。"]
+        help: ["帮助中心", "普通 Gamer 可浏览、注册、下单和预约；Vector 账号可处理订单；管理员账号可维护内容与数据。"]
       };
       const [title, body] = map[page] || map.about;
       return h("section", { className: "panel" }, h("h2", { text: title }), h("p", { text: body }));
@@ -5269,14 +5607,14 @@
         { label: "用户信息", icon: "fa-solid fa-id-card", action: () => this.openUserInfoSettings() },
         { label: "账户安全", icon: "fa-solid fa-shield-halved", action: () => this.openAccountSecuritySettings() },
         { label: "联系设置", icon: "fa-solid fa-envelope-open-text", action: () => this.openContactSettings() },
-        { label: "我要入职", icon: "fa-solid fa-briefcase", action: () => this.openEmploymentSettings() },
-        { label: "退出登录", icon: "fa-solid fa-right-from-bracket", destructive: true, action: () => UI.openConfirm("确认退出登录？", "退出后将回到客户模式。", () => Session.logout()) }
+        { label: "成为 Vector", icon: "fa-solid fa-briefcase", action: () => this.openEmploymentSettings() },
+        { label: "退出登录", icon: "fa-solid fa-right-from-bracket", destructive: true, action: () => UI.openConfirm("确认退出登录？", "退出后将回到 Gamer 模式。", () => Session.logout()) }
       ];
       UI.openModal(
         h("div", { className: "modal-card modal-wide slide-up" },
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
           h("h2", { text: "设置" }),
-          h("p", { text: "管理账户资料、安全验证、通知邮箱与入职申请。" }),
+          h("p", { text: "管理账户资料、安全验证、通知邮箱与 Vector 申请。" }),
           h("div", { className: "settings-action-grid" },
             settings.map((item) => h("button", {
               className: `settings-action ${item.destructive ? "destructive" : ""}`,
@@ -5682,13 +6020,13 @@
         return;
       }
       UI.openFormModal({
-        title: "我要入职",
+        title: "成为 Vector",
         fields: [
-          { name: "targetRole", label: "申请方向", value: profile.employmentApplication?.targetRole || "陪玩/代打员工", required: true },
+          { name: "targetRole", label: "申请方向", value: profile.employmentApplication?.targetRole || "陪玩/代打 Vector", required: true },
           { name: "contact", label: "联系邮箱或方式", value: profile.employmentApplication?.contact || profile.notificationEmail || "", required: true },
           { name: "experience", label: "游戏经历与可服务项目", type: "textarea", value: profile.employmentApplication?.experience || "", required: true }
         ],
-        submitLabel: "提交申请",
+        submitLabel: "提交 Vector 申请",
         onSubmit: (values) => {
           const application = {
             id: profile.employmentApplication?.id || createId("hire"),
@@ -5699,8 +6037,8 @@
             submittedAt: new Date().toISOString()
           };
           Data.saveProfile({ ...profile, employmentApplication: application });
-          Data.log("提交入职申请", `${profile.username} ${application.targetRole}`);
-          UI.toast("入职申请已提交", "管理员可在日志中查看记录。");
+          Data.log("提交 Vector 申请", `${profile.username} ${application.targetRole}`);
+          UI.toast("Vector 申请已提交", "管理员可在日志中查看记录。");
           return null;
         },
         wide: true
@@ -5714,14 +6052,14 @@
         return;
       }
       if (!order.handledBy || order.status === "pending") {
-        UI.toast("尚未有人接单", "员工接单后即可打开聊天框。");
+        UI.toast("尚未有人接单", "Vector 接单后即可打开聊天框。");
         return;
       }
       const isCustomer = State.currentUser?.username === order.customerUsername;
       const isStaff = State.currentUser?.username === order.handledBy;
       const isAdmin = State.currentUser?.role === "admin";
       if (!isCustomer && !isStaff && !isAdmin) {
-        UI.toast("无权查看", "只有订单顾客、接单员工或管理员可以打开聊天。");
+        UI.toast("无权查看", "只有订单 Gamer、接单 Vector 或管理员可以打开聊天。");
         return;
       }
 
@@ -5735,7 +6073,7 @@
         return h("div", { className: "chat-participant" },
           h("span", { className: `presence-dot ${online ? "online" : "offline"}` }),
           h("div", {},
-            h("strong", {}, label, " ", h("span", { className: "notranslate", translate: "no", text: profile?.username || "未分配" })),
+            h("strong", {}, protectedText(label, "role-term"), " ", h("span", { className: "notranslate", translate: "no", text: profile?.username || "未分配" })),
             h("small", { text: online ? "在线" : profile?.lastOnlineAt ? `离线 · 最后在线 ${formatDate(profile.lastOnlineAt)}` : "离线" })
           )
         );
@@ -5760,7 +6098,7 @@
         tools.push(
           makeTool("加急", "fa-solid fa-fire", order.status === "processing" && !activeRush, activeRush ? "该订单已有加急流程。" : "订单进行中才可以加急。", () => this.openRushForm(order.id)),
           makeTool("退单", "fa-solid fa-rotate-left", canReturnOrder(order), "退单仅在接单后 1 小时内可用，加急违约后会恢复。", () => this.openReturnForm(order.id)),
-          makeTool("举报", "fa-solid fa-shield-halved", Boolean(order.handledBy), "员工接单后才可以举报。", () => this.openReportForm(order.id)),
+          makeTool("举报", "fa-solid fa-shield-halved", Boolean(order.handledBy), "Vector 接单后才可以举报。", () => this.openReportForm(order.id)),
           makeTool("小费", "fa-solid fa-hand-holding-dollar", !["pending", "cancelled"].includes(order.status), "订单未接单或已取消时不能支付小费。", () => this.openTipForm(order.id))
         );
         if (order.rush?.status === "continue_requested") {
@@ -5921,8 +6259,8 @@
               h("small", { text: `未读消息：${Data.unreadChatCount(order.id, currentUsername)} 条` })
             ),
             h("div", { className: "chat-presence" },
-              participantCard("顾客", customerProfile),
-              participantCard("员工", staffProfile)
+              participantCard("Gamer", customerProfile),
+              participantCard("Vector", staffProfile)
             )
           ),
           order.rush ? h("p", { className: "balance-note order-locked-term notranslate", translate: "no", text: `${rushStatusLabel(order.rush)}${order.rush.deadlineAt ? ` / ${contentLanguage() === "zh-CN" ? "期限" : "Deadline"}: ${formatFullDate(order.rush.deadlineAt)}` : ""}` }) : null,
@@ -5965,7 +6303,7 @@
             }
             return { error: "当前订单不能申请加急。" };
           }
-          UI.toast("加急已提交", "等待员工确认。");
+          UI.toast("加急已提交", "等待 Vector 确认。");
           window.setTimeout(() => this.openOrderChat(orderId), 0);
           return null;
         }
@@ -5994,7 +6332,7 @@
     },
     openReportForm(orderId) {
       UI.openFormModal({
-        title: "举报员工",
+        title: "举报 Vector",
         fields: [
           { name: "reason", label: "举报类型", type: "select", value: "delay", options: [
             { value: "delay", label: "拖延或失联" },
@@ -6046,21 +6384,21 @@
             }
             return { error: "当前订单不能支付小费。" };
           }
-          UI.toast("小费已支付", contentLanguage() === "zh-CN" ? `${formatPrice(amount)}已转给员工。` : `${formatPrice(amount)} sent to staff.`);
+          UI.toast("小费已支付", contentLanguage() === "zh-CN" ? `${formatPrice(amount)}已转给 Vector。` : `${formatPrice(amount)} sent to Vector.`);
           window.setTimeout(() => this.openOrderChat(orderId), 0);
           return null;
         }
       });
     },
     respondRush(orderId, accepted) {
-      UI.openConfirm(accepted ? "接受加急？" : "拒绝加急？", accepted ? "接受后需要在顾客规定期限内结单。" : "拒绝后加急费用会退回顾客。", () => {
+      UI.openConfirm(accepted ? "接受加急？" : "拒绝加急？", accepted ? "接受后需要在 Gamer 规定期限内结单。" : "拒绝后加急费用会退回 Gamer。", () => {
         const result = Data.respondRush(orderId, accepted);
         UI.toast(result.ok ? "加急状态已更新" : "操作失败");
         this.openOrderChat(orderId);
       });
     },
     requestContinue(orderId) {
-      UI.openConfirm("申请继续完成？", "顾客同意后，违约订单结单时员工可额外获得原费用的 50%。", () => {
+      UI.openConfirm("申请继续完成？", "Gamer 同意后，违约订单结单时 Vector 可额外获得原费用的 50%。", () => {
         const result = Data.requestContinueAfterBreach(orderId);
         UI.toast(result.ok ? "已发送继续完成申请" : "操作失败");
         this.openOrderChat(orderId);
@@ -6092,7 +6430,7 @@
           )
         };
       }
-      const modeLabel = localizeStaticPhrase(Modes[State.mode] || "客户模式");
+      const modeLabel = localizeStaticPhrase(Modes[State.mode] || "Gamer 模式");
       return {
         type: "summary",
         node: h("div", { className: "menu-summary" },
@@ -6136,21 +6474,26 @@
     },
     openCurrentVersion() {
       const release = CurrentRelease;
+      const isAdmin = State.currentUser?.role === "admin";
       UI.openModal(
         h("div", { className: "modal-card modal-wide slide-up" },
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
           h("div", { className: "release-hero" },
             h("span", { className: "release-badge" }, icon("fa-solid fa-code-branch"), localizeStaticPhrase("当前发布")),
-            h("h2", {}, h("span", { className: "notranslate", translate: "no", text: release.version }), " · ", localizedI18n(release.nameI18n)),
+            h("h2", {},
+              h("span", { className: "notranslate", translate: "no", text: release.version }),
+              isAdmin ? " · " : null,
+              isAdmin ? localizedI18n(release.nameI18n) : null
+            ),
             h("p", { text: localizedI18n(release.summaryI18n) })
           ),
           h("div", { className: "release-meta-grid" },
             this.releaseMeta(localizeStaticPhrase("版本号"), release.version, true),
-            this.releaseMeta(localizeStaticPhrase("版本名称"), localizedI18n(release.nameI18n)),
+            ...(isAdmin ? [this.releaseMeta(localizeStaticPhrase("版本名称"), localizedI18n(release.nameI18n))] : []),
             this.releaseMeta(localizeStaticPhrase("发布时间"), release.releasedAt, true),
-            this.releaseMeta(localizeStaticPhrase("上传状态"), localizedI18n(release.statusI18n))
+            ...(isAdmin ? [this.releaseMeta(localizeStaticPhrase("上传状态"), localizedI18n(release.statusI18n))] : [])
           ),
-          State.currentUser?.role === "admin" ? h("div", { className: "modal-actions" },
+          isAdmin ? h("div", { className: "modal-actions" },
             h("button", { className: "button button-primary", type: "button", onClick: () => this.openDevelopmentLog() }, icon("fa-solid fa-clock-rotate-left"), "查看开发日志")
           ) : null
         )
@@ -6223,6 +6566,123 @@
       ].filter(Boolean);
       UI.showMenuFromElement(anchor, items);
     },
+    openMailbox() {
+      if (!State.currentUser) {
+        Auth.open("login");
+        return;
+      }
+      const username = State.currentUser.username;
+      let activeCategory = "all";
+      let selectedId = "";
+      const card = h("div", { className: "modal-card modal-wide mailbox-modal slide-up" });
+      const renderMailbox = () => {
+        const allMessages = Data.mailbox(username);
+        const filteredMessages = activeCategory === "all"
+          ? allMessages
+          : allMessages.filter((message) => message.category === activeCategory);
+        if (!selectedId || !filteredMessages.some((message) => message.id === selectedId)) {
+          selectedId = filteredMessages[0]?.id || "";
+        }
+        if (selectedId) {
+          Data.markMailboxRead(username, selectedId);
+          Components.renderTopbar();
+        }
+        const refreshedMessages = Data.mailbox(username);
+        const visibleMessages = activeCategory === "all"
+          ? refreshedMessages
+          : refreshedMessages.filter((message) => message.category === activeCategory);
+        const selectedMessage = refreshedMessages.find((message) => message.id === selectedId) || null;
+        const categoryCount = (categoryId) => categoryId === "all"
+          ? refreshedMessages.length
+          : refreshedMessages.filter((message) => message.category === categoryId).length;
+        const unreadCount = (categoryId) => refreshedMessages.filter((message) => (
+          !message.readAt && (categoryId === "all" || message.category === categoryId)
+        )).length;
+
+        clear(card);
+        append(card, [
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("div", { className: "mailbox-heading" },
+            h("div", {},
+              h("span", { className: "release-badge" }, icon("fa-regular fa-envelope"), "邮件中心"),
+              h("h2", { text: "邮件" }),
+              h("p", { text: "站内邮件用于同步系统通知和聊天提醒，无法在联系设置中关闭。" })
+            ),
+            h("div", { className: "mailbox-counter" },
+              h("strong", { className: "notranslate", translate: "no", text: `${refreshedMessages.filter((message) => !message.readAt).length}` }),
+              h("span", { text: "未读" })
+            )
+          ),
+          h("div", { className: "mailbox-shell" },
+            h("aside", { className: "mailbox-nav" },
+              MailboxCategories.map((category) => {
+                const count = categoryCount(category.id);
+                const unread = unreadCount(category.id);
+                return h("button", {
+                  className: `mailbox-category ${activeCategory === category.id ? "active" : ""}`,
+                  type: "button",
+                  onClick: () => {
+                    activeCategory = category.id;
+                    selectedId = "";
+                    renderMailbox();
+                  }
+                },
+                  icon(category.icon),
+                  h("span", { text: category.label }),
+                  h("small", { className: "notranslate", translate: "no", text: unread ? `${unread}/${count}` : String(count) })
+                );
+              })
+            ),
+            h("section", { className: "mailbox-list", "aria-label": "邮件列表" },
+              visibleMessages.length
+                ? visibleMessages.map((message) => {
+                    const category = mailboxCategory(message.category);
+                    return h("button", {
+                      className: `mail-row ${message.id === selectedId ? "active" : ""} ${message.readAt ? "read" : "unread"}`,
+                      type: "button",
+                      onClick: () => {
+                        selectedId = message.id;
+                        renderMailbox();
+                      }
+                    },
+                      h("span", { className: "mail-row-icon" }, icon(category.icon)),
+                      h("span", { className: "mail-row-main" },
+                        h("strong", { text: localizeStaticPhrase(message.subject || "系统通知") }),
+                        h("small", { className: "notranslate", translate: "no", text: message.preview || message.body || "系统通知" })
+                      ),
+                      h("time", { className: "notranslate", translate: "no", datetime: message.createdAt, text: formatDate(message.createdAt) }),
+                      message.readAt ? null : h("span", { className: "mail-unread-dot", ariaLabel: "未读" })
+                    );
+                  })
+                : h("div", { className: "mailbox-empty" }, icon("fa-regular fa-envelope-open"), h("strong", { text: "暂无邮件" }))
+            ),
+            h("article", { className: "mailbox-detail" },
+              selectedMessage
+                ? [
+                    h("div", { className: "mail-detail-header" },
+                      h("span", { className: "release-badge" }, icon(mailboxCategory(selectedMessage.category).icon), mailboxCategory(selectedMessage.category).label),
+                      h("h3", { text: localizeStaticPhrase(selectedMessage.subject || "系统通知") }),
+                      h("p", { text: "该邮件由系统自动同步，不能取消发送。" })
+                    ),
+                    h("dl", { className: "mail-detail-meta" },
+                      h("div", {}, h("dt", { text: "发件人" }), h("dd", { className: "notranslate", translate: "no", text: selectedMessage.sender || "IMPULSE J System" })),
+                      h("div", {}, h("dt", { text: "发送时间" }), h("dd", { className: "notranslate", translate: "no", text: formatFullDate(selectedMessage.createdAt) })),
+                      selectedMessage.orderId ? h("div", {}, h("dt", { text: "关联订单" }), h("dd", { className: "notranslate", translate: "no", text: selectedMessage.orderId })) : null,
+                      h("div", {}, h("dt", { text: "状态" }), h("dd", { text: selectedMessage.readAt ? "已读" : "未读" }))
+                    ),
+                    h("div", { className: "mail-detail-body notranslate", translate: "no", text: selectedMessage.body || selectedMessage.preview || "No message body." })
+                  ]
+                : h("div", { className: "mailbox-empty" }, icon("fa-regular fa-envelope-open"), h("strong", { text: "选择一封邮件查看详情。" }))
+            )
+          )
+        ]);
+        Translation.localizeStaticUi(card);
+        Translation.refresh();
+      };
+
+      renderMailbox();
+      UI.openModal(card);
+    },
     guestMenu(anchor) {
       UI.showMenuFromElement(anchor, [
         this.accountMenuSummary(),
@@ -6287,7 +6747,7 @@
         }
       }
       if (status === "completed" && (order.status !== "processing" || !order.handledBy)) {
-        UI.toast("无法结单", "订单需要先由员工接单。");
+        UI.toast("无法结单", "订单需要先由 Vector 接单。");
         App.render();
         return;
       }
@@ -6304,7 +6764,7 @@
       }
       if (status === "cancelled" && ["pending", "processing"].includes(order.status) && !order.refundedAt && Number(order.price || 0) > 0) {
         const result = Data.refundOrder(order, "订单取消退款");
-        UI.toast(result.ok ? "订单已取消并退款" : "订单已取消", result.ok ? "积分已返还至顾客账户。" : "未找到可退款账户。");
+        UI.toast(result.ok ? "订单已取消并退款" : "订单已取消", result.ok ? "积分已返还至 Gamer 账户。" : "未找到可退款账户。");
         if (!result.ok) {
           Data.updateOrder(orderId, { status, updatedAt: new Date().toISOString() });
         }
@@ -6318,7 +6778,7 @@
           sender: "SYSTEM",
           role: "system",
           type: "system",
-          text: `${accepted?.handledBy || "员工"} 已接单，聊天功能已开启。`
+          text: `${accepted?.handledBy || "Vector"} 已接单，聊天功能已开启。`
         });
         Data.notifyUser(Data.profileByUsername(accepted?.customerUsername), "orderAccepted", {
           orderId: accepted?.id,
@@ -6942,6 +7402,9 @@
       }
       if (action === "open-user-menu") {
         Actions.userMenu(target);
+      }
+      if (action === "open-mailbox") {
+        Actions.openMailbox();
       }
       if (action === "open-admin") {
         Router.go("admin");
