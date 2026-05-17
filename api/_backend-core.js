@@ -49,6 +49,14 @@ const MailboxNoticeCategories = {
   returnSuccess: "orders"
 };
 const MailboxCategories = new Set(["system", "security", "orders", "funds", "chat"]);
+const MailboxExpiryDays = {
+  chat: 7,
+  orders: 7,
+  system: 30,
+  security: 90,
+  funds: 90
+};
+const MailboxCategoryLimit = 25;
 
 function nowIso() {
   return new Date().toISOString();
@@ -767,6 +775,74 @@ function timestampMs(value) {
   return Number.isFinite(time) ? time : 0;
 }
 
+function mailboxCategoryId(category) {
+  return MailboxCategories.has(category) ? category : "system";
+}
+
+function mailboxExpiryDays(category, customDays = null) {
+  const requested = Number(customDays);
+  if (Number.isFinite(requested) && requested > 0) {
+    return Math.min(365, Math.max(1, Math.ceil(requested)));
+  }
+  return MailboxExpiryDays[mailboxCategoryId(category)] || 30;
+}
+
+function mailboxExpiresAt(category, createdAt, customDays = null) {
+  const created = timestampMs(createdAt) || Date.now();
+  return new Date(created + mailboxExpiryDays(category, customDays) * DayMs).toISOString();
+}
+
+function pruneMailboxMessages(db, username) {
+  const key = normalize(username);
+  if (!key) {
+    return false;
+  }
+  const list = Array.isArray(db.mailboxMessages[key]) ? db.mailboxMessages[key] : [];
+  const now = nowIso();
+  const nowTime = timestampMs(now);
+  let changed = false;
+  const next = list.map((message) => {
+    if (!message || typeof message !== "object" || Array.isArray(message)) {
+      return message;
+    }
+    const category = mailboxCategoryId(message.category);
+    const expiresAt = message.expiresAt || mailboxExpiresAt(category, message.createdAt, message.expiresDays);
+    let output = { ...message, category, expiresAt };
+    if (category !== message.category || expiresAt !== message.expiresAt) {
+      changed = true;
+    }
+    if (!output.deletedAt && !output.favoritedAt && timestampMs(expiresAt) <= nowTime) {
+      output = { ...output, deletedAt: now };
+      changed = true;
+    }
+    return output;
+  });
+  Array.from(MailboxCategories).forEach((category) => {
+    const active = next
+      .map((message, index) => ({ message, index }))
+      .filter(({ message }) => message && typeof message === "object" && !message.deletedAt && mailboxCategoryId(message.category) === category);
+    while (active.filter(({ message }) => !message.deletedAt).length > MailboxCategoryLimit) {
+      const candidates = active
+        .filter(({ message }) => !message.deletedAt && !message.favoritedAt)
+        .sort((a, b) => {
+          const readDelta = (a.message.readAt ? 0 : 1) - (b.message.readAt ? 0 : 1);
+          return readDelta || (timestampMs(a.message.createdAt) || 0) - (timestampMs(b.message.createdAt) || 0);
+        });
+      const target = candidates.find(({ message }) => message.readAt) || candidates[0];
+      if (!target) {
+        break;
+      }
+      next[target.index] = { ...target.message, deletedAt: now };
+      target.message.deletedAt = now;
+      changed = true;
+    }
+  });
+  if (changed) {
+    db.mailboxMessages[key] = next;
+  }
+  return changed;
+}
+
 function isoDateOnly(value) {
   const time = timestampMs(value);
   return time ? new Date(time).toISOString().slice(0, 10) : "unknown";
@@ -1023,7 +1099,8 @@ function addMailboxMessage(db, username, payload = {}) {
     return null;
   }
   const body = String(payload.body || payload.preview || "").trim();
-  const category = MailboxCategories.has(payload.category) ? payload.category : "system";
+  const category = mailboxCategoryId(payload.category);
+  const createdAt = payload.createdAt || nowIso();
   const entry = {
     id: payload.id || createId("mail"),
     recipientUsername,
@@ -1035,11 +1112,16 @@ function addMailboxMessage(db, username, payload = {}) {
     source: String(payload.source || "system").trim(),
     sourceId: String(payload.sourceId || "").trim(),
     orderId: String(payload.orderId || "").trim(),
+    favoritedAt: payload.favoritedAt || "",
+    expiresDays: payload.expiresDays || "",
+    expiresAt: payload.expiresAt || mailboxExpiresAt(category, createdAt, payload.expiresDays),
+    claim: payload.claim && typeof payload.claim === "object" && !Array.isArray(payload.claim) ? { ...payload.claim } : null,
     readAt: payload.readAt || "",
-    createdAt: payload.createdAt || nowIso()
+    createdAt
   };
   const list = Array.isArray(db.mailboxMessages[key]) ? db.mailboxMessages[key] : [];
   db.mailboxMessages[key] = [entry, ...list.filter((item) => !item || typeof item !== "object" || item.id !== entry.id)];
+  pruneMailboxMessages(db, recipientUsername);
   return entry;
 }
 
@@ -1549,6 +1631,110 @@ async function handleAction(action, payload = {}, request = {}) {
     log(db, "修改绑定邮箱", `${request.user.username} -> ${email}`, request.user.username);
     await writeDb(db);
     return { ok: true, email, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "createRechargeClaim") {
+    if (!request.user) {
+      return { ok: false, message: "请先登录" };
+    }
+    db = hydrateTemporaryDb(db, payload.snapshot, request.user.username);
+    const profile = db.profiles.find((item) => item.id === payload.profileId);
+    if (!profile || normalize(profile.username) !== normalize(request.user.username)) {
+      return { ok: false, message: "未找到当前账户。" };
+    }
+    const amountPoints = Math.max(0, Number(payload.amountPoints || 0));
+    if (!amountPoints) {
+      return { ok: false, message: "充值积分无效。" };
+    }
+    const itemName = String(payload.itemName || "Recharge").trim();
+    const message = addMailboxMessage(db, profile.username, {
+      category: "funds",
+      subject: "Recharge points ready",
+      preview: `${itemName} / ${amountPoints} points`,
+      body: `Hello ${profile.username}, your recharge is complete. Claim ${amountPoints} points from this in-app mail. Amount paid: ${Number(payload.amountMoney || 0)} USD.`,
+      sender: "IMPULSE J System",
+      source: "recharge",
+      sourceId: createId("recharge"),
+      claim: {
+        type: "recharge",
+        amountPoints,
+        amountMoney: Number(payload.amountMoney || 0),
+        itemName,
+        claimedAt: ""
+      }
+    });
+    log(db, "充值邮件生成", `${profile.username} ${amountPoints} points`, request.user.username);
+    await writeDb(db);
+    return { ok: true, message, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "claimMailboxReward") {
+    if (!request.user) {
+      return { ok: false, message: "请先登录" };
+    }
+    db = hydrateTemporaryDb(db, payload.snapshot, request.user.username);
+    const key = normalize(request.user.username);
+    const list = Array.isArray(db.mailboxMessages[key]) ? db.mailboxMessages[key] : [];
+    const message = list.find((item) => item && typeof item === "object" && item.id === payload.messageId && !item.deletedAt);
+    if (!message?.claim || message.claim.type !== "recharge" || message.claim.claimedAt || Number(message.claim.amountPoints || 0) <= 0) {
+      return { ok: false, message: "没有可领取的积分。" };
+    }
+    const profile = profileByUsername(db, request.user.username);
+    if (!profile) {
+      return { ok: false, message: "未找到当前账户。" };
+    }
+    const amountPoints = Number(message.claim.amountPoints || 0);
+    const result = addLedger(db, profile, amountPoints, "充值积分领取", {
+      type: "recharge_claim",
+      amountMoney: Number(message.claim.amountMoney || 0),
+      itemName: message.claim.itemName || "Recharge"
+    }, request.user.username);
+    if (!result.ok) {
+      return { ok: false, message: "积分领取失败。" };
+    }
+    const now = nowIso();
+    db.mailboxMessages[key] = list.map((item) => (
+      item && typeof item === "object" && item.id === payload.messageId
+        ? { ...item, readAt: item.readAt || now, claim: { ...(item.claim || {}), claimedAt: now } }
+        : item
+    ));
+    log(db, "领取充值积分", `${request.user.username} ${amountPoints} points`, request.user.username);
+    await writeDb(db);
+    return { ok: true, points: amountPoints, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "sendAdminMailbox") {
+    if (!request.user || request.user.role !== "admin") {
+      return { ok: false, message: "无权发送系统邮件。" };
+    }
+    const target = payload.target === "user" ? "user" : "all";
+    const subject = String(payload.subject || "").trim();
+    const body = String(payload.body || "").trim();
+    const expiresDays = mailboxExpiryDays("system", payload.expiresDays || 30);
+    if (!subject || !body) {
+      return { ok: false, message: "请填写邮件标题和正文。" };
+    }
+    const recipients = target === "user"
+      ? db.profiles.filter((profile) => normalize(profile.username) === normalize(payload.username) && !profile.deleted)
+      : db.profiles.filter((profile) => !profile.deleted);
+    if (!recipients.length) {
+      return { ok: false, message: "未找到收件人。" };
+    }
+    recipients.forEach((profile) => {
+      addMailboxMessage(db, profile.username, {
+        category: "system",
+        subject,
+        preview: body.slice(0, 120),
+        body,
+        sender: "IMPULSE J Admin",
+        source: "admin",
+        sourceId: createId("admin-mail"),
+        expiresDays
+      });
+    });
+    log(db, "发送系统邮件", `${request.user.username} -> ${target === "user" ? payload.username : "all"}: ${subject}`, request.user.username);
+    await writeDb(db);
+    return { ok: true, count: recipients.length, snapshot: sanitizeSnapshot(db) };
   }
 
   if (action === "adjustFunds") {

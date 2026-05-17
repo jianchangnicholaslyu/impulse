@@ -2081,6 +2081,25 @@ button.admin-table-row:hover {
   box-shadow: 0 18px 40px rgba(37, 117, 252, 0.2);
 }
 
+.mailbox-counter-button {
+  appearance: none;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+}
+
+.mailbox-counter-button:hover:not(:disabled),
+.mailbox-counter-button:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 22px 48px rgba(37, 117, 252, 0.28);
+}
+
+.mailbox-counter-button:disabled {
+  cursor: default;
+  opacity: 0.92;
+}
+
 .mailbox-counter strong {
   font-size: 1.7rem;
   line-height: 1;
@@ -2120,8 +2139,8 @@ body.admin-mode .mailbox-shell {
 }
 
 .mailbox-nav {
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   padding: 12px;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(239, 246, 255, 0.9));
@@ -2152,14 +2171,21 @@ body.admin-mode .mailbox-nav {
 }
 
 .mailbox-category span {
+  min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.16;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 0.92rem;
 }
 
 .mailbox-category small {
   color: #667085;
   font-weight: 900;
+  white-space: nowrap;
 }
 
 .mailbox-category:hover,
@@ -2173,7 +2199,22 @@ body.admin-mode .mailbox-nav {
   box-shadow: inset 3px 0 0 var(--bg-start), 0 10px 24px rgba(16, 24, 40, 0.08);
 }
 
+.mailbox-category.favorite {
+  margin-top: auto;
+}
+
+.mailbox-nav-spacer {
+  flex: 1 1 auto;
+  min-height: 12px;
+}
+
+.mailbox-admin-send {
+  margin-top: 12px;
+}
+
 .mailbox-list {
+  position: relative;
+  min-height: 0;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   padding: 0;
@@ -2183,6 +2224,9 @@ body.admin-mode .mailbox-nav {
 }
 
 .mailbox-list-scroll {
+  min-height: 0;
+  position: relative;
+  z-index: 1;
   display: grid;
   align-content: start;
   gap: 8px;
@@ -2191,12 +2235,15 @@ body.admin-mode .mailbox-nav {
 }
 
 .mailbox-list-actions {
+  position: relative;
+  z-index: 5;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   padding: 12px;
   border-top: 1px solid rgba(17, 24, 39, 0.1);
-  background: rgba(248, 250, 252, 0.94);
+  background: #f8fafc;
+  box-shadow: 0 -12px 28px rgba(15, 23, 42, 0.08);
 }
 
 .mailbox-action {
@@ -2291,6 +2338,27 @@ body.admin-mode .mail-row-icon {
   font-size: 0.78rem;
 }
 
+.mail-row-side {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  min-width: 72px;
+}
+
+.mail-expiry {
+  color: #7c3aed;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+body.staff-mode .mail-expiry {
+  color: #c2410c;
+}
+
+body.admin-mode .mail-expiry {
+  color: #4b5563;
+}
+
 .mail-unread-dot {
   position: absolute;
   top: 10px;
@@ -2318,6 +2386,29 @@ body.admin-mode .mail-row-icon {
   padding-bottom: 18px;
   margin-bottom: 18px;
   border-bottom: 1px solid rgba(17, 24, 39, 0.1);
+}
+
+.mail-detail-titlebar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.mail-detail-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mail-detail-toolbar .icon-button.active {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.12);
+}
+
+.mail-detail-toolbar .icon-button.danger {
+  color: var(--danger);
+  background: rgba(255, 92, 122, 0.12);
 }
 
 .mail-detail-header h3 {
@@ -2367,6 +2458,13 @@ body.admin-mode .mail-row-icon {
   background: rgba(255, 255, 255, 0.88);
   line-height: 1.7;
   white-space: pre-wrap;
+}
+
+.mail-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .mailbox-empty {
@@ -2754,9 +2852,18 @@ body {
   }
 
   .mailbox-nav {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     border-right: 0;
     border-bottom: 1px solid rgba(17, 24, 39, 0.1);
+  }
+
+  .mailbox-category.favorite {
+    margin-top: 0;
+  }
+
+  .mailbox-nav-spacer {
+    display: none;
   }
 
   .mailbox-list {
@@ -2880,7 +2987,12 @@ body {
   }
 
   .mail-row time {
+    grid-column: auto;
+  }
+
+  .mail-row-side {
     grid-column: 2;
+    justify-items: start;
   }
 
   .mail-detail-meta {

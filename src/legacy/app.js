@@ -158,13 +158,23 @@
     { key: "returnSuccess", label: "退单成功", subject: "Order return completed" }
   ];
   const MailboxCategories = [
-    { id: "all", label: "全部邮件", icon: "fa-solid fa-inbox" },
     { id: "system", label: "系统邮件", icon: "fa-regular fa-envelope" },
     { id: "security", label: "安全邮件", icon: "fa-solid fa-shield-halved" },
     { id: "orders", label: "订单邮件", icon: "fa-solid fa-receipt" },
     { id: "funds", label: "资金通知", icon: "fa-solid fa-coins" },
     { id: "chat", label: "聊天提醒", icon: "fa-regular fa-comments" }
   ];
+  const MailboxFavoriteCategory = { id: "favorites", label: "收藏邮件", icon: "fa-solid fa-star" };
+  const MailboxDayMs = 24 * 60 * 60 * 1000;
+  const MailboxCategoryLimit = 25;
+  const MailboxFavoriteLimit = 5;
+  const MailboxExpiryDays = {
+    chat: 7,
+    orders: 7,
+    system: 30,
+    security: 90,
+    funds: 90
+  };
   const MailboxNoticeCategories = {
     rechargeSuccess: "funds",
     orderSuccess: "orders",
@@ -536,7 +546,7 @@
     }
   ];
 
-  const CurrentRelease = DevelopmentRecords.find((record) => record.statusI18n?.en === "Current production build") || DevelopmentRecords[0];
+  const CurrentRelease = DevelopmentRecords[0];
 
   const Languages = [
     { code: "en", label: "英语", nativeName: "English", names: { "zh-CN": "英语", "zh-TW": "英語", en: "English", fr: "Anglais", ja: "英語", ko: "영어", es: "Inglés" } },
@@ -598,10 +608,36 @@
     "订单邮件": { "zh-TW": "訂單郵件", en: "Order Mail", fr: "Courrier de commande", ja: "注文メール", ko: "주문 메일", es: "Correo de pedidos" },
     "资金通知": { "zh-TW": "資金通知", en: "Funds Notice", fr: "Notification de fonds", ja: "資金通知", ko: "자금 알림", es: "Aviso de fondos" },
     "聊天提醒": { "zh-TW": "聊天提醒", en: "Chat Alerts", fr: "Alertes de chat", ja: "チャット通知", ko: "채팅 알림", es: "Alertas de chat" },
+    "收藏邮件": { "zh-TW": "收藏郵件", en: "Saved Mail", fr: "Courrier enregistré", ja: "保存済みメール", ko: "저장된 메일", es: "Correo guardado" },
+    "发送邮件": { "zh-TW": "發送郵件", en: "Send Mail", fr: "Envoyer un courrier", ja: "メール送信", ko: "메일 보내기", es: "Enviar correo" },
+    "收件人": { "zh-TW": "收件人", en: "Recipient", fr: "Destinataire", ja: "宛先", ko: "수신자", es: "Destinatario" },
+    "全体用户": { "zh-TW": "全體用戶", en: "All Users", fr: "Tous les utilisateurs", ja: "全ユーザー", ko: "전체 사용자", es: "Todos los usuarios" },
+    "指定用户": { "zh-TW": "指定用戶", en: "Specific User", fr: "Utilisateur précis", ja: "指定ユーザー", ko: "지정 사용자", es: "Usuario específico" },
+    "用户名": { "zh-TW": "使用者名稱", en: "Username", fr: "Nom d'utilisateur", ja: "ユーザー名", ko: "사용자 이름", es: "Usuario" },
+    "邮件标题": { "zh-TW": "郵件標題", en: "Mail Subject", fr: "Objet du courrier", ja: "件名", ko: "메일 제목", es: "Asunto" },
+    "邮件正文": { "zh-TW": "郵件正文", en: "Mail Body", fr: "Corps du courrier", ja: "本文", ko: "메일 본문", es: "Cuerpo del correo" },
+    "过期天数": { "zh-TW": "過期天數", en: "Expiry Days", fr: "Jours avant expiration", ja: "有効日数", ko: "만료 일수", es: "Días de vencimiento" },
+    "日后过期": { "zh-TW": "日後過期", en: "days left", fr: "jours restants", ja: "日後に期限切れ", ko: "일 후 만료", es: "días restantes" },
+    "已收藏": { "zh-TW": "已收藏", en: "Saved", fr: "Enregistré", ja: "保存済み", ko: "저장됨", es: "Guardado" },
+    "已取消收藏": { "zh-TW": "已取消收藏", en: "Removed from saved mail", fr: "Retiré des courriers enregistrés", ja: "保存を解除しました", ko: "저장 해제됨", es: "Quitado de guardados" },
+    "取消收藏": { "zh-TW": "取消收藏", en: "Unsave", fr: "Retirer", ja: "保存解除", ko: "저장 해제", es: "Quitar" },
+    "收藏": { "zh-TW": "收藏", en: "Save", fr: "Enregistrer", ja: "保存", ko: "저장", es: "Guardar" },
+    "收藏邮件已达上限": { "zh-TW": "收藏郵件已達上限", en: "Saved mail limit reached", fr: "Limite de courriers enregistrés atteinte", ja: "保存メールの上限に達しました", ko: "저장 메일 한도 도달", es: "Límite de guardados alcanzado" },
+    "邮件已删除": { "zh-TW": "郵件已刪除", en: "Mail deleted", fr: "Courrier supprimé", ja: "メールを削除しました", ko: "메일 삭제됨", es: "Correo eliminado" },
+    "前往": { "zh-TW": "前往", en: "Open", fr: "Ouvrir", ja: "開く", ko: "열기", es: "Abrir" },
+    "领取": { "zh-TW": "領取", en: "Claim", fr: "Réclamer", ja: "受け取る", ko: "수령", es: "Reclamar" },
+    "已领取": { "zh-TW": "已領取", en: "Claimed", fr: "Réclamé", ja: "受取済み", ko: "수령됨", es: "Reclamado" },
+    "领取成功": { "zh-TW": "領取成功", en: "Claimed", fr: "Réclamé", ja: "受け取りました", ko: "수령 완료", es: "Reclamado" },
+    "领取失败": { "zh-TW": "領取失敗", en: "Claim failed", fr: "Échec de la réclamation", ja: "受け取り失敗", ko: "수령 실패", es: "Error al reclamar" },
+    "充值积分待领取": { "zh-TW": "充值積分待領取", en: "Recharge points ready", fr: "Points prêts", ja: "チャージポイント受取待ち", ko: "충전 포인트 수령 대기", es: "Puntos listos" },
+    "没有可领取的积分。": { "zh-TW": "沒有可領取的積分。", en: "No points available to claim.", fr: "Aucun point à réclamer.", ja: "受け取れるポイントはありません。", ko: "수령 가능한 포인트가 없습니다.", es: "No hay puntos para reclamar." },
+    "收藏邮件不会自动过期。": { "zh-TW": "收藏郵件不會自動過期。", en: "Saved mail does not expire automatically.", fr: "Le courrier enregistré n'expire pas automatiquement.", ja: "保存済みメールは自動期限切れになりません。", ko: "저장된 메일은 자동 만료되지 않습니다.", es: "El correo guardado no vence automáticamente." },
     "发件人": { "zh-TW": "寄件者", en: "Sender", fr: "Expéditeur", ja: "送信者", ko: "발신자", es: "Remitente" },
     "发送时间": { "zh-TW": "發送時間", en: "Sent", fr: "Envoyé", ja: "送信時刻", ko: "전송 시간", es: "Enviado" },
     "关联订单": { "zh-TW": "關聯訂單", en: "Related Order", fr: "Commande liée", ja: "関連注文", ko: "관련 주문", es: "Pedido relacionado" },
     "未读": { "zh-TW": "未讀", en: "Unread", fr: "Non lu", ja: "未読", ko: "읽지 않음", es: "No leído" },
+    "跳转至未读邮件": { "zh-TW": "跳轉至未讀郵件", en: "Go to unread mail", fr: "Aller au courrier non lu", ja: "未読メールへ移動", ko: "읽지 않은 메일로 이동", es: "Ir al correo no leído" },
+    "没有未读邮件": { "zh-TW": "沒有未讀郵件", en: "No unread mail", fr: "Aucun courrier non lu", ja: "未読メールはありません", ko: "읽지 않은 메일 없음", es: "No hay correo no leído" },
     "已读": { "zh-TW": "已讀", en: "Read", fr: "Lu", ja: "既読", ko: "읽음", es: "Leído" },
     "全部已读/领取": { "zh-TW": "全部已讀/領取", en: "Read / Claim All", fr: "Tout lire / réclamer", ja: "すべて既読 / 受取", ko: "전체 읽음 / 수령", es: "Leer / reclamar todo" },
     "删除已读": { "zh-TW": "刪除已讀", en: "Delete Read", fr: "Supprimer lus", ja: "既読を削除", ko: "읽은 항목 삭제", es: "Eliminar leídos" },
@@ -1716,7 +1752,66 @@
   }
 
   function mailboxCategory(categoryId) {
-    return MailboxCategories.find((item) => item.id === categoryId) || MailboxCategories[1];
+    return MailboxCategories.find((item) => item.id === categoryId) || MailboxCategories[0];
+  }
+
+  function mailboxCategoryMatches(message, categoryId) {
+    if (categoryId === MailboxFavoriteCategory.id) {
+      return Boolean(message?.favoritedAt);
+    }
+    return mailboxCategory(message?.category).id === categoryId;
+  }
+
+  function mailboxExpiryDays(categoryId, customDays = null) {
+    const requested = Number(customDays);
+    if (Number.isFinite(requested) && requested > 0) {
+      return Math.min(365, Math.max(1, Math.ceil(requested)));
+    }
+    return MailboxExpiryDays[mailboxCategory(categoryId).id] || 30;
+  }
+
+  function mailboxExpiryDate(message) {
+    const stored = timestampMs(message?.expiresAt);
+    if (stored) {
+      return new Date(stored).toISOString();
+    }
+    const created = timestampMs(message?.createdAt) || Date.now();
+    return new Date(created + mailboxExpiryDays(message?.category, message?.expiresDays) * MailboxDayMs).toISOString();
+  }
+
+  function mailboxDaysLeft(message) {
+    if (message?.favoritedAt) {
+      return "";
+    }
+    const expires = timestampMs(mailboxExpiryDate(message));
+    if (!expires) {
+      return "";
+    }
+    return Math.max(0, Math.ceil((expires - Date.now()) / MailboxDayMs));
+  }
+
+  function mailboxExpiryLabel(message) {
+    const days = mailboxDaysLeft(message);
+    if (days === "") {
+      return "";
+    }
+    return contentLanguage() === "zh-CN" ? `${days}日后过期` : `${days} days left`;
+  }
+
+  function mailboxIsExpired(message) {
+    if (!message || message.favoritedAt) {
+      return false;
+    }
+    const expires = timestampMs(mailboxExpiryDate(message));
+    return Boolean(expires && expires <= Date.now());
+  }
+
+  function mailboxHasClaim(message) {
+    return message?.claim?.type === "recharge" && Number(message.claim.amountPoints || 0) > 0;
+  }
+
+  function mailboxClaimAvailable(message) {
+    return mailboxHasClaim(message) && !message.claim.claimedAt;
   }
 
   function mailboxNoticeBody(profile, notice, context = {}) {
@@ -2049,6 +2144,21 @@
     async adjustFunds(profileId, amountPoints, reason, meta = {}) {
       return this.applyMutationResult(await this.request("adjustFunds", { profileId, amountPoints, reason, meta, snapshot: this.snapshot() }));
     },
+    async createRechargeClaim(profileId, amountPoints, amountMoney, itemName) {
+      return this.applyMutationResult(await this.request("createRechargeClaim", {
+        profileId,
+        amountPoints,
+        amountMoney,
+        itemName,
+        snapshot: this.snapshot()
+      }));
+    },
+    async claimMailboxReward(messageId) {
+      return this.applyMutationResult(await this.request("claimMailboxReward", { messageId, snapshot: this.snapshot() }));
+    },
+    async sendAdminMailbox(payload) {
+      return this.applyMutationResult(await this.request("sendAdminMailbox", payload));
+    },
     async createOrder(payload) {
       return this.applyMutationResult(await this.request("createOrder", { order: payload, snapshot: this.snapshot() }));
     },
@@ -2351,22 +2461,103 @@
     saveMailboxes(mailboxes) {
       Storage.set(Keys.mailboxMessages, mailboxes && typeof mailboxes === "object" && !Array.isArray(mailboxes) ? mailboxes : {});
     },
+    queueMailboxSync(reason = "mailbox-update") {
+      if (typeof Backend !== "undefined" && Backend?.queueSync) {
+        Backend.queueSync(reason);
+      }
+    },
+    normalizeMailboxMessage(message, index = 0) {
+      const category = mailboxCategory(message?.category || "system").id;
+      const createdAt = message?.createdAt || new Date(0).toISOString();
+      const body = String(message?.body || message?.preview || "");
+      const claim = message?.claim && typeof message.claim === "object" && !Array.isArray(message.claim)
+        ? { ...message.claim }
+        : null;
+      return {
+        ...message,
+        id: String(message?.id || `mail-${timestampMs(createdAt) || 0}-${index}`),
+        category,
+        subject: String(message?.subject || "系统通知"),
+        preview: String(message?.preview || body || "系统通知"),
+        body,
+        sender: String(message?.sender || "IMPULSE J System"),
+        source: String(message?.source || "system"),
+        sourceId: String(message?.sourceId || ""),
+        orderId: String(message?.orderId || ""),
+        favoritedAt: message?.favoritedAt || "",
+        expiresAt: mailboxExpiryDate({ ...message, category, createdAt }),
+        claim,
+        createdAt
+      };
+    },
+    pruneMailbox(username) {
+      const key = normalize(username);
+      if (!key) {
+        return false;
+      }
+      const boxes = this.mailboxes();
+      const raw = Array.isArray(boxes[key]) ? boxes[key] : [];
+      const now = new Date().toISOString();
+      let changed = false;
+      const next = raw.map((message, index) => {
+        if (!message || typeof message !== "object" || Array.isArray(message)) {
+          return message;
+        }
+        const normalized = this.normalizeMailboxMessage(message, index);
+        const withExpiry = {
+          ...message,
+          category: normalized.category,
+          expiresAt: message.expiresAt || normalized.expiresAt
+        };
+        if (withExpiry.category !== message.category || withExpiry.expiresAt !== message.expiresAt) {
+          changed = true;
+        }
+        if (!withExpiry.deletedAt && !withExpiry.favoritedAt && mailboxIsExpired(withExpiry)) {
+          changed = true;
+          return { ...withExpiry, deletedAt: now };
+        }
+        return withExpiry;
+      });
+
+      MailboxCategories.forEach((category) => {
+        const activeIndexes = next
+          .map((message, index) => ({ message, index }))
+          .filter(({ message }) => message && typeof message === "object" && !message.deletedAt && mailboxCategory(message.category).id === category.id);
+        while (activeIndexes.filter(({ message }) => !message.deletedAt).length > MailboxCategoryLimit) {
+          const candidates = activeIndexes
+            .filter(({ message }) => !message.deletedAt && !message.favoritedAt)
+            .sort((a, b) => {
+              const readDelta = (a.message.readAt ? 0 : 1) - (b.message.readAt ? 0 : 1);
+              if (readDelta) {
+                return readDelta;
+              }
+              return (timestampMs(a.message.createdAt) || 0) - (timestampMs(b.message.createdAt) || 0);
+            });
+          const target = candidates.find(({ message }) => message.readAt) || candidates[0];
+          if (!target) {
+            break;
+          }
+          next[target.index] = { ...target.message, deletedAt: now };
+          target.message.deletedAt = now;
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        boxes[key] = next;
+        this.saveMailboxes(boxes);
+        this.queueMailboxSync("mailbox-prune");
+      }
+      return changed;
+    },
     mailbox(username) {
       const key = normalize(username);
+      this.pruneMailbox(username);
       const list = this.mailboxes()[key];
       return (Array.isArray(list) ? list : [])
         .filter((message) => message && typeof message === "object" && !Array.isArray(message))
         .filter((message) => !message.deletedAt)
-        .map((message, index) => ({
-          ...message,
-          id: String(message.id || `mail-${timestampMs(message.createdAt) || 0}-${index}`),
-          category: mailboxCategory(message.category || "system").id,
-          subject: String(message.subject || "系统通知"),
-          preview: String(message.preview || message.body || "系统通知"),
-          body: String(message.body || message.preview || ""),
-          sender: String(message.sender || "IMPULSE J System"),
-          createdAt: message.createdAt || new Date(0).toISOString()
-        }))
+        .map((message, index) => this.normalizeMailboxMessage(message, index))
         .slice()
         .sort((a, b) => timestampMs(b.createdAt) - timestampMs(a.createdAt));
     },
@@ -2397,6 +2588,10 @@
         source: String(payload.source || "system").trim(),
         sourceId: String(payload.sourceId || "").trim(),
         orderId: String(payload.orderId || "").trim(),
+        favoritedAt: payload.favoritedAt || "",
+        expiresDays: payload.expiresDays || "",
+        expiresAt: payload.expiresAt || mailboxExpiryDate({ category, createdAt: payload.createdAt || now, expiresDays: payload.expiresDays }),
+        claim: payload.claim && typeof payload.claim === "object" && !Array.isArray(payload.claim) ? { ...payload.claim } : null,
         readAt: payload.readAt || "",
         createdAt: payload.createdAt || now
       };
@@ -2404,6 +2599,8 @@
       const list = Array.isArray(boxes[key]) ? boxes[key] : [];
       boxes[key] = [entry, ...list.filter((item) => !item || typeof item !== "object" || item.id !== entry.id)];
       this.saveMailboxes(boxes);
+      this.pruneMailbox(recipientUsername);
+      this.queueMailboxSync("mailbox-add");
       return entry;
     },
     markMailboxRead(username, messageId) {
@@ -2426,9 +2623,10 @@
         return selected;
       });
       this.saveMailboxes(boxes);
+      this.queueMailboxSync("mailbox-read");
       return selected;
     },
-    markMailboxCategoryRead(username, categoryId = "all") {
+    markMailboxCategoryRead(username, categoryId = MailboxCategories[0].id) {
       const key = normalize(username);
       if (!key) {
         return 0;
@@ -2441,16 +2639,19 @@
         if (!message || typeof message !== "object" || Array.isArray(message)) {
           return message;
         }
-        if ((categoryId === "all" || message.category === categoryId) && !message.deletedAt && !message.readAt) {
+        if (mailboxCategoryMatches(message, categoryId) && !message.deletedAt && !message.readAt) {
           updated += 1;
           return { ...message, readAt: now };
         }
         return message;
       });
       this.saveMailboxes(boxes);
+      if (updated) {
+        this.queueMailboxSync("mailbox-read");
+      }
       return updated;
     },
-    deleteReadMailboxMessages(username, categoryId = "all") {
+    deleteReadMailboxMessages(username, categoryId = MailboxCategories[0].id) {
       const key = normalize(username);
       if (!key) {
         return 0;
@@ -2463,14 +2664,163 @@
         if (!message || typeof message !== "object" || Array.isArray(message)) {
           return message;
         }
-        if (!message.deletedAt && message.readAt && (categoryId === "all" || message.category === categoryId)) {
+        if (!message.deletedAt && message.readAt && mailboxCategoryMatches(message, categoryId)) {
           deleted += 1;
           return { ...message, deletedAt: now };
         }
         return message;
       });
       this.saveMailboxes(boxes);
+      if (deleted) {
+        this.queueMailboxSync("mailbox-delete-read");
+      }
       return deleted;
+    },
+    deleteMailboxMessage(username, messageId) {
+      const key = normalize(username);
+      if (!key || !messageId) {
+        return false;
+      }
+      const boxes = this.mailboxes();
+      const list = Array.isArray(boxes[key]) ? boxes[key] : [];
+      let deleted = false;
+      const now = new Date().toISOString();
+      boxes[key] = list.map((message) => {
+        if (!message || typeof message !== "object" || Array.isArray(message) || message.id !== messageId || message.deletedAt) {
+          return message;
+        }
+        deleted = true;
+        return { ...message, deletedAt: now };
+      });
+      this.saveMailboxes(boxes);
+      if (deleted) {
+        this.queueMailboxSync("mailbox-delete");
+      }
+      return deleted;
+    },
+    toggleMailboxFavorite(username, messageId) {
+      const key = normalize(username);
+      if (!key || !messageId) {
+        return { ok: false, message: "邮件不存在" };
+      }
+      const boxes = this.mailboxes();
+      const list = Array.isArray(boxes[key]) ? boxes[key] : [];
+      const activeFavorites = list.filter((message) => message && typeof message === "object" && !message.deletedAt && message.favoritedAt).length;
+      const now = new Date().toISOString();
+      let result = { ok: false, message: "邮件不存在" };
+      boxes[key] = list.map((message, index) => {
+        if (!message || typeof message !== "object" || Array.isArray(message) || message.id !== messageId || message.deletedAt) {
+          return message;
+        }
+        const normalized = this.normalizeMailboxMessage(message, index);
+        if (normalized.favoritedAt) {
+          result = { ok: true, favorited: false };
+          return { ...message, favoritedAt: "" };
+        }
+        if (activeFavorites >= MailboxFavoriteLimit) {
+          result = { ok: false, reason: "limit", message: "收藏邮件已达上限" };
+          return message;
+        }
+        result = { ok: true, favorited: true };
+        return { ...message, favoritedAt: now, expiresAt: normalized.expiresAt };
+      });
+      this.saveMailboxes(boxes);
+      if (result.ok) {
+        this.queueMailboxSync("mailbox-favorite");
+      }
+      return result;
+    },
+    createRechargeClaim(profileId, amountPoints, amountMoney = 0, itemName = "Recharge") {
+      const profile = this.profileById(profileId);
+      if (!profile) {
+        return { ok: false, message: "未找到当前账户。" };
+      }
+      const points = Math.max(0, Number(amountPoints || 0));
+      if (!points) {
+        return { ok: false, message: "充值积分无效。" };
+      }
+      const entry = this.addMailboxMessage(profile.username, {
+        category: "funds",
+        subject: "充值积分待领取",
+        preview: `${itemName} / ${points} points`,
+        body: `Hello ${profile.username}, your recharge is complete. Claim ${points} points from this in-app mail. Amount paid: ${Number(amountMoney || 0)} USD.`,
+        sender: "IMPULSE J System",
+        source: "recharge",
+        sourceId: createId("recharge"),
+        claim: {
+          type: "recharge",
+          amountPoints: points,
+          amountMoney: Number(amountMoney || 0),
+          itemName,
+          claimedAt: ""
+        }
+      });
+      return { ok: true, message: entry };
+    },
+    claimMailboxReward(username, messageId) {
+      const key = normalize(username);
+      if (!key || !messageId) {
+        return { ok: false, message: "邮件不存在" };
+      }
+      const boxes = this.mailboxes();
+      const list = Array.isArray(boxes[key]) ? boxes[key] : [];
+      const message = list.find((item) => item && typeof item === "object" && item.id === messageId && !item.deletedAt);
+      if (!mailboxClaimAvailable(message)) {
+        return { ok: false, message: "没有可领取的积分。" };
+      }
+      const profile = this.profileByUsername(username);
+      if (!profile) {
+        return { ok: false, message: "未找到当前账户。" };
+      }
+      const amountPoints = Number(message.claim.amountPoints || 0);
+      const result = this.adjustFunds(profile.id, amountPoints, "充值积分领取", {
+        type: "recharge_claim",
+        amountMoney: Number(message.claim.amountMoney || 0),
+        itemName: message.claim.itemName || "Recharge"
+      });
+      if (!result.ok) {
+        return result;
+      }
+      const now = new Date().toISOString();
+      boxes[key] = list.map((item) => (
+        item && typeof item === "object" && item.id === messageId
+          ? { ...item, readAt: item.readAt || now, claim: { ...(item.claim || {}), claimedAt: now } }
+          : item
+      ));
+      this.saveMailboxes(boxes);
+      this.queueMailboxSync("mailbox-claim");
+      return { ok: true, points: amountPoints, profile: result.profile };
+    },
+    sendAdminMailbox({ target = "all", username = "", subject = "", body = "", expiresDays = 30 } = {}) {
+      if (State.currentUser?.role !== "admin") {
+        return { ok: false, message: "无权发送系统邮件。" };
+      }
+      const cleanSubject = String(subject || "").trim();
+      const cleanBody = String(body || "").trim();
+      if (!cleanSubject || !cleanBody) {
+        return { ok: false, message: "请填写邮件标题和正文。" };
+      }
+      const days = mailboxExpiryDays("system", expiresDays);
+      const recipients = target === "user"
+        ? this.profiles().filter((profile) => normalize(profile.username) === normalize(username) && !profile.deleted)
+        : this.profiles().filter((profile) => !profile.deleted);
+      if (!recipients.length) {
+        return { ok: false, message: "未找到收件人。" };
+      }
+      recipients.forEach((profile) => {
+        this.addMailboxMessage(profile.username, {
+          category: "system",
+          subject: cleanSubject,
+          preview: cleanBody.slice(0, 120),
+          body: cleanBody,
+          sender: "IMPULSE J Admin",
+          source: "admin",
+          sourceId: createId("admin-mail"),
+          expiresDays: days
+        });
+      });
+      this.log("发送系统邮件", `${State.currentUser.username} -> ${target === "user" ? username : "全体用户"}：${cleanSubject}`);
+      return { ok: true, count: recipients.length };
     },
     addChatMailboxNotifications(order, message) {
       chatMailboxRecipients(order, message).forEach((username) => {
@@ -5689,16 +6039,16 @@
                   amountMoney: amount,
                   itemName: `${amount}$ 充值`
                 };
-                let result = await Backend.adjustFunds(latest.id, points, "用户充值", payloadMeta);
+                let result = await Backend.createRechargeClaim(latest.id, points, amount, payloadMeta.itemName);
                 if (result.offline) {
-                  result = Data.adjustFunds(latest.id, points, "用户充值", payloadMeta);
+                  result = Data.createRechargeClaim(latest.id, points, amount, payloadMeta.itemName);
                 }
                 if (!result.ok) {
                   UI.toast("充值失败", "请稍后重试。");
                   return;
                 }
                 UI.closeModal();
-                UI.toast("充值成功", contentLanguage() === "zh-CN" ? `已增加 ${formatPrice(points)}。` : `${formatPrice(points)} added.`);
+                UI.toast("充值成功", contentLanguage() === "zh-CN" ? "积分已发送到邮件中心，请领取。" : "Points were sent to your mailbox. Claim them there.");
                 App.render();
               }
             },
@@ -6610,17 +6960,13 @@
           h("div", { className: "release-hero" },
             h("span", { className: "release-badge" }, icon("fa-solid fa-code-branch"), localizeStaticPhrase("当前发布")),
             h("h2", {},
-              h("span", { className: "notranslate", translate: "no", text: release.version }),
-              isAdmin ? " · " : null,
-              isAdmin ? localizedI18n(release.nameI18n) : null
+              h("span", { className: "notranslate", translate: "no", text: release.version })
             ),
             h("p", { text: localizedI18n(release.summaryI18n) })
           ),
           h("div", { className: "release-meta-grid" },
             this.releaseMeta(localizeStaticPhrase("版本号"), release.version, true),
-            ...(isAdmin ? [this.releaseMeta(localizeStaticPhrase("版本名称"), localizedI18n(release.nameI18n))] : []),
-            this.releaseMeta(localizeStaticPhrase("发布时间"), release.releasedAt, true),
-            ...(isAdmin ? [this.releaseMeta(localizeStaticPhrase("上传状态"), localizedI18n(release.statusI18n))] : [])
+            this.releaseMeta(localizeStaticPhrase("发布时间"), release.releasedAt, true)
           ),
           isAdmin ? h("div", { className: "modal-actions" },
             h("button", { className: "button button-primary", type: "button", onClick: () => this.openDevelopmentLog() }, icon("fa-solid fa-clock-rotate-left"), "查看开发日志")
@@ -6701,7 +7047,7 @@
         return;
       }
       const username = State.currentUser.username;
-      let activeCategory = "all";
+      let activeCategory = "";
       let selectedId = "";
       let modalMounted = false;
       let topbarRefreshPending = false;
@@ -6740,6 +7086,65 @@
         Translation.localizeStaticUi(card);
         Translation.refresh();
       };
+      const claimMessage = async (message, { silent = false } = {}) => {
+        if (!mailboxClaimAvailable(message)) {
+          return { ok: false, message: "没有可领取的积分。" };
+        }
+        let result = await Backend.claimMailboxReward(message.id);
+        if (result.offline) {
+          result = Data.claimMailboxReward(username, message.id);
+        }
+        if (result.ok) {
+          queueTopbarRefresh();
+          if (!silent) {
+            UI.toast("领取成功", `已领取 ${formatPrice(result.points || message.claim.amountPoints)}。`);
+          }
+          return result;
+        }
+        if (!silent) {
+          UI.toast("领取失败", result.message || "请稍后重试。");
+        }
+        return result;
+      };
+      const openAdminSendMail = () => {
+        UI.openFormModal({
+          title: "发送邮件",
+          fields: [
+            { name: "target", label: "收件人", type: "select", value: "all", options: [
+              { value: "all", label: "全体用户" },
+              { value: "user", label: "指定用户" }
+            ] },
+            { name: "username", label: "用户名", placeholder: "仅指定用户时填写" },
+            { name: "subject", label: "邮件标题", required: true },
+            { name: "body", label: "邮件正文", type: "textarea", required: true },
+            { name: "expiresDays", label: "过期天数", type: "number", value: 30, min: 1, max: 365, required: true }
+          ],
+          submitLabel: "发送邮件",
+          wide: true,
+          onSubmit: async (values) => {
+            const payload = {
+              target: values.target === "user" ? "user" : "all",
+              username: values.username,
+              subject: values.subject,
+              body: values.body,
+              expiresDays: Math.min(365, Math.max(1, Number(values.expiresDays || 30)))
+            };
+            if (payload.target === "user" && !payload.username.trim()) {
+              return { error: "请填写用户名。" };
+            }
+            let result = await Backend.sendAdminMailbox(payload);
+            if (result.offline) {
+              result = Data.sendAdminMailbox(payload);
+            }
+            if (!result.ok) {
+              return { error: result.message || "邮件发送失败。" };
+            }
+            UI.toast("发送成功", `已发送 ${result.count || 0} 封系统邮件。`);
+            renderMailboxSafely();
+            return null;
+          }
+        });
+      };
       const renderMailboxSafely = () => {
         try {
           renderMailbox();
@@ -6748,10 +7153,13 @@
         }
       };
       const renderMailbox = () => {
+        Data.pruneMailbox(username);
         const allMessages = Data.mailbox(username);
-        const filteredMessages = activeCategory === "all"
-          ? allMessages
-          : allMessages.filter((message) => message.category === activeCategory);
+        if (!activeCategory) {
+          activeCategory = MailboxCategories.find((category) => allMessages.some((message) => message.category === category.id))?.id || MailboxCategories[0].id;
+        }
+        const filterMessages = (categoryId, messages = allMessages) => messages.filter((message) => mailboxCategoryMatches(message, categoryId));
+        const filteredMessages = filterMessages(activeCategory);
         if (!selectedId || !filteredMessages.some((message) => message.id === selectedId)) {
           selectedId = filteredMessages[0]?.id || "";
         }
@@ -6763,48 +7171,84 @@
           }
         }
         const refreshedMessages = Data.mailbox(username);
-        const visibleMessages = activeCategory === "all"
-          ? refreshedMessages
-          : refreshedMessages.filter((message) => message.category === activeCategory);
+        const visibleMessages = filterMessages(activeCategory, refreshedMessages);
         const selectedMessage = refreshedMessages.find((message) => message.id === selectedId) || null;
-        const categoryCount = (categoryId) => categoryId === "all"
-          ? refreshedMessages.length
-          : refreshedMessages.filter((message) => message.category === categoryId).length;
+        const categoryCount = (categoryId) => filterMessages(categoryId, refreshedMessages).length;
         const unreadCount = (categoryId) => refreshedMessages.filter((message) => (
-          !message.readAt && (categoryId === "all" || message.category === categoryId)
+          !message.readAt && mailboxCategoryMatches(message, categoryId)
         )).length;
+        const totalUnread = refreshedMessages.filter((message) => !message.readAt).length;
+        const unreadPriority = ["chat", "system", "security", "funds", "orders"];
+        const nextUnreadMessage = unreadPriority
+          .map((categoryId) => refreshedMessages.find((message) => !message.readAt && mailboxCategory(message.category).id === categoryId))
+          .find(Boolean) || null;
+        const jumpToUnread = () => {
+          if (!nextUnreadMessage) {
+            UI.toast(localizeStaticPhrase("没有未读邮件"));
+            return;
+          }
+          activeCategory = mailboxCategory(nextUnreadMessage.category).id;
+          selectedId = nextUnreadMessage.id;
+          renderMailboxSafely();
+        };
+        const canDeleteRead = visibleMessages.some((message) => message.readAt);
+        const claimables = visibleMessages.filter(mailboxClaimAvailable);
+        const isChatDetail = selectedMessage?.category === "chat";
 
         clear(card);
         append(card, [
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
           h("div", { className: "mailbox-heading" },
             h("div", {},
-              h("span", { className: "release-badge" }, icon("fa-regular fa-envelope"), "邮件中心")
+              h("span", { className: "release-badge" }, icon("fa-regular fa-envelope"), "邮件中心"),
+              State.currentUser?.role === "admin" ? h("button", { className: "button button-primary mailbox-admin-send", type: "button", onClick: openAdminSendMail }, icon("fa-solid fa-paper-plane"), h("span", { text: "发送邮件" })) : null
             ),
-            h("div", { className: "mailbox-counter" },
-              h("strong", { className: "notranslate", translate: "no", text: `${refreshedMessages.filter((message) => !message.readAt).length}` }),
+            h("button", {
+              className: "mailbox-counter mailbox-counter-button",
+              type: "button",
+              disabled: !nextUnreadMessage,
+              title: localizeStaticPhrase("跳转至未读邮件"),
+              onClick: jumpToUnread
+            },
+              h("strong", { className: "notranslate", translate: "no", text: `${totalUnread}` }),
               h("span", { text: "未读" })
             )
           ),
           h("div", { className: "mailbox-shell" },
             h("aside", { className: "mailbox-nav" },
-              MailboxCategories.map((category) => {
-                const count = categoryCount(category.id);
-                const unread = unreadCount(category.id);
-                return h("button", {
-                  className: `mailbox-category ${activeCategory === category.id ? "active" : ""}`,
+              [
+                ...MailboxCategories.map((category) => {
+                  const count = categoryCount(category.id);
+                  const unread = unreadCount(category.id);
+                  return h("button", {
+                    className: `mailbox-category ${activeCategory === category.id ? "active" : ""}`,
+                    type: "button",
+                    onClick: () => {
+                      activeCategory = category.id;
+                      selectedId = "";
+                      renderMailboxSafely();
+                    }
+                  },
+                    icon(category.icon),
+                    h("span", { text: category.label }),
+                    h("small", { className: "notranslate", translate: "no", text: unread ? `${unread}/${count}` : String(count) })
+                  );
+                }),
+                h("span", { className: "mailbox-nav-spacer", ariaHidden: "true" }),
+                h("button", {
+                  className: `mailbox-category favorite ${activeCategory === MailboxFavoriteCategory.id ? "active" : ""}`,
                   type: "button",
                   onClick: () => {
-                    activeCategory = category.id;
+                    activeCategory = MailboxFavoriteCategory.id;
                     selectedId = "";
                     renderMailboxSafely();
                   }
                 },
-                  icon(category.icon),
-                  h("span", { text: category.label }),
-                  h("small", { className: "notranslate", translate: "no", text: unread ? `${unread}/${count}` : String(count) })
-                );
-              })
+                  icon(MailboxFavoriteCategory.icon),
+                  h("span", { text: MailboxFavoriteCategory.label }),
+                  h("small", { className: "notranslate", translate: "no", text: `${categoryCount(MailboxFavoriteCategory.id)}/${MailboxFavoriteLimit}` })
+                )
+              ]
             ),
             h("section", { className: "mailbox-list", "aria-label": "邮件列表" },
               h("div", { className: "mailbox-list-scroll" },
@@ -6824,7 +7268,13 @@
                           h("strong", { text: localizeStaticPhrase(message.subject || "系统通知") }),
                           h("small", { className: "notranslate", translate: "no", text: message.preview || message.body || "系统通知" })
                         ),
-                        h("time", { className: "notranslate", translate: "no", datetime: message.createdAt, text: formatDate(message.createdAt) }),
+                        h("span", { className: "mail-row-side" },
+                          h("time", { className: "notranslate", translate: "no", datetime: message.createdAt, text: formatDate(message.createdAt) }),
+                          h("small", {
+                            className: "mail-expiry",
+                            text: message.favoritedAt ? "已收藏" : mailboxExpiryLabel(message)
+                          })
+                        ),
                         message.readAt ? null : h("span", { className: "mail-unread-dot", ariaLabel: "未读" })
                       );
                     })
@@ -6834,8 +7284,11 @@
                 h("button", {
                   className: "button button-primary mailbox-action",
                   type: "button",
-                  disabled: !visibleMessages.length,
-                  onClick: () => {
+                  disabled: !visibleMessages.length && !claimables.length,
+                  onClick: async () => {
+                    for (const message of claimables) {
+                      await claimMessage(message, { silent: true });
+                    }
                     Data.markMailboxCategoryRead(username, activeCategory);
                     queueTopbarRefresh();
                     renderMailboxSafely();
@@ -6845,7 +7298,7 @@
                 h("button", {
                   className: "button button-ghost mailbox-action",
                   type: "button",
-                  disabled: !visibleMessages.some((message) => message.readAt),
+                  disabled: !canDeleteRead,
                   onClick: () => {
                     const deleted = Data.deleteReadMailboxMessages(username, activeCategory);
                     if (selectedId && !Data.mailbox(username).some((message) => message.id === selectedId)) {
@@ -6862,9 +7315,37 @@
               selectedMessage
                 ? [
                     h("div", { className: "mail-detail-header" },
-                      h("span", { className: "release-badge" }, icon(mailboxCategory(selectedMessage.category).icon), mailboxCategory(selectedMessage.category).label),
-                      h("h3", { text: localizeStaticPhrase(selectedMessage.subject || "系统通知") }),
-                      h("p", { text: "该邮件由系统自动同步，不能取消发送。" })
+                      h("div", { className: "mail-detail-titlebar" },
+                        h("div", {},
+                          h("span", { className: "release-badge" }, icon(mailboxCategory(selectedMessage.category).icon), mailboxCategory(selectedMessage.category).label),
+                          h("h3", { text: localizeStaticPhrase(selectedMessage.subject || "系统通知") })
+                        ),
+                        h("div", { className: "mail-detail-toolbar" },
+                          isChatDetail ? null : h("button", {
+                            className: `icon-button square ${selectedMessage.favoritedAt ? "active" : ""}`,
+                            type: "button",
+                            title: selectedMessage.favoritedAt ? "取消收藏" : "收藏",
+                            onClick: () => {
+                              const result = Data.toggleMailboxFavorite(username, selectedMessage.id);
+                              UI.toast(result.ok ? (result.favorited ? "已收藏" : "已取消收藏") : (result.message || "收藏失败"));
+                              renderMailboxSafely();
+                            }
+                          }, icon(selectedMessage.favoritedAt ? "fa-solid fa-star" : "fa-regular fa-star")),
+                          h("button", {
+                            className: "icon-button square danger",
+                            type: "button",
+                            title: "删除",
+                            onClick: () => {
+                              Data.deleteMailboxMessage(username, selectedMessage.id);
+                              selectedId = "";
+                              queueTopbarRefresh();
+                              renderMailboxSafely();
+                              UI.toast("邮件已删除");
+                            }
+                          }, icon("fa-regular fa-trash-can"))
+                        )
+                      ),
+                      h("p", { text: selectedMessage.favoritedAt ? "收藏邮件不会自动过期。" : `${mailboxExpiryLabel(selectedMessage)}。` })
                     ),
                     h("dl", { className: "mail-detail-meta" },
                       h("div", {}, h("dt", { text: "发件人" }), h("dd", { className: "notranslate", translate: "no", text: selectedMessage.sender || "IMPULSE J System" })),
@@ -6872,7 +7353,28 @@
                       selectedMessage.orderId ? h("div", {}, h("dt", { text: "关联订单" }), h("dd", { className: "notranslate", translate: "no", text: selectedMessage.orderId })) : null,
                       h("div", {}, h("dt", { text: "状态" }), h("dd", { text: selectedMessage.readAt ? "已读" : "未读" }))
                     ),
-                    h("div", { className: "mail-detail-body notranslate", translate: "no", text: selectedMessage.body || selectedMessage.preview || "No message body." })
+                    h("div", { className: "mail-detail-body notranslate", translate: "no", text: selectedMessage.body || selectedMessage.preview || "No message body." }),
+                    (isChatDetail || mailboxHasClaim(selectedMessage)) ? h("div", { className: "mail-detail-actions" },
+                      isChatDetail ? h("button", {
+                        className: "button button-primary",
+                        type: "button",
+                        disabled: !selectedMessage.orderId,
+                        onClick: () => {
+                          UI.closeModal();
+                          Actions.openOrderChat(selectedMessage.orderId);
+                        }
+                      }, icon("fa-solid fa-arrow-up-right-from-square"), h("span", { text: "前往" })) : null,
+                      mailboxHasClaim(selectedMessage) ? h("button", {
+                        className: "button button-primary",
+                        type: "button",
+                        disabled: !mailboxClaimAvailable(selectedMessage),
+                        onClick: async () => {
+                          await claimMessage(selectedMessage);
+                          renderMailboxSafely();
+                          App.render();
+                        }
+                      }, icon(mailboxClaimAvailable(selectedMessage) ? "fa-solid fa-gift" : "fa-solid fa-check"), h("span", { text: mailboxClaimAvailable(selectedMessage) ? "领取" : "已领取" })) : null
+                    ) : null
                   ]
                 : h("div", { className: "mailbox-empty" }, icon("fa-regular fa-envelope-open"), h("strong", { text: "选择一封邮件查看详情。" }))
             )
