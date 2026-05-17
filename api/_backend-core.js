@@ -976,6 +976,7 @@ function createOrderOnBackend(db, payload, actor) {
     settlement: null,
     ...payload,
     customerUsername: actor.username,
+    contact: String(payload.contact || "").trim(),
     price
   };
   db.orders = [order, ...db.orders];

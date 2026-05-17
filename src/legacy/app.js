@@ -603,9 +603,13 @@
     "关联订单": { "zh-TW": "關聯訂單", en: "Related Order", fr: "Commande liée", ja: "関連注文", ko: "관련 주문", es: "Pedido relacionado" },
     "未读": { "zh-TW": "未讀", en: "Unread", fr: "Non lu", ja: "未読", ko: "읽지 않음", es: "No leído" },
     "已读": { "zh-TW": "已讀", en: "Read", fr: "Lu", ja: "既読", ko: "읽음", es: "Leído" },
+    "全部已读/领取": { "zh-TW": "全部已讀/領取", en: "Read / Claim All", fr: "Tout lire / réclamer", ja: "すべて既読 / 受取", ko: "전체 읽음 / 수령", es: "Leer / reclamar todo" },
+    "删除已读": { "zh-TW": "刪除已讀", en: "Delete Read", fr: "Supprimer lus", ja: "既読を削除", ko: "읽은 항목 삭제", es: "Eliminar leídos" },
+    "已全部处理": { "zh-TW": "已全部處理", en: "All handled", fr: "Tout est traité", ja: "すべて処理済み", ko: "모두 처리됨", es: "Todo procesado" },
+    "已读邮件已删除": { "zh-TW": "已讀郵件已刪除", en: "Read mail deleted", fr: "Courrier lu supprimé", ja: "既読メールを削除しました", ko: "읽은 메일 삭제됨", es: "Correo leído eliminado" },
+    "没有可删除的已读邮件": { "zh-TW": "沒有可刪除的已讀郵件", en: "No read mail to delete", fr: "Aucun courrier lu à supprimer", ja: "削除できる既読メールはありません", ko: "삭제할 읽은 메일 없음", es: "No hay correo leído para eliminar" },
     "暂无邮件": { "zh-TW": "暫無郵件", en: "No Mail", fr: "Aucun courrier", ja: "メールはありません", ko: "메일 없음", es: "Sin correo" },
     "选择一封邮件查看详情。": { "zh-TW": "選擇一封郵件查看詳情。", en: "Select a message to view details.", fr: "Sélectionnez un message pour afficher les détails.", ja: "詳細を見るメールを選択してください。", ko: "상세 내용을 보려면 메일을 선택하세요.", es: "Selecciona un mensaje para ver detalles." },
-    "站内邮件用于同步系统通知和聊天提醒，无法在联系设置中关闭。": { "zh-TW": "站內郵件用於同步系統通知和聊天提醒，無法在聯絡設定中關閉。", en: "In-app mail syncs system notices and chat alerts and cannot be disabled in contact settings.", fr: "Le courrier intégré synchronise les avis système et alertes de chat; il ne peut pas être désactivé.", ja: "アプリ内メールはシステム通知とチャット通知を同期し、連絡設定では無効にできません。", ko: "앱 내 메일은 시스템 알림과 채팅 알림을 동기화하며 연락 설정에서 끌 수 없습니다.", es: "El correo interno sincroniza avisos del sistema y alertas de chat y no se puede desactivar." },
     "该邮件由系统自动同步，不能取消发送。": { "zh-TW": "此郵件由系統自動同步，不能取消發送。", en: "This message is synced automatically by the system and cannot be unsent.", fr: "Ce message est synchronisé automatiquement par le système et ne peut pas être annulé.", ja: "このメッセージはシステムにより自動同期され、送信取消はできません。", ko: "이 메시지는 시스템이 자동 동기화하며 전송 취소할 수 없습니다.", es: "Este mensaje se sincroniza automáticamente y no se puede cancelar." },
     "系统通知": { "zh-TW": "系統通知", en: "System Notice", fr: "Notification système", ja: "システム通知", ko: "시스템 알림", es: "Aviso del sistema" },
     "订单通知": { "zh-TW": "訂單通知", en: "Order Notice", fr: "Notification de commande", ja: "注文通知", ko: "주문 알림", es: "Aviso de pedido" },
@@ -1407,7 +1411,24 @@
         return;
       }
       if (key.startsWith("on") && typeof value === "function") {
-        node.addEventListener(key.slice(2).toLowerCase(), value);
+        const eventName = key.slice(2).toLowerCase();
+        node.addEventListener(eventName, (event) => {
+          const loader = eventName === "click" && shouldShowInteractionLoader(node)
+            ? UI.beginInteractionLoading(node)
+            : null;
+          try {
+            const result = value(event);
+            if (result && typeof result.then === "function") {
+              result.finally(() => loader?.done());
+            } else {
+              loader?.doneSoon();
+            }
+            return result;
+          } catch (error) {
+            loader?.done();
+            throw error;
+          }
+        });
         return;
       }
       if (key === "required") {
@@ -1422,6 +1443,16 @@
 
   function icon(className) {
     return h("i", { className, "aria-hidden": "true" });
+  }
+
+  function shouldShowInteractionLoader(node) {
+    if (!node || node.dataset?.noLoading === "true") {
+      return false;
+    }
+    if (node.disabled || node.getAttribute?.("aria-disabled") === "true") {
+      return false;
+    }
+    return node.matches?.("button, [role='button'], .button, .icon-button, .account-button, .avatar-button");
   }
 
   function createId(prefix) {
@@ -2323,6 +2354,7 @@
     mailbox(username) {
       const key = normalize(username);
       return (this.mailboxes()[key] || [])
+        .filter((message) => !message.deletedAt)
         .slice()
         .sort((a, b) => timestampMs(b.createdAt) - timestampMs(a.createdAt));
     },
@@ -2384,17 +2416,40 @@
     markMailboxCategoryRead(username, categoryId = "all") {
       const key = normalize(username);
       if (!key) {
-        return;
+        return 0;
       }
       const boxes = this.mailboxes();
       const list = Array.isArray(boxes[key]) ? boxes[key] : [];
       const now = new Date().toISOString();
-      boxes[key] = list.map((message) => (
-        (categoryId === "all" || message.category === categoryId) && !message.readAt
-          ? { ...message, readAt: now }
-          : message
-      ));
+      let updated = 0;
+      boxes[key] = list.map((message) => {
+        if ((categoryId === "all" || message.category === categoryId) && !message.deletedAt && !message.readAt) {
+          updated += 1;
+          return { ...message, readAt: now };
+        }
+        return message;
+      });
       this.saveMailboxes(boxes);
+      return updated;
+    },
+    deleteReadMailboxMessages(username, categoryId = "all") {
+      const key = normalize(username);
+      if (!key) {
+        return 0;
+      }
+      const boxes = this.mailboxes();
+      const list = Array.isArray(boxes[key]) ? boxes[key] : [];
+      const now = new Date().toISOString();
+      let deleted = 0;
+      boxes[key] = list.map((message) => {
+        if (!message.deletedAt && message.readAt && (categoryId === "all" || message.category === categoryId)) {
+          deleted += 1;
+          return { ...message, deletedAt: now };
+        }
+        return message;
+      });
+      this.saveMailboxes(boxes);
+      return deleted;
     },
     addChatMailboxNotifications(order, message) {
       chatMailboxRecipients(order, message).forEach((username) => {
@@ -2992,6 +3047,7 @@
         settledAt: "",
         settlement: null,
         ...payload,
+        contact: String(payload.contact || "").trim(),
         price
       };
       this.saveOrders([order, ...this.orders()]);
@@ -3953,6 +4009,34 @@
       Translation.localizeStaticUi(Dom.modalRoot);
       Translation.refresh();
     },
+    beginInteractionLoading(target) {
+      if (!shouldShowInteractionLoader(target)) {
+        return null;
+      }
+      const startedAt = Date.now();
+      const hadLoading = target.classList.contains("is-interaction-loading");
+      target.classList.add("is-interaction-loading");
+      target.setAttribute("aria-busy", "true");
+      return {
+        done: () => {
+          const delay = Math.max(0, 220 - (Date.now() - startedAt));
+          window.setTimeout(() => {
+            if (!hadLoading) {
+              target.classList.remove("is-interaction-loading");
+              target.removeAttribute("aria-busy");
+            }
+          }, delay);
+        },
+        doneSoon: () => {
+          window.setTimeout(() => {
+            if (!hadLoading) {
+              target.classList.remove("is-interaction-loading");
+              target.removeAttribute("aria-busy");
+            }
+          }, 320);
+        }
+      };
+    },
     openConfirm(title, body, onConfirm) {
       const card = h("div", { className: "modal-card slide-up" },
         h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
@@ -4113,12 +4197,18 @@
         event.preventDefault();
         const values = Object.fromEntries(new FormData(form).entries());
         const submitButton = form.querySelector("button[type='submit']");
+        const loader = UI.beginInteractionLoading(submitButton);
         if (submitButton) {
           submitButton.disabled = true;
         }
-        const result = await onSubmit(values);
-        if (submitButton) {
-          submitButton.disabled = false;
+        let result = null;
+        try {
+          result = await onSubmit(values);
+        } finally {
+          if (submitButton) {
+            submitButton.disabled = false;
+          }
+          loader?.done();
         }
         if (result && result.error) {
           message.textContent = result.error;
@@ -4174,7 +4264,18 @@
       const profile = Data.profileByUsername(State.currentUser.username);
       const unreadMail = Data.unreadMailboxCount(State.currentUser.username);
       Dom.topActions.appendChild(
-        h("button", { className: "icon-button square mail-button", type: "button", dataset: { action: "open-mailbox" }, ariaLabel: "邮件中心", title: "邮件中心" },
+        h("button", {
+          className: "icon-button square mail-button",
+          type: "button",
+          dataset: { action: "open-mailbox" },
+          ariaLabel: "邮件中心",
+          title: "邮件中心",
+          onClick: (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            Actions.openMailbox();
+          }
+        },
           icon("fa-regular fa-envelope"),
           unreadMail ? h("span", { className: "unread-badge mail-unread-badge", text: unreadMail > 99 ? "99+" : String(unreadMail) }) : null
         )
@@ -5385,22 +5486,28 @@
           event.preventDefault();
           const values = Object.fromEntries(new FormData(form).entries());
           const submitButton = form.querySelector("button[type='submit']");
+          const loader = UI.beginInteractionLoading(submitButton);
           if (submitButton) {
             submitButton.disabled = true;
           }
-          const result = await (isLogin
-            ? (isEmailCodeLogin
-                ? Session.loginByEmailCode(values.email, values.code)
-                : Session.loginByPassword(values.identity, values.password))
-            : Session.register(values.username, values.email, values.password, values.confirmPassword, values.code, {
-                countryRegion: values.countryRegion,
-                birthday: values.birthday,
-                gender: values.gender,
-                avatarImage: registerAvatarImage,
-                avatarImageName: registerAvatarName
-              }));
-          if (submitButton) {
-            submitButton.disabled = false;
+          let result;
+          try {
+            result = await (isLogin
+              ? (isEmailCodeLogin
+                  ? Session.loginByEmailCode(values.email, values.code)
+                  : Session.loginByPassword(values.identity, values.password))
+              : Session.register(values.username, values.email, values.password, values.confirmPassword, values.code, {
+                  countryRegion: values.countryRegion,
+                  birthday: values.birthday,
+                  gender: values.gender,
+                  avatarImage: registerAvatarImage,
+                  avatarImageName: registerAvatarName
+                }));
+          } finally {
+            if (submitButton) {
+              submitButton.disabled = false;
+            }
+            loader?.done();
           }
           if (!result.ok) {
             message.textContent = result.message;
@@ -5478,7 +5585,6 @@
         return;
       }
       const fields = [
-        { name: "contact", label: "联系方式", type: "text", placeholder: "微信 / QQ / 手机号", required: true },
         type === "reservation" ? { name: "appointmentAt", label: "预约时间", type: "datetime-local", required: true } : null,
         { name: "autoCancelMinutes", label: "无人接单自动退单时间（分钟）", type: "number", value: "60", min: "1", step: "1", required: true },
         { name: "note", label: "备注", type: "textarea", placeholder: "角色信息、段位、期望目标或其他要求" }
@@ -5512,7 +5618,7 @@
             productTitleI18n: contentValues(product, "title"),
             price,
             customerUsername: State.currentUser.username,
-            contact: values.contact,
+            contact: "",
             appointmentAt: values.appointmentAt || "",
             note: values.note || "",
             autoCancelMinutes,
@@ -5843,7 +5949,9 @@
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const values = Object.fromEntries(new FormData(form).entries());
-        const result = await this.verifyCurrentUserSecret(values.password, values.code);
+        const submitButton = form.querySelector("button[type='submit']");
+        const loader = UI.beginInteractionLoading(submitButton);
+        const result = await this.verifyCurrentUserSecret(values.password, values.code).finally(() => loader?.done());
         if (!result.ok) {
           message.textContent = result.message || "验证失败。";
           return;
@@ -5992,10 +6100,12 @@
       );
       form.addEventListener("submit", (event) => {
         event.preventDefault();
+        const loader = UI.beginInteractionLoading(form.querySelector("button[type='submit']"));
         const formData = new FormData(form);
         const notificationEmail = normalizeEmail(formData.get("notificationEmail"));
         if (!isEmail(notificationEmail)) {
           message.textContent = "请输入有效通知邮箱。";
+          loader?.done();
           return;
         }
         const emailNotices = Object.fromEntries(EmailNoticeTypes.map((notice) => [notice.key, formData.has(notice.key)]));
@@ -6004,6 +6114,7 @@
         UI.closeModal();
         UI.toast("联系设置已保存", "邮件通知语言固定为英语。");
         App.render();
+        loader?.doneSoon();
       });
       UI.openModal(
         h("div", { className: "modal-card modal-wide slide-up" },
@@ -6225,9 +6336,11 @@
       });
       form.addEventListener("submit", (event) => {
         event.preventDefault();
+        const loader = UI.beginInteractionLoading(form.querySelector("button[type='submit']"));
         const text = textInput.value.trim();
         if (!text && !selectedImageData) {
           UI.toast("请输入内容", "可以发送文字或图片。");
+          loader?.done();
           return;
         }
         const send = async () => {
@@ -6245,7 +6358,7 @@
           }
           this.openOrderChat(order.id);
         };
-        send();
+        send().finally(() => loader?.done());
       });
       const messageList = h("div", { className: "chat-messages" }, messageNodes);
 
@@ -6604,9 +6717,7 @@
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
           h("div", { className: "mailbox-heading" },
             h("div", {},
-              h("span", { className: "release-badge" }, icon("fa-regular fa-envelope"), "邮件中心"),
-              h("h2", { text: "邮件" }),
-              h("p", { text: "站内邮件用于同步系统通知和聊天提醒，无法在联系设置中关闭。" })
+              h("span", { className: "release-badge" }, icon("fa-regular fa-envelope"), "邮件中心")
             ),
             h("div", { className: "mailbox-counter" },
               h("strong", { className: "notranslate", translate: "no", text: `${refreshedMessages.filter((message) => !message.readAt).length}` }),
@@ -6634,27 +6745,56 @@
               })
             ),
             h("section", { className: "mailbox-list", "aria-label": "邮件列表" },
-              visibleMessages.length
-                ? visibleMessages.map((message) => {
-                    const category = mailboxCategory(message.category);
-                    return h("button", {
-                      className: `mail-row ${message.id === selectedId ? "active" : ""} ${message.readAt ? "read" : "unread"}`,
-                      type: "button",
-                      onClick: () => {
-                        selectedId = message.id;
-                        renderMailbox();
-                      }
-                    },
-                      h("span", { className: "mail-row-icon" }, icon(category.icon)),
-                      h("span", { className: "mail-row-main" },
-                        h("strong", { text: localizeStaticPhrase(message.subject || "系统通知") }),
-                        h("small", { className: "notranslate", translate: "no", text: message.preview || message.body || "系统通知" })
-                      ),
-                      h("time", { className: "notranslate", translate: "no", datetime: message.createdAt, text: formatDate(message.createdAt) }),
-                      message.readAt ? null : h("span", { className: "mail-unread-dot", ariaLabel: "未读" })
-                    );
-                  })
-                : h("div", { className: "mailbox-empty" }, icon("fa-regular fa-envelope-open"), h("strong", { text: "暂无邮件" }))
+              h("div", { className: "mailbox-list-scroll" },
+                visibleMessages.length
+                  ? visibleMessages.map((message) => {
+                      const category = mailboxCategory(message.category);
+                      return h("button", {
+                        className: `mail-row ${message.id === selectedId ? "active" : ""} ${message.readAt ? "read" : "unread"}`,
+                        type: "button",
+                        onClick: () => {
+                          selectedId = message.id;
+                          renderMailbox();
+                        }
+                      },
+                        h("span", { className: "mail-row-icon" }, icon(category.icon)),
+                        h("span", { className: "mail-row-main" },
+                          h("strong", { text: localizeStaticPhrase(message.subject || "系统通知") }),
+                          h("small", { className: "notranslate", translate: "no", text: message.preview || message.body || "系统通知" })
+                        ),
+                        h("time", { className: "notranslate", translate: "no", datetime: message.createdAt, text: formatDate(message.createdAt) }),
+                        message.readAt ? null : h("span", { className: "mail-unread-dot", ariaLabel: "未读" })
+                      );
+                    })
+                  : h("div", { className: "mailbox-empty" }, icon("fa-regular fa-envelope-open"), h("strong", { text: "暂无邮件" }))
+              ),
+              h("div", { className: "mailbox-list-actions" },
+                h("button", {
+                  className: "button button-primary mailbox-action",
+                  type: "button",
+                  disabled: !visibleMessages.length,
+                  onClick: () => {
+                    Data.markMailboxCategoryRead(username, activeCategory);
+                    Components.renderTopbar();
+                    renderMailbox();
+                    UI.toast("已全部处理");
+                  }
+                }, icon("fa-solid fa-check-double"), h("span", { text: "全部已读/领取" })),
+                h("button", {
+                  className: "button button-ghost mailbox-action",
+                  type: "button",
+                  disabled: !visibleMessages.some((message) => message.readAt),
+                  onClick: () => {
+                    const deleted = Data.deleteReadMailboxMessages(username, activeCategory);
+                    if (selectedId && !Data.mailbox(username).some((message) => message.id === selectedId)) {
+                      selectedId = "";
+                    }
+                    Components.renderTopbar();
+                    renderMailbox();
+                    UI.toast(deleted ? "已读邮件已删除" : "没有可删除的已读邮件");
+                  }
+                }, icon("fa-regular fa-trash-can"), h("span", { text: "删除已读" }))
+              )
             ),
             h("article", { className: "mailbox-detail" },
               selectedMessage
@@ -7299,7 +7439,9 @@
 
       Dom.searchForm.addEventListener("submit", (event) => {
         event.preventDefault();
+        const loader = UI.beginInteractionLoading(event.submitter || Dom.searchForm.querySelector("button[type='submit']"));
         Router.go("search", { q: Dom.searchInput.value.trim() });
+        loader?.doneSoon();
       });
 
       document.addEventListener("click", (event) => {
@@ -7310,7 +7452,18 @@
         if (!target) {
           return;
         }
-        this.handleAction(target);
+        const loader = UI.beginInteractionLoading(target);
+        try {
+          const result = this.handleAction(target);
+          if (result && typeof result.then === "function") {
+            result.finally(() => loader?.done());
+          } else {
+            loader?.doneSoon();
+          }
+        } catch (error) {
+          loader?.done();
+          throw error;
+        }
       });
 
       document.addEventListener("input", (event) => {

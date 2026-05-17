@@ -292,6 +292,45 @@ p {
   transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease, border-color 180ms ease;
 }
 
+.button.is-interaction-loading,
+.search button.is-interaction-loading,
+.icon-button.is-interaction-loading,
+.account-button.is-interaction-loading,
+.avatar-button.is-interaction-loading,
+[role="button"].is-interaction-loading {
+  position: relative;
+  cursor: progress;
+}
+
+.button.is-interaction-loading::after,
+.search button.is-interaction-loading::after,
+.icon-button.is-interaction-loading::after,
+.account-button.is-interaction-loading::after,
+.avatar-button.is-interaction-loading::after,
+[role="button"].is-interaction-loading::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: interactionSpin 680ms linear infinite;
+}
+
+.icon-button.square.is-interaction-loading::after,
+.account-button.is-interaction-loading::after,
+.avatar-button.is-interaction-loading::after {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 12px;
+  height: 12px;
+  color: var(--button-text);
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92);
+}
+
 .button:hover,
 .search button:hover,
 .icon-button:hover,
@@ -360,6 +399,12 @@ p {
 
 .mail-button {
   position: relative;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+.mail-button > * {
+  pointer-events: none;
 }
 
 .mail-unread-badge {
@@ -2009,16 +2054,14 @@ button.admin-table-row:hover {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 18px;
-  align-items: end;
+  align-items: center;
   margin-bottom: 18px;
+  padding-right: 58px;
 }
 
-.mailbox-heading h2 {
-  margin: 10px 0 6px;
-}
-
-.mailbox-heading p {
-  max-width: 720px;
+.mailbox-heading .release-badge {
+  width: max-content;
+  margin: 0;
 }
 
 .mailbox-counter {
@@ -2029,7 +2072,7 @@ button.admin-table-row:hover {
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: var(--radius);
-  background: linear-gradient(135deg, rgba(106, 17, 203, 0.92), rgba(37, 117, 252, 0.92));
+  background: linear-gradient(135deg, var(--bg-start), var(--bg-end));
   box-shadow: 0 18px 40px rgba(37, 117, 252, 0.2);
 }
 
@@ -2050,9 +2093,18 @@ button.admin-table-row:hover {
   min-height: 520px;
   max-height: 62vh;
   overflow: hidden;
-  border: 1px solid #1f2937;
+  border: 1px solid rgba(17, 24, 39, 0.12);
   border-radius: var(--radius);
-  background: #101828;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 18px 42px rgba(16, 24, 40, 0.12);
+}
+
+body.staff-mode .mailbox-shell {
+  background: rgba(255, 251, 235, 0.76);
+}
+
+body.admin-mode .mailbox-shell {
+  background: rgba(248, 250, 252, 0.78);
 }
 
 .mailbox-nav,
@@ -2067,8 +2119,16 @@ button.admin-table-row:hover {
   align-content: start;
   gap: 8px;
   padding: 12px;
-  background: linear-gradient(180deg, #172033, #111827);
-  border-right: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(239, 246, 255, 0.9));
+  border-right: 1px solid rgba(17, 24, 39, 0.1);
+}
+
+body.staff-mode .mailbox-nav {
+  background: linear-gradient(180deg, rgba(255, 251, 235, 0.98), rgba(255, 237, 213, 0.88));
+}
+
+body.admin-mode .mailbox-nav {
+  background: linear-gradient(180deg, rgba(249, 250, 251, 0.98), rgba(229, 231, 235, 0.82));
 }
 
 .mailbox-category {
@@ -2078,7 +2138,7 @@ button.admin-table-row:hover {
   align-items: center;
   min-height: 54px;
   padding: 0 12px;
-  color: rgba(255, 255, 255, 0.72);
+  color: #475467;
   border: 1px solid transparent;
   border-radius: calc(var(--radius) - 2px);
   background: transparent;
@@ -2093,28 +2153,59 @@ button.admin-table-row:hover {
 }
 
 .mailbox-category small {
-  color: rgba(255, 255, 255, 0.68);
+  color: #667085;
   font-weight: 900;
 }
 
 .mailbox-category:hover,
 .mailbox-category.active {
-  color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+  border-color: rgba(17, 24, 39, 0.14);
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .mailbox-category.active {
-  box-shadow: inset 3px 0 0 #ff8a3d;
+  box-shadow: inset 3px 0 0 var(--bg-start), 0 10px 24px rgba(16, 24, 40, 0.08);
 }
 
 .mailbox-list {
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.64);
+  border-right: 1px solid rgba(17, 24, 39, 0.1);
+  overflow: hidden;
+}
+
+.mailbox-list-scroll {
+  display: grid;
   align-content: start;
   gap: 8px;
   padding: 12px;
-  background: #0b1220;
-  border-right: 1px solid rgba(255, 255, 255, 0.09);
+  overflow: auto;
+}
+
+.mailbox-list-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid rgba(17, 24, 39, 0.1);
+  background: rgba(248, 250, 252, 0.94);
+}
+
+.mailbox-action {
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 10px;
+  font-size: 0.82rem;
+}
+
+.mailbox-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+  box-shadow: none;
 }
 
 .mail-row {
@@ -2125,18 +2216,30 @@ button.admin-table-row:hover {
   align-items: center;
   min-height: 78px;
   padding: 10px 12px;
-  color: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #344054;
+  border: 1px solid rgba(17, 24, 39, 0.1);
   border-radius: calc(var(--radius) - 2px);
-  background: rgba(255, 255, 255, 0.045);
+  background: rgba(255, 255, 255, 0.82);
   text-align: left;
 }
 
 .mail-row:hover,
 .mail-row.active {
-  color: #ffffff;
-  border-color: rgba(255, 138, 61, 0.7);
-  background: rgba(255, 138, 61, 0.11);
+  color: var(--ink);
+  border-color: rgba(37, 117, 252, 0.42);
+  background: rgba(239, 246, 255, 0.96);
+}
+
+body.staff-mode .mail-row:hover,
+body.staff-mode .mail-row.active {
+  border-color: rgba(255, 138, 0, 0.46);
+  background: rgba(255, 247, 237, 0.98);
+}
+
+body.admin-mode .mail-row:hover,
+body.admin-mode .mail-row.active {
+  border-color: rgba(89, 97, 106, 0.38);
+  background: rgba(243, 244, 246, 0.98);
 }
 
 .mail-row.read {
@@ -2148,10 +2251,20 @@ button.admin-table-row:hover {
   place-items: center;
   width: 38px;
   height: 38px;
-  color: #ff8a3d;
-  border: 1px solid rgba(255, 138, 61, 0.35);
+  color: var(--button-text);
+  border: 1px solid rgba(37, 117, 252, 0.16);
   border-radius: calc(var(--radius) - 2px);
-  background: rgba(255, 138, 61, 0.08);
+  background: rgba(239, 246, 255, 0.9);
+}
+
+body.staff-mode .mail-row-icon {
+  border-color: rgba(255, 138, 0, 0.22);
+  background: rgba(255, 247, 237, 0.94);
+}
+
+body.admin-mode .mail-row-icon {
+  border-color: rgba(89, 97, 106, 0.2);
+  background: rgba(243, 244, 246, 0.96);
 }
 
 .mail-row-main {
@@ -2169,7 +2282,7 @@ button.admin-table-row:hover {
 
 .mail-row-main small,
 .mail-row time {
-  color: rgba(255, 255, 255, 0.56);
+  color: #667085;
   font-size: 0.78rem;
 }
 
@@ -2186,11 +2299,11 @@ button.admin-table-row:hover {
 
 .mailbox-detail {
   padding: 24px;
-  color: rgba(255, 255, 255, 0.78);
+  color: #344054;
   background:
-    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    #121a28;
+    linear-gradient(rgba(17, 24, 39, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 24, 39, 0.045) 1px, transparent 1px),
+    #f8fafc;
   background-size: 28px 28px;
 }
 
@@ -2199,17 +2312,17 @@ button.admin-table-row:hover {
   gap: 8px;
   padding-bottom: 18px;
   margin-bottom: 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: 1px solid rgba(17, 24, 39, 0.1);
 }
 
 .mail-detail-header h3 {
   margin: 0;
-  color: #ffffff;
+  color: var(--ink);
   font-size: 1.25rem;
 }
 
 .mail-detail-header p {
-  color: rgba(255, 255, 255, 0.68);
+  color: #667085;
 }
 
 .mail-detail-meta {
@@ -2222,13 +2335,13 @@ button.admin-table-row:hover {
 .mail-detail-meta div {
   min-width: 0;
   padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(17, 24, 39, 0.1);
   border-radius: calc(var(--radius) - 2px);
-  background: rgba(255, 255, 255, 0.055);
+  background: rgba(255, 255, 255, 0.84);
 }
 
 .mail-detail-meta dt {
-  color: rgba(255, 255, 255, 0.55);
+  color: #667085;
   font-size: 0.78rem;
   font-weight: 850;
 }
@@ -2236,17 +2349,17 @@ button.admin-table-row:hover {
 .mail-detail-meta dd {
   margin: 4px 0 0;
   overflow-wrap: anywhere;
-  color: #ffffff;
+  color: var(--ink);
   font-weight: 850;
 }
 
 .mail-detail-body {
   min-height: 220px;
   padding: 18px;
-  color: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #344054;
+  border: 1px solid rgba(17, 24, 39, 0.1);
   border-radius: var(--radius);
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.88);
   line-height: 1.7;
   white-space: pre-wrap;
 }
@@ -2257,12 +2370,12 @@ button.admin-table-row:hover {
   gap: 10px;
   min-height: 180px;
   padding: 24px;
-  color: rgba(255, 255, 255, 0.68);
+  color: #667085;
   text-align: center;
 }
 
 .mailbox-empty i {
-  color: rgba(255, 255, 255, 0.46);
+  color: #98a2b3;
   font-size: 2rem;
 }
 
@@ -2538,9 +2651,16 @@ body {
   }
 }
 
+@keyframes interactionSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .app-loader-icon,
-  .app-loader-dots span {
+  .app-loader-dots span,
+  .is-interaction-loading::after {
     animation: none;
   }
 }
@@ -2631,13 +2751,13 @@ body {
   .mailbox-nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     border-right: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+    border-bottom: 1px solid rgba(17, 24, 39, 0.1);
   }
 
   .mailbox-list {
     max-height: 340px;
     border-right: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+    border-bottom: 1px solid rgba(17, 24, 39, 0.1);
   }
 
   .chat-presence {
