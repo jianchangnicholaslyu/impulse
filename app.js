@@ -6712,7 +6712,11 @@
             return;
           }
           topbarRefreshPending = false;
-          Components.renderTopbar();
+          try {
+            Components.renderTopbar();
+          } catch (error) {
+            console.error(error);
+          }
         }, 0);
       };
       const queueTopbarRefresh = () => {
@@ -6721,6 +6725,27 @@
           return;
         }
         flushTopbarRefresh();
+      };
+      const renderMailboxError = (error) => {
+        console.error(error);
+        clear(card);
+        append(card, [
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("div", { className: "mailbox-empty mailbox-load-state" },
+            icon("fa-solid fa-triangle-exclamation"),
+            h("strong", { text: "邮件打开失败" }),
+            h("span", { text: "邮件数据暂时无法显示，请刷新页面后重试。" })
+          )
+        ]);
+        Translation.localizeStaticUi(card);
+        Translation.refresh();
+      };
+      const renderMailboxSafely = () => {
+        try {
+          renderMailbox();
+        } catch (error) {
+          renderMailboxError(error);
+        }
       };
       const renderMailbox = () => {
         const allMessages = Data.mailbox(username);
@@ -6772,7 +6797,7 @@
                   onClick: () => {
                     activeCategory = category.id;
                     selectedId = "";
-                    renderMailbox();
+                    renderMailboxSafely();
                   }
                 },
                   icon(category.icon),
@@ -6791,7 +6816,7 @@
                         type: "button",
                         onClick: () => {
                           selectedId = message.id;
-                          renderMailbox();
+                          renderMailboxSafely();
                         }
                       },
                         h("span", { className: "mail-row-icon" }, icon(category.icon)),
@@ -6812,8 +6837,8 @@
                   disabled: !visibleMessages.length,
                   onClick: () => {
                     Data.markMailboxCategoryRead(username, activeCategory);
-                    Components.renderTopbar();
-                    renderMailbox();
+                    queueTopbarRefresh();
+                    renderMailboxSafely();
                     UI.toast("已全部处理");
                   }
                 }, icon("fa-solid fa-check-double"), h("span", { text: "全部已读/领取" })),
@@ -6826,8 +6851,8 @@
                     if (selectedId && !Data.mailbox(username).some((message) => message.id === selectedId)) {
                       selectedId = "";
                     }
-                    Components.renderTopbar();
-                    renderMailbox();
+                    queueTopbarRefresh();
+                    renderMailboxSafely();
                     UI.toast(deleted ? "已读邮件已删除" : "没有可删除的已读邮件");
                   }
                 }, icon("fa-regular fa-trash-can"), h("span", { text: "删除已读" }))
@@ -6857,9 +6882,18 @@
         Translation.refresh();
       };
 
-      renderMailbox();
+      clear(card);
+      append(card, [
+        h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+        h("div", { className: "mailbox-empty mailbox-load-state" },
+          icon("fa-regular fa-envelope"),
+          h("strong", { text: "邮件加载中" }),
+          h("span", { text: "正在读取系统邮件。" })
+        )
+      ]);
       UI.openModal(card);
       modalMounted = true;
+      window.setTimeout(renderMailboxSafely, 0);
       flushTopbarRefresh();
     },
     guestMenu(anchor) {
