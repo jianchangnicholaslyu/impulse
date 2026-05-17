@@ -2051,7 +2051,10 @@ button.admin-table-row:hover {
 
 .mailbox-modal {
   width: min(1120px, calc(100vw - 28px));
-  max-height: min(86vh, 780px);
+  height: min(86vh, 780px);
+  max-height: calc(100vh - 44px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -2114,8 +2117,9 @@ button.admin-table-row:hover {
 .mailbox-shell {
   display: grid;
   grid-template-columns: 185px minmax(270px, 0.78fr) minmax(0, 1.35fr);
-  min-height: 520px;
-  max-height: 62vh;
+  min-height: 0;
+  height: 100%;
+  max-height: none;
   overflow: hidden;
   border: 1px solid rgba(17, 24, 39, 0.12);
   border-radius: var(--radius);
@@ -2215,8 +2219,6 @@ body.admin-mode .mailbox-nav {
 .mailbox-list {
   position: relative;
   min-height: 0;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
   padding: 0;
   background: rgba(255, 255, 255, 0.64);
   border-right: 1px solid rgba(17, 24, 39, 0.1);
@@ -2224,26 +2226,32 @@ body.admin-mode .mailbox-nav {
 }
 
 .mailbox-list-scroll {
+  height: 100%;
   min-height: 0;
   position: relative;
   z-index: 1;
   display: grid;
   align-content: start;
   gap: 8px;
-  padding: 12px;
+  padding: 12px 12px 92px;
   overflow: auto;
 }
 
 .mailbox-list-actions {
-  position: relative;
-  z-index: 5;
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 8;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  padding: 12px;
-  border-top: 1px solid rgba(17, 24, 39, 0.1);
-  background: #f8fafc;
-  box-shadow: 0 -12px 28px rgba(15, 23, 42, 0.08);
+  padding: 10px;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: calc(var(--radius) - 2px);
+  background: rgba(248, 250, 252, 0.96);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(10px);
 }
 
 .mailbox-action {
@@ -2371,6 +2379,7 @@ body.admin-mode .mail-expiry {
 }
 
 .mailbox-detail {
+  position: relative;
   padding: 24px;
   color: #344054;
   background:
@@ -2378,6 +2387,7 @@ body.admin-mode .mail-expiry {
     linear-gradient(90deg, rgba(17, 24, 39, 0.045) 1px, transparent 1px),
     #f8fafc;
   background-size: 28px 28px;
+  padding-bottom: 104px;
 }
 
 .mail-detail-header {
@@ -2389,16 +2399,24 @@ body.admin-mode .mail-expiry {
 }
 
 .mail-detail-titlebar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: start;
+  display: block;
+  padding-right: 124px;
 }
 
 .mail-detail-toolbar {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 9;
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.1);
+  backdrop-filter: blur(10px);
 }
 
 .mail-detail-toolbar .icon-button.active {
@@ -2461,10 +2479,21 @@ body.admin-mode .mail-expiry {
 }
 
 .mail-detail-actions {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 24px;
+  z-index: 9;
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 14px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: calc(var(--radius) - 2px);
+  background: rgba(248, 250, 252, 0.94);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(10px);
 }
 
 .mailbox-empty {
@@ -2840,6 +2869,9 @@ body {
   }
 
   .mailbox-modal {
+    height: auto;
+    display: block;
+    max-height: calc(100vh - 44px);
     overflow: auto;
   }
 
@@ -2848,7 +2880,9 @@ body {
   }
 
   .mailbox-shell {
+    height: auto;
     max-height: none;
+    overflow: visible;
   }
 
   .mailbox-nav {
@@ -2867,9 +2901,16 @@ body {
   }
 
   .mailbox-list {
-    max-height: 340px;
+    height: 360px;
+    max-height: 46vh;
     border-right: 0;
     border-bottom: 1px solid rgba(17, 24, 39, 0.1);
+  }
+
+  .mailbox-detail {
+    min-height: 520px;
+    border-bottom-left-radius: var(--radius);
+    border-bottom-right-radius: var(--radius);
   }
 
   .chat-presence {
