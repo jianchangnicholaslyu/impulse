@@ -4267,14 +4267,9 @@
         h("button", {
           className: "icon-button square mail-button",
           type: "button",
-          dataset: { action: "open-mailbox" },
+          dataset: { mailboxTrigger: "true" },
           ariaLabel: "邮件中心",
-          title: "邮件中心",
-          onClick: (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            Actions.openMailbox();
-          }
+          title: "邮件中心"
         },
           icon("fa-regular fa-envelope"),
           unreadMail ? h("span", { className: "unread-badge mail-unread-badge", text: unreadMail > 99 ? "99+" : String(unreadMail) }) : null
@@ -7443,6 +7438,23 @@
         Router.go("search", { q: Dom.searchInput.value.trim() });
         loader?.doneSoon();
       });
+
+      document.addEventListener("click", (event) => {
+        const target = event.target.closest?.("[data-mailbox-trigger='true']");
+        if (!target) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        const loader = UI.beginInteractionLoading(target);
+        try {
+          Actions.openMailbox();
+          loader?.doneSoon();
+        } catch (error) {
+          loader?.done();
+          throw error;
+        }
+      }, true);
 
       document.addEventListener("click", (event) => {
         if (!event.target.closest(".context-menu")) {
