@@ -1856,6 +1856,10 @@ button.admin-table-row:hover {
   margin-top: 18px;
 }
 
+.chat-shell-direct {
+  grid-template-columns: minmax(0, 1fr) 282px;
+}
+
 .chat-sidebar {
   display: grid;
   align-content: start;
@@ -1955,6 +1959,14 @@ button.admin-table-row:hover {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
 }
 
+.embedded-support-chat.direct {
+  grid-template-rows: auto minmax(390px, 56vh);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(239, 246, 255, 0.9)),
+    radial-gradient(circle at 22px 22px, rgba(37, 117, 252, 0.08) 1px, transparent 1.5px);
+  background-size: auto, 26px 26px;
+}
+
 .embedded-support-chat.unavailable {
   place-items: center;
   align-content: center;
@@ -2026,6 +2038,32 @@ button.admin-table-row:hover {
   min-height: 36px;
   padding: 0 12px;
   white-space: nowrap;
+}
+
+.embedded-support-direct-body {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  padding: 36px;
+  color: #475467;
+  text-align: center;
+}
+
+.embedded-support-direct-body i {
+  color: #98a2b3;
+  font-size: 3rem;
+}
+
+.embedded-support-direct-body strong {
+  color: var(--ink);
+  font-size: 1.1rem;
+}
+
+.embedded-support-direct-body p {
+  max-width: 520px;
+  margin: 0;
+  font-weight: 750;
 }
 
 .embedded-support-frame {

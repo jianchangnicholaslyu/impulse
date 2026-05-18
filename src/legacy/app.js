@@ -201,10 +201,26 @@
   const DevelopmentRecords = [
     // AI: top item = next release draft. Do not mark Uploaded or push until user explicitly says upload.
     {
+      version: "v0.20.2",
+      releasedAt: "2026-05-18",
+      nameI18n: localizedPair("Constrained Vector Chat Shell", "受限 Vector 对话外壳"),
+      statusI18n: localizedPair("Local draft, not uploaded", "本地草案，未上传"),
+      summaryI18n: localizedPair(
+        "Limits the order chat modal to direct Vector communication and removes non-chat actions from the chat shell.",
+        "将订单聊天弹窗限制为直接 Vector 沟通场景，并移除聊天外壳内的非聊天操作。"
+      ),
+      itemsI18n: [
+        localizedPair("Removed the embedded Tawk.to iframe from the order modal to avoid duplicate Help Center surfaces.", "移除订单弹窗内嵌的 Tawk.to iframe，避免重复出现 Help Center 界面。"),
+        localizedPair("The modal now opens the official Tawk.to widget directly and keeps order details in the IMPULSE J shell.", "弹窗现在直接打开 Tawk.to 官方组件，并在 IMPULSE J 外壳中保留订单上下文。"),
+        localizedPair("Removed Rush, Refund, Report, and Tip actions from the chat modal so users only see the chat entry for this workflow.", "从聊天弹窗中移除加急、退单、举报和小费操作，让该流程只显示聊天入口。"),
+        localizedPair("Adds Vector-specific tags and events for operator routing and order identification inside Tawk.to.", "为 Tawk.to 增加 Vector 专属标签和事件，便于坐席路由和订单识别。")
+      ]
+    },
+    {
       version: "v0.20.1",
       releasedAt: "2026-05-18",
       nameI18n: localizedPair("Direct Vector Chat Entry", "Vector 对话直达入口"),
-      statusI18n: localizedPair("Local draft, not uploaded", "本地草案，未上传"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
       summaryI18n: localizedPair(
         "Makes accepted order chats open as a direct Vector conversation flow instead of a generic support-center flow.",
         "让已接单订单的聊天以 Vector 直接对话流程打开，而不是普通客服中心流程。"
@@ -1889,6 +1905,14 @@
       .filter(([, value]) => Boolean(value)));
   }
 
+  function tawkSafeTag(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48);
+  }
+
   function orderHasAcceptedVector(order, conversationState = {}) {
     const status = String(order?.status || "").toLowerCase();
     const vectorName = conversationState.handledBy || order?.handledBy || order?.assignedVectorId || order?.assigned_vector_id || "";
@@ -2061,6 +2085,21 @@
         console.warn("Tawk.to event sync failed", error);
       }
     },
+    addTags(tags = []) {
+      const api = window.Tawk_API;
+      if (!api || typeof api.addTags !== "function") {
+        return;
+      }
+      const safeTags = [...new Set(tags.map(tawkSafeTag).filter(Boolean))].slice(0, 10);
+      if (!safeTags.length) {
+        return;
+      }
+      try {
+        api.addTags(safeTags, () => {});
+      } catch (error) {
+        console.warn("Tawk.to tag sync failed", error);
+      }
+    },
     maximize() {
       try {
         window.Tawk_API?.showWidget?.();
@@ -2097,6 +2136,12 @@
         }
         this.showWidget();
         this.setMetadata(context);
+        this.addTags([
+          "impulse-order-chat",
+          context.order?.id ? `order-${context.order.id}` : "",
+          context.staffUsername ? `vector-${context.staffUsername}` : "",
+          context.order?.status ? `status-${context.order.status}` : ""
+        ]);
         this.addEvent("order-chat-opened", {
           "order-id": context.order?.id || "",
           "order-status": context.order?.status || "",
@@ -2104,7 +2149,7 @@
           item: localizedOrderContent(context.order || {}, "productTitle", context.order?.productTitle || ""),
           context: context.orderContext || ""
         });
-        window.setTimeout(() => this.maximize(), 240);
+        [80, 300, 900].forEach((delay) => window.setTimeout(() => this.maximize(), delay));
         return true;
       });
     },
@@ -2181,14 +2226,14 @@
       );
     }
 
-    const chatNode = h("div", { className: "embedded-support-chat unavailable loading" },
+    const chatNode = h("div", { className: "embedded-support-chat direct loading" },
       h("span", { className: "loading-dot" }),
-      h("strong", { className: "notranslate", translate: "no", text: "Opening order chat..." }),
-      h("p", { className: "notranslate", translate: "no", text: TawkSupport.welcome })
+      h("strong", { className: "notranslate", translate: "no", text: "Connecting to your Vector..." }),
+      h("p", { className: "notranslate", translate: "no", text: chatWidget.orderContext || TawkSupport.welcome })
     );
 
     const renderUnavailable = () => {
-      chatNode.className = "embedded-support-chat unavailable";
+      chatNode.className = "embedded-support-chat direct unavailable";
       clear(chatNode);
       append(chatNode, [
         icon("fa-regular fa-comments"),
@@ -2198,7 +2243,7 @@
     };
 
     const renderChat = () => {
-      chatNode.className = "embedded-support-chat";
+      chatNode.className = "embedded-support-chat direct";
       clear(chatNode);
       const startButton = h("button", {
         className: "button button-primary embedded-support-start",
@@ -2212,24 +2257,22 @@
             }
           });
         }
-      }, icon("fa-regular fa-paper-plane"), h("span", { className: "notranslate", translate: "no", text: "Start Order Chat" }));
+      }, icon("fa-regular fa-image"), h("span", { className: "notranslate", translate: "no", text: "Start Order Chat" }));
       append(chatNode, [
         h("div", { className: "embedded-support-head" },
           h("div", {},
-            h("strong", { className: "notranslate", translate: "no", text: "Start Order Chat" }),
+            h("strong", { className: "notranslate", translate: "no", text: `Vector ${chatWidget.vectorName || ""}`.trim() || "Vector Chat" }),
             h("span", { className: "notranslate", translate: "no", text: chatWidget.orderContext })
           ),
           startButton,
           h("span", { className: "embedded-support-provider notranslate", translate: "no", text: "Tawk.to" })
         ),
-        h("iframe", {
-          className: "embedded-support-frame",
-          title: TawkSupport.entryLabel,
-          src: ChatProvider.chatUrl(context),
-          loading: "lazy",
-          allow: "microphone; camera; clipboard-write",
-          referrerpolicy: "strict-origin-when-cross-origin"
-        })
+        h("div", { className: "embedded-support-direct-body" },
+          icon("fa-regular fa-comments"),
+          h("strong", { className: "notranslate", translate: "no", text: "The order chat is opening in the Tawk.to panel." }),
+          h("p", { className: "notranslate", translate: "no", text: "Only real-time chat and image upload belong in this workflow. Order actions stay outside this chat window." }),
+          h("p", { className: "notranslate", translate: "no", text: "If the chat panel is not visible, press Start Order Chat again." })
+        )
       ]);
     };
 
@@ -5720,7 +5763,6 @@
 
   function OrderChatShell({
     order,
-    tools,
     customerProfile,
     staffProfile,
     participantCard,
@@ -5759,11 +5801,7 @@
           h("span", { text: contentLanguage() === "zh-CN" ? "未读" : "Unread" })
         )
       ),
-      h("div", { className: "chat-shell" },
-        h("aside", { className: "chat-sidebar" },
-          h("h3", { text: contentLanguage() === "zh-CN" ? "操作" : "Actions" }),
-          tools.length ? tools : h("p", { text: contentLanguage() === "zh-CN" ? "暂无可用操作。" : "No available actions." })
-        ),
+      h("div", { className: "chat-shell chat-shell-direct" },
         h("section", { className: "chat-panel" },
           EmbeddedSupportChat(supportContext, chatWidget)
         ),
