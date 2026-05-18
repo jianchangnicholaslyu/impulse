@@ -1974,6 +1974,15 @@ button.admin-table-row:hover {
   color: var(--ink);
 }
 
+.embedded-support-chat.loading .loading-dot {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(37, 117, 252, 0.22);
+  border-top-color: #2575fc;
+  border-radius: 999px;
+  animation: spin 0.8s linear infinite;
+}
+
 .embedded-support-head {
   display: flex;
   justify-content: space-between;

@@ -1865,6 +1865,7 @@
 
   const ChatProvider = {
     scriptId: "impulse-tawk-script",
+    configPromise: null,
     scriptPromise: null,
     publicLoadTimer: null,
     publicRoutes: new Set(["home", "category", "products", "search", "info"]),
@@ -1897,6 +1898,25 @@
         brand: BrandName
       };
     },
+    loadRuntimeConfig() {
+      if (this.configured()) {
+        return Promise.resolve(true);
+      }
+      if (this.configPromise) {
+        return this.configPromise;
+      }
+      this.configPromise = fetch("/api/public-config", {
+        headers: { Accept: "application/json" }
+      })
+        .then((response) => (response.ok ? response.json() : {}))
+        .then((config) => {
+          TawkSupport.propertyId = String(config.NEXT_PUBLIC_TAWK_PROPERTY_ID || TawkSupport.propertyId || "").trim();
+          TawkSupport.widgetId = String(config.NEXT_PUBLIC_TAWK_WIDGET_ID || TawkSupport.widgetId || "").trim();
+          return this.configured();
+        })
+        .catch(() => false);
+      return this.configPromise;
+    },
     prime(context = {}) {
       if (!this.configured()) {
         return;
@@ -1914,7 +1934,7 @@
     },
     load(context = {}) {
       if (!this.configured()) {
-        return Promise.resolve(false);
+        return this.loadRuntimeConfig().then((ready) => (ready ? this.load(context) : false));
       }
       this.prime(context);
       if (this.scriptPromise) {
@@ -1999,9 +2019,6 @@
         window.clearTimeout(this.publicLoadTimer);
         this.publicLoadTimer = null;
       }
-      if (!this.configured()) {
-        return;
-      }
       const routeName = State.route?.name || "home";
       const shouldLoad = State.mode !== "admin" && this.publicRoutes.has(routeName);
       if (!shouldLoad) {
@@ -2022,38 +2039,60 @@
   };
 
   function EmbeddedSupportChat(context = {}) {
-    if (!ChatProvider.configured()) {
-      return h("div", { className: "embedded-support-chat unavailable" },
+    const chatNode = h("div", { className: "embedded-support-chat unavailable loading" },
+      h("span", { className: "loading-dot" }),
+      h("strong", { className: "notranslate", translate: "no", text: "Loading Vector Support..." }),
+      h("p", { className: "notranslate", translate: "no", text: TawkSupport.welcome })
+    );
+
+    const renderUnavailable = () => {
+      chatNode.className = "embedded-support-chat unavailable";
+      clear(chatNode);
+      append(chatNode, [
         icon("fa-regular fa-comments"),
         h("strong", { className: "notranslate", translate: "no", text: "Chat is currently unavailable." }),
         h("p", { className: "notranslate", translate: "no", text: TawkSupport.welcome })
-      );
-    }
+      ]);
+    };
+
+    const renderChat = () => {
+      chatNode.className = "embedded-support-chat";
+      clear(chatNode);
+      append(chatNode, [
+        h("div", { className: "embedded-support-head" },
+          h("div", {},
+            h("strong", { className: "notranslate", translate: "no", text: TawkSupport.entryLabel }),
+            h("span", { className: "notranslate", translate: "no", text: TawkSupport.welcome })
+          ),
+          h("span", { className: "embedded-support-provider notranslate", translate: "no", text: "Tawk.to" })
+        ),
+        h("iframe", {
+          className: "embedded-support-frame",
+          title: TawkSupport.entryLabel,
+          src: ChatProvider.chatUrl(context),
+          loading: "lazy",
+          allow: "microphone; camera; clipboard-write",
+          referrerpolicy: "strict-origin-when-cross-origin"
+        })
+      ]);
+    };
+
     window.setTimeout(() => {
-      ChatProvider.load(context).then((loaded) => {
+      ChatProvider.loadRuntimeConfig().then((ready) => {
+        if (!ready) {
+          renderUnavailable();
+          return false;
+        }
+        renderChat();
+        return ChatProvider.load(context);
+      }).then((loaded) => {
         if (loaded) {
           ChatProvider.setMetadata(context);
           ChatProvider.hideWidget();
         }
       });
     }, 0);
-    return h("div", { className: "embedded-support-chat" },
-      h("div", { className: "embedded-support-head" },
-        h("div", {},
-          h("strong", { className: "notranslate", translate: "no", text: TawkSupport.entryLabel }),
-          h("span", { className: "notranslate", translate: "no", text: TawkSupport.welcome })
-        ),
-        h("span", { className: "embedded-support-provider notranslate", translate: "no", text: "Tawk.to" })
-      ),
-      h("iframe", {
-        className: "embedded-support-frame",
-        title: TawkSupport.entryLabel,
-        src: ChatProvider.chatUrl(context),
-        loading: "lazy",
-        allow: "microphone; camera; clipboard-write",
-        referrerpolicy: "strict-origin-when-cross-origin"
-      })
-    );
+    return chatNode;
   }
 
   function mailboxHasClaim(message) {
