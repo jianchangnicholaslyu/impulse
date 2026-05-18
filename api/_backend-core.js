@@ -175,6 +175,7 @@ function emptyDb() {
     products: {},
     orders: [],
     orderChats: {},
+    chatTyping: {},
     mailboxMessages: {},
     ledger: [],
     adminLogs: [],
@@ -217,6 +218,22 @@ function supabaseTable() {
     throw new Error("SUPABASE_STATE_TABLE must contain only letters, numbers, and underscores, and cannot start with a number.");
   }
   return table;
+}
+
+function supabaseConfiguredTable(envName, fallback) {
+  const table = process.env[envName] || fallback;
+  if (!SupabaseTablePattern.test(table)) {
+    throw new Error(`${envName} must contain only letters, numbers, and underscores, and cannot start with a number.`);
+  }
+  return table;
+}
+
+function supabaseMessagesTable() {
+  return supabaseConfiguredTable("SUPABASE_MESSAGES_TABLE", "messages");
+}
+
+function supabasePresenceTable() {
+  return supabaseConfiguredTable("SUPABASE_PRESENCE_TABLE", "message_presence");
 }
 
 function supabaseAssetBucket() {
@@ -335,6 +352,193 @@ async function supabaseRequest(pathname, options = {}) {
   return response.json().catch(() => null);
 }
 
+function jsonOrFallback(value, fallback) {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return fallback;
+    }
+  }
+  return value;
+}
+
+function supabaseMessageRow(orderId, message = {}) {
+  const contentType = normalizeChatContentType(message.type || message.content_type, message);
+  const messageType = normalizeChatMessageType({ ...message, type: contentType });
+  const imageUrl = message.imageUrl || message.image_url || message.imageData || "";
+  const createdAt = message.createdAt || message.created_at || nowIso();
+  return {
+    id: message.id || createId("msg"),
+    order_id: orderId || message.orderId || message.order_id || "",
+    sender_username: message.sender || message.sender_username || "SYSTEM",
+    sender_role: message.role || message.sender_role || "system",
+    message_type: messageType,
+    content_type: contentType,
+    body: String(message.text || message.body || "").slice(0, 5000),
+    image_url: imageUrl,
+    metadata: message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? message.metadata : {},
+    read_by: Array.isArray(message.readBy) ? message.readBy : jsonOrFallback(message.read_by, []),
+    read_at: message.readAt && typeof message.readAt === "object" && !Array.isArray(message.readAt) ? message.readAt : jsonOrFallback(message.read_at, {}),
+    created_at: createdAt,
+    updated_at: nowIso()
+  };
+}
+
+function messageFromSupabaseRow(row = {}) {
+  const contentType = normalizeChatContentType(row.content_type, row);
+  const messageType = normalizeChatMessageType({
+    message_type: row.message_type,
+    type: contentType,
+    role: row.sender_role
+  });
+  return {
+    id: row.id || createId("msg"),
+    orderId: row.order_id || "",
+    sender: row.sender_username || "SYSTEM",
+    role: row.sender_role || "system",
+    type: contentType,
+    messageType,
+    message_type: messageType,
+    text: String(row.body || "").slice(0, 5000),
+    imageData: "",
+    imageUrl: row.image_url || "",
+    metadata: jsonOrFallback(row.metadata, {}),
+    readBy: Array.isArray(row.read_by) ? row.read_by : jsonOrFallback(row.read_by, []),
+    readAt: row.read_at && typeof row.read_at === "object" && !Array.isArray(row.read_at) ? row.read_at : jsonOrFallback(row.read_at, {}),
+    createdAt: row.created_at || nowIso()
+  };
+}
+
+function mergeChatMessages(localMessages = [], remoteMessages = []) {
+  const byId = new Map();
+  [...localMessages, ...remoteMessages].forEach((message) => {
+    if (!message) return;
+    const id = message.id || `${message.sender || "SYSTEM"}:${message.createdAt || ""}:${message.text || ""}`;
+    byId.set(id, { ...(byId.get(id) || {}), ...message, id });
+  });
+  return [...byId.values()].sort((a, b) => timestampMs(a.createdAt) - timestampMs(b.createdAt));
+}
+
+async function persistSupabaseMessage(orderId, message) {
+  if (!hasSupabaseStorage() || !message) {
+    return false;
+  }
+  try {
+    await supabaseRequest(`/rest/v1/${supabaseMessagesTable()}?on_conflict=id`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal"
+      },
+      body: JSON.stringify(supabaseMessageRow(orderId, message))
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function persistSupabaseMessages(orderId, messages = []) {
+  if (!hasSupabaseStorage() || !Array.isArray(messages) || !messages.length) {
+    return false;
+  }
+  await Promise.all(messages.map((message) => persistSupabaseMessage(orderId, message)));
+  return true;
+}
+
+async function fetchSupabaseMessages(orderId) {
+  if (!hasSupabaseStorage() || !orderId) {
+    return null;
+  }
+  try {
+    const rows = await supabaseRequest(`/rest/v1/${supabaseMessagesTable()}?order_id=eq.${encodeURIComponent(orderId)}&select=*&order=created_at.asc`, {
+      headers: { Accept: "application/json" }
+    });
+    return Array.isArray(rows) ? rows.map(messageFromSupabaseRow) : [];
+  } catch {
+    return null;
+  }
+}
+
+async function persistSupabasePresence(orderId, user, isTyping) {
+  if (!hasSupabaseStorage() || !orderId || !user?.username) {
+    return false;
+  }
+  try {
+    const updatedAt = nowIso();
+    await supabaseRequest(`/rest/v1/${supabasePresenceTable()}?on_conflict=order_id,username`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal"
+      },
+      body: JSON.stringify({
+        order_id: orderId,
+        username: user.username,
+        role: user.role || "customer",
+        is_typing: Boolean(isTyping),
+        last_seen_at: updatedAt,
+        updated_at: updatedAt
+      })
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchSupabasePresence(orderId) {
+  if (!hasSupabaseStorage() || !orderId) {
+    return null;
+  }
+  try {
+    const rows = await supabaseRequest(`/rest/v1/${supabasePresenceTable()}?order_id=eq.${encodeURIComponent(orderId)}&select=*&order=updated_at.desc`, {
+      headers: { Accept: "application/json" }
+    });
+    if (!Array.isArray(rows)) {
+      return {};
+    }
+    return rows.reduce((typing, row) => {
+      if (row?.is_typing) {
+        typing[row.username] = {
+          username: row.username,
+          role: row.role || "customer",
+          isTyping: true,
+          updatedAt: row.updated_at || row.last_seen_at || nowIso()
+        };
+      }
+      return typing;
+    }, {});
+  } catch {
+    return null;
+  }
+}
+
+async function pruneSupabaseChatRows() {
+  if (!hasSupabaseStorage()) {
+    return false;
+  }
+  const cutoff = new Date(Date.now() - ChatRetentionMs).toISOString();
+  const stalePresenceCutoff = new Date(Date.now() - DayMs).toISOString();
+  try {
+    await supabaseRequest(`/rest/v1/${supabaseMessagesTable()}?created_at=lt.${encodeURIComponent(cutoff)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" }
+    });
+    await supabaseRequest(`/rest/v1/${supabasePresenceTable()}?updated_at=lt.${encodeURIComponent(stalePresenceCutoff)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" }
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function readSupabaseDb() {
   const table = supabaseTable();
   const id = encodeURIComponent(DbKey);
@@ -443,6 +647,7 @@ function sanitizeSnapshot(db) {
     products: db.products,
     orders: db.orders,
     orderChats: db.orderChats,
+    chatTyping: db.chatTyping,
     mailboxMessages: db.mailboxMessages,
     ledger: db.ledger,
     adminLogs: db.adminLogs,
@@ -469,6 +674,7 @@ function normalizeDb(input) {
   db.products = db.products && typeof db.products === "object" && !Array.isArray(db.products) ? db.products : {};
   db.orders = Array.isArray(db.orders) ? db.orders : [];
   db.orderChats = db.orderChats && typeof db.orderChats === "object" && !Array.isArray(db.orderChats) ? db.orderChats : {};
+  db.chatTyping = db.chatTyping && typeof db.chatTyping === "object" && !Array.isArray(db.chatTyping) ? db.chatTyping : {};
   db.mailboxMessages = db.mailboxMessages && typeof db.mailboxMessages === "object" && !Array.isArray(db.mailboxMessages) ? db.mailboxMessages : {};
   db.ledger = Array.isArray(db.ledger) ? db.ledger : [];
   db.adminLogs = Array.isArray(db.adminLogs) ? db.adminLogs : [];
@@ -580,6 +786,7 @@ function importSnapshot(db, snapshot = {}) {
     products: mergeRecordLists(db.products, snapshot.products, (product) => product?.id),
     orders: mergeArrayBy(db.orders, snapshot.orders, (order) => order?.id),
     orderChats: mergeChatRecords(db.orderChats, snapshot.orderChats),
+    chatTyping: snapshot.chatTyping && typeof snapshot.chatTyping === "object" && !Array.isArray(snapshot.chatTyping) ? snapshot.chatTyping : db.chatTyping,
     mailboxMessages: mergeChatRecords(db.mailboxMessages, snapshot.mailboxMessages),
     ledger: mergeArrayBy(db.ledger, snapshot.ledger, (entry) => entry?.id),
     adminLogs: mergeArrayBy(db.adminLogs, snapshot.adminLogs, (entry) => entry?.id),
@@ -939,6 +1146,7 @@ async function applyRetentionPolicies(db) {
       }
     }
   });
+  await pruneSupabaseChatRows();
 
   const expiredLogs = db.adminLogs.filter((entry) => timestampMs(entry.createdAt) && timestampMs(entry.createdAt) < archiveCutoff);
   if (expiredLogs.length) {
@@ -1003,21 +1211,79 @@ function addLedger(db, profile, delta, reason, meta = {}, actor = "SYSTEM") {
   return { ok: true, profile, entry };
 }
 
+function normalizeChatContentType(value, message = {}) {
+  const raw = String(value || message.type || "").toLowerCase().replace(/-/g, "_");
+  if (raw === "image" || message.imageData || message.imageUrl) return "image";
+  if (raw === "system") return "system";
+  if (raw === "action_card") return "action_card";
+  return "text";
+}
+
+function normalizeChatMessageType(message = {}) {
+  const raw = String(message.messageType || message.message_type || "").toLowerCase().replace(/-/g, "_");
+  if (raw === "system" || message.type === "system" || message.role === "system") return "system";
+  if (raw === "action_card" || message.type === "action_card") return "action_card";
+  return "user_message";
+}
+
+function chatAccess(db, orderId, user) {
+  if (!user) {
+    return { ok: false, message: "请先登录" };
+  }
+  const order = db.orders.find((item) => item.id === orderId);
+  if (!order) {
+    return { ok: false, message: "订单不存在" };
+  }
+  const allowed = [order.customerUsername, order.handledBy].filter(Boolean).map(normalize);
+  if (!allowed.includes(normalize(user.username)) && user.role !== "admin") {
+    return { ok: false, message: "无权查看" };
+  }
+  return { ok: true, order };
+}
+
+function pruneChatTyping(db) {
+  const cutoff = Date.now() - 10000;
+  Object.entries(db.chatTyping || {}).forEach(([orderId, entries]) => {
+    if (!entries || typeof entries !== "object" || Array.isArray(entries)) {
+      delete db.chatTyping[orderId];
+      return;
+    }
+    Object.entries(entries).forEach(([username, entry]) => {
+      const updatedAt = Date.parse(entry?.updatedAt || "");
+      if (!Number.isFinite(updatedAt) || updatedAt < cutoff) {
+        delete entries[username];
+      }
+    });
+    if (!Object.keys(entries).length) {
+      delete db.chatTyping[orderId];
+    }
+  });
+}
+
 function addChatMessage(db, orderId, message, actor = "SYSTEM") {
   const order = db.orders.find((item) => item.id === orderId);
   if (!order) {
     return { ok: false, message: "订单不存在" };
   }
+  const contentType = normalizeChatContentType(message.type, message);
+  const messageType = normalizeChatMessageType({ ...message, type: contentType });
+  const sender = message.sender || actor;
+  const createdAt = message.createdAt || nowIso();
   const next = {
     id: createId("msg"),
-    sender: message.sender || actor,
+    orderId,
+    sender,
     role: message.role || "system",
-    type: message.type || "text",
-    text: message.text || "",
+    type: contentType,
+    messageType,
+    message_type: messageType,
+    text: String(message.text || "").slice(0, 5000),
     imageData: message.imageData || "",
-    readBy: [message.sender || actor],
-    readAt: { [message.sender || actor]: nowIso() },
-    createdAt: nowIso()
+    imageUrl: message.imageUrl || "",
+    metadata: message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? message.metadata : {},
+    readBy: [sender],
+    readAt: { [sender]: createdAt },
+    createdAt
   };
   db.orderChats[orderId] = [...(db.orderChats[orderId] || []), next];
   addChatMailboxNotifications(db, order, next);
@@ -1149,7 +1415,7 @@ function addNoticeMailboxMessage(db, username, noticeKey, context = {}) {
 function chatMailboxBody(order, message) {
   const content = message.text
     ? message.text
-    : message.imageData
+    : (message.imageData || message.imageUrl)
       ? "[Image attachment]"
       : "[No text content]";
   return [
@@ -1167,7 +1433,7 @@ function chatMailboxRecipients(order, message) {
   if (!participants.length) {
     return [];
   }
-  if (message.sender === "SYSTEM" || message.role === "system" || message.type === "system") {
+  if (message.sender === "SYSTEM" || message.role === "system" || message.type === "system" || normalizeChatMessageType(message) === "system") {
     return participants;
   }
   const senderKey = normalize(message.sender);
@@ -1176,10 +1442,11 @@ function chatMailboxRecipients(order, message) {
 
 function addChatMailboxNotifications(db, order, message) {
   chatMailboxRecipients(order, message).forEach((username) => {
+    const systemLike = message.sender === "SYSTEM" || message.type === "system" || normalizeChatMessageType(message) === "system";
     addMailboxMessage(db, username, {
       category: "chat",
-      subject: message.sender === "SYSTEM" || message.type === "system" ? "Order Chat Update" : "New Chat Message",
-      preview: message.text || (message.imageData ? "[Image attachment]" : "Order Chat Update"),
+      subject: systemLike ? "Order Chat Update" : "New Chat Message",
+      preview: message.text || ((message.imageData || message.imageUrl) ? "[Image attachment]" : "Order Chat Update"),
       body: chatMailboxBody(order, message),
       sender: message.sender || "SYSTEM",
       source: "chat",
@@ -1794,35 +2061,132 @@ async function handleAction(action, payload = {}, request = {}) {
     if (payload.status === "completed") {
       await notifyOrderCompleted(db, result.order);
     }
+    await persistSupabaseMessages(payload.orderId, db.orderChats[payload.orderId] || []);
     await writeDb(db);
     return { ok: true, order: result.order, snapshot: sanitizeSnapshot(db) };
   }
 
   if (action === "addChatMessage") {
-    if (!request.user) {
-      return { ok: false, message: "请先登录" };
-    }
-    const order = db.orders.find((item) => item.id === payload.orderId);
-    if (!order) {
-      return { ok: false, message: "订单不存在" };
-    }
-    const allowed = [order.customerUsername, order.handledBy].filter(Boolean).map(normalize);
-    if (!allowed.includes(normalize(request.user.username)) && request.user.role !== "admin") {
-      return { ok: false, message: "无权查看" };
-    }
+    const access = chatAccess(db, payload.orderId, request.user);
+    if (!access.ok) return access;
     const profile = profileByUsername(db, request.user.username);
     if (profile) {
       profile.lastOnlineAt = nowIso();
+    }
+    let chatImageData = payload.imageData;
+    let chatImageUrl = payload.imageUrl;
+    if (payload.imageData && normalizeChatContentType(payload.type, payload) === "image") {
+      const uploaded = await uploadSupabaseAsset({
+        dataUrl: payload.imageData,
+        filename: payload.filename || "chat-image",
+        scope: `chat-${payload.orderId}`
+      }, request.user).catch(() => null);
+      if (uploaded?.ok) {
+        chatImageData = "";
+        chatImageUrl = uploaded.url;
+      }
     }
     const result = addChatMessage(db, payload.orderId, {
       sender: request.user.username,
       role: request.user.role,
       type: payload.type,
+      messageType: payload.messageType,
+      message_type: payload.message_type,
       text: payload.text,
-      imageData: payload.imageData
+      imageData: chatImageData,
+      imageUrl: chatImageUrl,
+      metadata: {
+        ...(payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata) ? payload.metadata : {}),
+        imageStoredExternally: Boolean(chatImageUrl && !chatImageData)
+      }
     }, request.user.username);
+    if (!result.ok) {
+      return result;
+    }
+    await persistSupabaseMessage(payload.orderId, result.message);
     await writeDb(db);
     return { ok: true, message: result.message, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "listChatMessages") {
+    const access = chatAccess(db, payload.orderId, request.user);
+    if (!access.ok) return access;
+    const profile = profileByUsername(db, request.user.username);
+    if (profile) {
+      profile.lastOnlineAt = nowIso();
+    }
+    const remoteMessages = await fetchSupabaseMessages(payload.orderId);
+    if (Array.isArray(remoteMessages)) {
+      db.orderChats[payload.orderId] = mergeChatMessages(db.orderChats[payload.orderId] || [], remoteMessages);
+    }
+    const remoteTyping = await fetchSupabasePresence(payload.orderId);
+    if (remoteTyping && typeof remoteTyping === "object") {
+      db.chatTyping[payload.orderId] = {
+        ...(db.chatTyping[payload.orderId] || {}),
+        ...remoteTyping
+      };
+    }
+    pruneChatTyping(db);
+    await writeDb(db);
+    return {
+      ok: true,
+      messages: db.orderChats[payload.orderId] || [],
+      typing: db.chatTyping[payload.orderId] || {},
+      snapshot: sanitizeSnapshot(db)
+    };
+  }
+
+  if (action === "markChatRead") {
+    const access = chatAccess(db, payload.orderId, request.user);
+    if (!access.ok) return access;
+    const now = nowIso();
+    db.orderChats[payload.orderId] = (db.orderChats[payload.orderId] || []).map((message) => {
+      if (normalize(message.sender) === normalize(request.user.username)) {
+        return message;
+      }
+      const readBy = Array.isArray(message.readBy) ? message.readBy : [];
+      if (readBy.some((item) => normalize(item) === normalize(request.user.username))) {
+        return message;
+      }
+      return {
+        ...message,
+        readBy: [...readBy, request.user.username],
+        readAt: { ...(message.readAt || {}), [request.user.username]: now }
+      };
+    });
+    const profile = profileByUsername(db, request.user.username);
+    if (profile) {
+      profile.lastOnlineAt = now;
+    }
+    await persistSupabaseMessages(payload.orderId, db.orderChats[payload.orderId] || []);
+    await writeDb(db);
+    return { ok: true, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "setChatTyping") {
+    const access = chatAccess(db, payload.orderId, request.user);
+    if (!access.ok) return access;
+    pruneChatTyping(db);
+    db.chatTyping[payload.orderId] = db.chatTyping[payload.orderId] && typeof db.chatTyping[payload.orderId] === "object"
+      ? db.chatTyping[payload.orderId]
+      : {};
+    if (payload.isTyping) {
+      db.chatTyping[payload.orderId][request.user.username] = {
+        username: request.user.username,
+        role: request.user.role,
+        isTyping: true,
+        updatedAt: nowIso()
+      };
+    } else {
+      delete db.chatTyping[payload.orderId][request.user.username];
+    }
+    const profile = profileByUsername(db, request.user.username);
+    if (profile) {
+      profile.lastOnlineAt = nowIso();
+    }
+    await persistSupabasePresence(payload.orderId, request.user, Boolean(payload.isTyping));
+    await writeDb(db);
+    return { ok: true, typing: db.chatTyping[payload.orderId] || {}, snapshot: sanitizeSnapshot(db) };
   }
 
   return { ok: false, message: "Unknown backend action." };
@@ -1833,7 +2197,7 @@ async function parseRequestBody(request) {
     let raw = "";
     request.on("data", (chunk) => {
       raw += chunk;
-      if (raw.length > 1024 * 1024 * 4) {
+      if (raw.length > 1024 * 1024 * 8) {
         reject(new Error("Request body is too large."));
         request.destroy();
       }

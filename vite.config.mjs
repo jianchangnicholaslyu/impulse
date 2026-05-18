@@ -5,10 +5,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     define: {
-      __IMPULSE_PUBLIC_ENV__: JSON.stringify({
-        NEXT_PUBLIC_TAWK_PROPERTY_ID: env.NEXT_PUBLIC_TAWK_PROPERTY_ID || "",
-        NEXT_PUBLIC_TAWK_WIDGET_ID: env.NEXT_PUBLIC_TAWK_WIDGET_ID || ""
-      })
+      __IMPULSE_PUBLIC_ENV__: JSON.stringify({})
     },
     server: {
       host: "0.0.0.0",

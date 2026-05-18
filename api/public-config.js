@@ -5,10 +5,6 @@ function sendJson(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
-function publicValue(name) {
-  return String(process.env[name] || "").trim();
-}
-
 module.exports = async function handler(request, response) {
   response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -23,8 +19,6 @@ module.exports = async function handler(request, response) {
   }
 
   sendJson(response, 200, {
-    ok: true,
-    NEXT_PUBLIC_TAWK_PROPERTY_ID: publicValue("NEXT_PUBLIC_TAWK_PROPERTY_ID"),
-    NEXT_PUBLIC_TAWK_WIDGET_ID: publicValue("NEXT_PUBLIC_TAWK_WIDGET_ID")
+    ok: true
   });
 };

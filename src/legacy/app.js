@@ -70,12 +70,12 @@
     const runtimeEnv = window.IMPULSE_PUBLIC_ENV || {};
     return { ...(buildEnv || {}), ...(runtimeEnv || {}) };
   })();
-  const TawkSupport = {
-    propertyId: String(PublicEnv.NEXT_PUBLIC_TAWK_PROPERTY_ID || "").trim(),
-    widgetId: String(PublicEnv.NEXT_PUBLIC_TAWK_WIDGET_ID || "").trim(),
+  const PlatformChat = {
     entryLabel: "Vector Support",
+    title: "Chat with your Vector",
     welcome: "Welcome to IMPULSE J. Driven by Gamers' Momentum."
   };
+  const ChatImageMaxBytes = 5 * 1024 * 1024;
   const RoleDisplayNames = {
     customer: "Gamer",
     staff: "Vector",
@@ -201,19 +201,34 @@
   const DevelopmentRecords = [
     // AI: top item = next release draft. Do not mark Uploaded or push until user explicitly says upload.
     {
-      version: "v0.20.2",
+      version: "v0.20.3",
       releasedAt: "2026-05-18",
-      nameI18n: localizedPair("Constrained Vector Chat Shell", "受限 Vector 对话外壳"),
+      nameI18n: localizedPair("Native Order Chat Foundation", "平台内订单聊天基础"),
       statusI18n: localizedPair("Local draft, not uploaded", "本地草案，未上传"),
       summaryI18n: localizedPair(
-        "Limits the order chat modal to direct Vector communication and removes non-chat actions from the chat shell.",
-        "将订单聊天弹窗限制为直接 Vector 沟通场景，并移除聊天外壳内的非聊天操作。"
+        "Replaces the third-party chat bridge with an IMPULSE J-owned order room that stores messages, protocol cards, read state, typing, and presence in platform data.",
+        "用 IMPULSE J 自主管理的订单房间替换第三方聊天桥接，消息、协议卡片、已读、输入状态和在线状态均回到平台数据中。"
       ),
       itemsI18n: [
-        localizedPair("Removed the embedded Tawk.to iframe from the order modal to avoid duplicate Help Center surfaces.", "移除订单弹窗内嵌的 Tawk.to iframe，避免重复出现 Help Center 界面。"),
-        localizedPair("The modal now opens the official Tawk.to widget directly and keeps order details in the IMPULSE J shell.", "弹窗现在直接打开 Tawk.to 官方组件，并在 IMPULSE J 外壳中保留订单上下文。"),
-        localizedPair("Removed Rush, Refund, Report, and Tip actions from the chat modal so users only see the chat entry for this workflow.", "从聊天弹窗中移除加急、退单、举报和小费操作，让该流程只显示聊天入口。"),
-        localizedPair("Adds Vector-specific tags and events for operator routing and order identification inside Tawk.to.", "为 Tawk.to 增加 Vector 专属标签和事件，便于坐席路由和订单识别。")
+        localizedPair("Added a native order chat room bound to order_id, with text, image, system message, and action-card rendering inside the existing IMPULSE J shell.", "新增绑定 order_id 的原生订单聊天房间，在现有 IMPULSE J 外壳内渲染文字、图片、系统消息和动作卡片。"),
+        localizedPair("Added backend chat access checks so only the order Gamer, assigned Vector, or Admin can read or send room messages.", "新增后端聊天访问校验，仅订单 Gamer、接单 Vector 或 Admin 可以读取或发送房间消息。"),
+        localizedPair("Prepared Supabase Realtime/Postgres message and presence schema for the next database-driven realtime migration.", "准备 Supabase Realtime/Postgres 的消息与在线状态表结构，便于下一步迁移到数据库实时订阅。")
+      ]
+    },
+    {
+      version: "v0.20.2",
+      releasedAt: "2026-05-18",
+      nameI18n: localizedPair("Vector Chat Shell Recovery", "Vector 对话外壳修正"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Restored the IMPULSE J order operation area while keeping Tawk.to scoped to the live chat kernel and Vector routing metadata.",
+        "恢复 IMPULSE J 订单操作区，同时将 Tawk.to 保持在实时聊天内核和 Vector 路由信息范围内。"
+      ),
+      itemsI18n: [
+        localizedPair("Restored Rush, Refund, Report, and Tip controls to the IMPULSE J-owned operation column instead of treating them as plugin controls.", "将加急、退单、举报和小费恢复到 IMPULSE J 自主管理的操作栏，不再把它们视为插件内部按钮。"),
+        localizedPair("Kept the official Tawk.to widget as the chat kernel and injected order, Gamer, and Vector context through attributes, tags, and events.", "继续使用 Tawk.to 官方组件作为聊天内核，并通过属性、标签和事件注入订单、Gamer 与 Vector 上下文。"),
+        localizedPair("Clarified the order chat shell so platform actions remain outside Tawk.to while the provider handles live text and image communication.", "明确订单聊天外壳边界：平台操作留在 Tawk.to 外部，服务商只处理实时文字和图片沟通。"),
+        localizedPair("Prepared Tawk.to routing tags for assigned Vector identification without replacing the IMPULSE J interface.", "准备 Tawk.to 路由标签用于识别接单 Vector，同时不替换 IMPULSE J 界面。")
       ]
     },
     {
@@ -1895,405 +1910,305 @@
     return Boolean(expires && expires <= Date.now());
   }
 
-  function tawkSafeValue(value) {
-    return String(value || "").replace(/\s+/g, " ").trim().slice(0, 240);
-  }
+  function normalizeChatContentType(value, message = {}) {
+  const raw = String(value || message.type || "").toLowerCase().replace(/-/g, "_");
+  if (raw === "image" || message.imageData || message.imageUrl) return "image";
+  if (raw === "system") return "system";
+  if (raw === "action_card") return "action_card";
+  return "text";
+}
 
-  function tawkSafePayload(payload = {}) {
-    return Object.fromEntries(Object.entries(payload)
-      .map(([key, value]) => [String(key).replace(/[^a-zA-Z0-9-]/g, "-").toLowerCase(), tawkSafeValue(value)])
-      .filter(([, value]) => Boolean(value)));
-  }
+function normalizeChatMessageType(message = {}) {
+  const raw = String(message.messageType || message.message_type || "").toLowerCase().replace(/-/g, "_");
+  if (raw === "system" || message.type === "system" || message.role === "system") return "system";
+  if (raw === "action_card" || message.type === "action_card") return "action_card";
+  return "user_message";
+}
 
-  function tawkSafeTag(value) {
-    return String(value || "")
-      .toLowerCase()
-      .replace(/[^a-z0-9-]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 48);
-  }
+function chatMessageText(message = {}) {
+  return String(message.text || message.body || message.preview || "");
+}
 
-  function orderHasAcceptedVector(order, conversationState = {}) {
-    const status = String(order?.status || "").toLowerCase();
-    const vectorName = conversationState.handledBy || order?.handledBy || order?.assignedVectorId || order?.assigned_vector_id || "";
-    return Boolean(vectorName && ["processing", "accepted", "assigned", "in_progress", "completed"].includes(status));
-  }
+function chatMessageImage(message = {}) {
+  return message.imageData || message.imageUrl || "";
+}
 
-  function orderChatContextLine(order, vectorName) {
-    const orderId = order?.id || "";
-    const itemName = localizedOrderContent(order, "productTitle", order?.productTitle || "Order");
-    return `Order: ${orderId} | Vector: ${vectorName || "Unassigned"} | Item: ${itemName}`;
-  }
+function chatIsSystem(message = {}) {
+  return normalizeChatMessageType(message) === "system" || message.role === "system" || message.sender === "SYSTEM";
+}
 
-  const ChatProvider = {
-    scriptId: "impulse-tawk-script",
-    configPromise: null,
-    scriptPromise: null,
-    publicLoadTimer: null,
-    publicRoutes: new Set(["home", "category", "products", "search", "info"]),
-    configured() {
-      return Boolean(TawkSupport.propertyId && TawkSupport.widgetId);
-    },
-    scriptUrl() {
-      if (!this.configured()) {
-        return "";
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error("Unable to read file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function orderHasAcceptedVector(order, conversationState = {}) {
+  if (!order) return false;
+  const status = String(order.status || "").toLowerCase();
+  const acceptedStatuses = new Set(["assigned", "accepted", "processing", "in_progress", "completed"]);
+  const hasVector = Boolean(order.handledBy || order.assignedVectorId || order.assigned_vector_id || conversationState.handledBy || conversationState.vectorName);
+  if (hasVector && acceptedStatuses.has(status)) return true;
+  if (hasVector && order.acceptedAt) return true;
+  return hasVector && Array.isArray(conversationState.messages) && conversationState.messages.some((message) => normalize(message.sender || message.role) === normalize(order.handledBy || conversationState.handledBy));
+}
+
+function orderChatContextLine(order, vectorName) {
+  const orderId = order?.id || order?.orderNumber || "order";
+  const vector = vectorName || order?.handledBy || order?.assignedVectorName || order?.assigned_vector_id || "Vector";
+  const service = order?.item || order?.title || order?.name || "Order service";
+  return `Order: ${orderId} | Vector: ${vector} | Item: ${service}`;
+}
+
+const PlatformChatRuntime = {
+  timers: new Map(),
+  typingByOrder: new Map(),
+  typingTimers: new Map(),
+  updateTyping(orderId, typing = {}) {
+    this.typingByOrder.set(orderId, typing && typeof typing === "object" ? typing : {});
+  },
+  typing(orderId) {
+    const typing = this.typingByOrder.get(orderId) || {};
+    const now = Date.now();
+    return Object.values(typing).filter((entry) => {
+      if (!entry || !entry.isTyping) return false;
+      if (normalize(entry.username) === normalize(State.currentUser?.username)) return false;
+      const updatedAt = Date.parse(entry.updatedAt || "");
+      return Number.isFinite(updatedAt) && now - updatedAt < 7000;
+    });
+  },
+  async refresh(orderId, render) {
+    if (!State.currentUser || !orderId) return;
+    try {
+      const result = await Backend.listChatMessages(orderId);
+      if (result?.ok) {
+        this.updateTyping(orderId, result.typing || {});
+        render?.();
       }
-      return `https://embed.tawk.to/${encodeURIComponent(TawkSupport.propertyId)}/${encodeURIComponent(TawkSupport.widgetId)}`;
-    },
-    chatUrl() {
-      if (!this.configured()) {
-        return "";
-      }
-      return `https://tawk.to/chat/${encodeURIComponent(TawkSupport.propertyId)}/${encodeURIComponent(TawkSupport.widgetId)}`;
-    },
-    metadata(context = {}) {
-      const order = context.order || {};
-      const currentUser = State.currentUser || {};
-      const email = userEmail(currentUser);
-      const visitorName = context.visitorName || context.username || currentUser.username || "Guest";
-      return {
-        name: visitorName,
-        email,
-        role: context.role || currentUser.role || "visitor",
-        orderId: order.id || "",
-        orderStatus: order.status || "",
-        item: localizedOrderContent(order, "productTitle", order.productTitle || ""),
-        vector: context.staffUsername || order.handledBy || "",
-        orderContext: context.orderContext || "",
-        brand: BrandName
-      };
-    },
-    loadRuntimeConfig() {
-      if (this.configured()) {
-        return Promise.resolve(true);
-      }
-      if (this.configPromise) {
-        return this.configPromise;
-      }
-      this.configPromise = fetch("/api/public-config", {
-        headers: { Accept: "application/json" }
-      })
-        .then((response) => (response.ok ? response.json() : {}))
-        .then((config) => {
-          TawkSupport.propertyId = String(config.NEXT_PUBLIC_TAWK_PROPERTY_ID || TawkSupport.propertyId || "").trim();
-          TawkSupport.widgetId = String(config.NEXT_PUBLIC_TAWK_WIDGET_ID || TawkSupport.widgetId || "").trim();
-          return this.configured();
-        })
-        .catch(() => false);
-      return this.configPromise;
-    },
-    prime(context = {}) {
-      if (!this.configured()) {
-        return;
-      }
-      window.Tawk_API = window.Tawk_API || {};
-      window.Tawk_LoadStart = window.Tawk_LoadStart || new Date();
-      const meta = this.metadata(context);
-      if (meta.name) {
-        window.Tawk_API.visitor = {
-          ...(window.Tawk_API.visitor || {}),
-          name: meta.name,
-          email: meta.email || undefined
-        };
-      }
-    },
-    load(context = {}) {
-      if (!this.configured()) {
-        return this.loadRuntimeConfig().then((ready) => (ready ? this.load(context) : false));
-      }
-      this.prime(context);
-      if (this.scriptPromise) {
-        return this.scriptPromise.then((loaded) => {
-          this.setMetadata(context);
-          return loaded;
-        });
-      }
-      const existing = document.getElementById(this.scriptId);
-      if (existing) {
-        this.scriptPromise = Promise.resolve(true);
-        return this.scriptPromise;
-      }
-      this.scriptPromise = new Promise((resolve) => {
-        const previousOnLoad = window.Tawk_API?.onLoad;
-        window.Tawk_API = window.Tawk_API || {};
-        window.Tawk_API.onLoad = () => {
-          if (typeof previousOnLoad === "function") {
-            previousOnLoad();
-          }
-          this.setMetadata(context);
-          resolve(true);
-        };
-        const script = h("script", {
-          id: this.scriptId,
-          src: this.scriptUrl(),
-          async: true,
-          charset: "UTF-8",
-          crossorigin: "*"
-        });
-        script.addEventListener("load", () => {
-          window.setTimeout(() => {
-            this.setMetadata(context);
-            resolve(true);
-          }, 250);
-        }, { once: true });
-        script.addEventListener("error", () => resolve(false), { once: true });
-        document.head.appendChild(script);
-      });
-      return this.scriptPromise;
-    },
-    setMetadata(context = {}) {
-      if (!this.configured()) {
-        return;
-      }
-      const api = window.Tawk_API;
-      if (!api || typeof api.setAttributes !== "function") {
-        return;
-      }
-      const meta = this.metadata(context);
-      const identity = Object.fromEntries(Object.entries({
-        name: meta.name,
-        email: meta.email
-      }).map(([key, value]) => [key, tawkSafeValue(value)]).filter(([, value]) => Boolean(value)));
-      const attributes = Object.fromEntries(Object.entries({
-        "visitor-name": meta.name,
-        "visitor-email": meta.email,
-        role: meta.role,
-        "order-id": meta.orderId,
-        "order-status": meta.orderStatus,
-        item: meta.item,
-        vector: meta.vector,
-        "order-context": meta.orderContext,
-        platform: meta.brand
-      }).map(([key, value]) => [key, tawkSafeValue(value)]).filter(([, value]) => Boolean(value)));
-      try {
-        if (Object.keys(identity).length) {
-          api.setAttributes(identity, () => {});
-        }
-        api.setAttributes(attributes, () => {});
-      } catch (error) {
-        console.warn("Tawk.to metadata sync failed", error);
-      }
-    },
-    addEvent(eventName, metadata = {}) {
-      const api = window.Tawk_API;
-      if (!api || typeof api.addEvent !== "function") {
-        return;
-      }
-      try {
-        api.addEvent(String(eventName || "order-chat-opened").replace(/[^a-zA-Z0-9-]/g, "-"), tawkSafePayload(metadata), () => {});
-      } catch (error) {
-        console.warn("Tawk.to event sync failed", error);
-      }
-    },
-    addTags(tags = []) {
-      const api = window.Tawk_API;
-      if (!api || typeof api.addTags !== "function") {
-        return;
-      }
-      const safeTags = [...new Set(tags.map(tawkSafeTag).filter(Boolean))].slice(0, 10);
-      if (!safeTags.length) {
-        return;
-      }
-      try {
-        api.addTags(safeTags, () => {});
-      } catch (error) {
-        console.warn("Tawk.to tag sync failed", error);
-      }
-    },
-    maximize() {
-      try {
-        window.Tawk_API?.showWidget?.();
-        window.Tawk_API?.maximize?.();
-      } catch (error) {
-        console.warn("Tawk.to maximize failed", error);
-      }
-    },
-    minimize() {
-      try {
-        window.Tawk_API?.minimize?.();
-      } catch (error) {
-        console.warn("Tawk.to minimize failed", error);
-      }
-    },
-    hideWidget() {
-      try {
-        window.Tawk_API?.hideWidget?.();
-      } catch (error) {
-        console.warn("Tawk.to widget hide failed", error);
-      }
-    },
-    showWidget() {
-      try {
-        window.Tawk_API?.showWidget?.();
-      } catch (error) {
-        console.warn("Tawk.to widget show failed", error);
-      }
-    },
-    openOrderConversation(context = {}) {
-      return this.load(context).then((loaded) => {
-        if (!loaded) {
-          return false;
-        }
-        this.showWidget();
-        this.setMetadata(context);
-        this.addTags([
-          "impulse-order-chat",
-          context.order?.id ? `order-${context.order.id}` : "",
-          context.staffUsername ? `vector-${context.staffUsername}` : "",
-          context.order?.status ? `status-${context.order.status}` : ""
-        ]);
-        this.addEvent("order-chat-opened", {
-          "order-id": context.order?.id || "",
-          "order-status": context.order?.status || "",
-          vector: context.staffUsername || "",
-          item: localizedOrderContent(context.order || {}, "productTitle", context.order?.productTitle || ""),
-          context: context.orderContext || ""
-        });
-        [80, 300, 900].forEach((delay) => window.setTimeout(() => this.maximize(), delay));
-        return true;
-      });
-    },
-    closeOrderConversation() {
-      this.minimize();
-      window.setTimeout(() => this.hideWidget(), 120);
-    },
-    updatePublicWidget() {
-      if (this.publicLoadTimer) {
-        window.clearTimeout(this.publicLoadTimer);
-        this.publicLoadTimer = null;
-      }
-      const routeName = State.route?.name || "home";
-      const shouldLoad = State.mode !== "admin" && this.publicRoutes.has(routeName);
-      if (!shouldLoad) {
-        this.hideWidget();
-        return;
-      }
-      this.publicLoadTimer = window.setTimeout(() => {
-        this.load({
-          role: State.currentUser?.role || "visitor",
-          username: State.currentUser?.username || "Guest"
-        }).then((loaded) => {
-          if (loaded) {
-            this.showWidget();
-          }
-        });
-      }, 1200);
+    } catch {
+      // Local state remains available if the backend is temporarily unreachable.
     }
-  };
-
-  function useOrderChatWidget(order, context = {}) {
-    const conversationState = context.conversationState || Data.orderConversationState(order);
-    const vectorName = context.staffUsername || conversationState.handledBy || order?.handledBy || "";
-    const currentUser = State.currentUser || {};
-    const roleName = currentUser.role === "staff" ? "Vector" : currentUser.role === "admin" ? "Admin" : "Gamer";
-    const visitorName = `${roleName} ${currentUser.username || context.username || "Guest"}`.trim();
-    const enabled = orderHasAcceptedVector(order, { ...conversationState, handledBy: vectorName });
-    const orderContext = orderChatContextLine(order, vectorName);
-    const widgetContext = {
-      ...context,
-      order,
-      conversationState,
-      staffUsername: vectorName,
-      role: currentUser.role || context.role || "customer",
-      username: currentUser.username || context.username || "",
-      visitorName,
-      orderContext
-    };
-    return {
-      enabled,
-      readOnly: order?.status === "completed",
-      vectorName,
-      orderContext,
-      context: widgetContext,
-      open() {
-        if (!enabled) {
-          return Promise.resolve(false);
-        }
-        return ChatProvider.openOrderConversation(widgetContext);
-      },
-      close() {
-        ChatProvider.closeOrderConversation();
-      }
-    };
-  }
-
-  function EmbeddedSupportChat(context = {}, chatWidget = useOrderChatWidget(context.order, context)) {
-    if (!chatWidget.enabled) {
-      return h("div", { className: "embedded-support-chat unavailable waiting" },
-        icon("fa-regular fa-comments"),
-        h("strong", { className: "notranslate", translate: "no", text: "Chat will be available once a Vector accepts your order." }),
-        h("p", { className: "notranslate", translate: "no", text: chatWidget.orderContext || TawkSupport.welcome })
-      );
+  },
+  start(orderId, render) {
+    this.stop(orderId, { silent: true });
+    this.refresh(orderId, render);
+    const timer = window.setInterval(() => this.refresh(orderId, render), 3500);
+    this.timers.set(orderId, timer);
+  },
+  stop(orderId, options = {}) {
+    const timer = this.timers.get(orderId);
+    if (timer) window.clearInterval(timer);
+    this.timers.delete(orderId);
+    const typingTimer = this.typingTimers.get(orderId);
+    if (typingTimer) window.clearTimeout(typingTimer);
+    this.typingTimers.delete(orderId);
+    this.typingByOrder.delete(orderId);
+    if (!options.silent && State.currentUser && orderId) {
+      Backend.setChatTyping(orderId, false).catch(() => {});
     }
+  },
+  pulseTyping(orderId) {
+    if (!State.currentUser || !orderId) return;
+    Backend.setChatTyping(orderId, true).catch(() => {});
+    const oldTimer = this.typingTimers.get(orderId);
+    if (oldTimer) window.clearTimeout(oldTimer);
+    const timer = window.setTimeout(() => Backend.setChatTyping(orderId, false).catch(() => {}), 1600);
+    this.typingTimers.set(orderId, timer);
+  }
+};
 
-    const chatNode = h("div", { className: "embedded-support-chat direct loading" },
-      h("span", { className: "loading-dot" }),
-      h("strong", { className: "notranslate", translate: "no", text: "Connecting to your Vector..." }),
-      h("p", { className: "notranslate", translate: "no", text: chatWidget.orderContext || TawkSupport.welcome })
+function OrderChatPanel(context = {}) {
+  const order = context.order;
+  const conversationState = context.conversationState || Data.orderConversationState(order);
+  const vectorName = context.vectorName || conversationState.handledBy || order?.handledBy || order?.assignedVectorName || order?.assigned_vector_id;
+  const enabled = orderHasAcceptedVector(order, { ...conversationState, vectorName });
+  const contextLine = orderChatContextLine(order, vectorName);
+
+  if (!enabled) {
+    return h("div", { className: "order-chat-room disabled" },
+      h("i", { className: "fa-regular fa-comments" }),
+      h("strong", {}, "Chat will be available once a Vector accepts your order."),
+      h("p", { className: "notranslate", translate: "no" }, contextLine)
     );
-
-    const renderUnavailable = () => {
-      chatNode.className = "embedded-support-chat direct unavailable";
-      clear(chatNode);
-      append(chatNode, [
-        icon("fa-regular fa-comments"),
-        h("strong", { className: "notranslate", translate: "no", text: "Chat is currently unavailable." }),
-        h("p", { className: "notranslate", translate: "no", text: TawkSupport.welcome })
-      ]);
-    };
-
-    const renderChat = () => {
-      chatNode.className = "embedded-support-chat direct";
-      clear(chatNode);
-      const startButton = h("button", {
-        className: "button button-primary embedded-support-start",
-        type: "button",
-        onClick: () => {
-          startButton.classList.add("is-interaction-loading");
-          chatWidget.open().then((loaded) => {
-            startButton.classList.remove("is-interaction-loading");
-            if (!loaded) {
-              renderUnavailable();
-            }
-          });
-        }
-      }, icon("fa-regular fa-image"), h("span", { className: "notranslate", translate: "no", text: "Start Order Chat" }));
-      append(chatNode, [
-        h("div", { className: "embedded-support-head" },
-          h("div", {},
-            h("strong", { className: "notranslate", translate: "no", text: `Vector ${chatWidget.vectorName || ""}`.trim() || "Vector Chat" }),
-            h("span", { className: "notranslate", translate: "no", text: chatWidget.orderContext })
-          ),
-          startButton,
-          h("span", { className: "embedded-support-provider notranslate", translate: "no", text: "Tawk.to" })
-        ),
-        h("div", { className: "embedded-support-direct-body" },
-          icon("fa-regular fa-comments"),
-          h("strong", { className: "notranslate", translate: "no", text: "The order chat is opening in the Tawk.to panel." }),
-          h("p", { className: "notranslate", translate: "no", text: "Only real-time chat and image upload belong in this workflow. Order actions stay outside this chat window." }),
-          h("p", { className: "notranslate", translate: "no", text: "If the chat panel is not visible, press Start Order Chat again." })
-        )
-      ]);
-    };
-
-    window.setTimeout(() => {
-      ChatProvider.loadRuntimeConfig().then((ready) => {
-        if (!ready) {
-          renderUnavailable();
-          return false;
-        }
-        renderChat();
-        return chatWidget.open();
-      }).then((loaded) => {
-        if (loaded) {
-          ChatProvider.setMetadata(chatWidget.context);
-        }
-      });
-    }, 0);
-    return chatNode;
   }
 
-  function mailboxHasClaim(message) {
+  let imageState = { data: "", name: "" };
+  let sending = false;
+  const thread = h("div", { className: "chat-thread", role: "log", "aria-live": "polite" });
+  const typingRow = h("div", { className: "chat-typing", "aria-live": "polite" });
+  const textarea = h("textarea", {
+    rows: "2",
+    placeholder: localizeStaticPhrase("Type your message..."),
+    onInput: () => PlatformChatRuntime.pulseTyping(order.id),
+    onKeydown: (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        sendMessage();
+      }
+    }
+  });
+  const imageInput = h("input", {
+    type: "file",
+    accept: "image/*",
+    className: "visually-hidden",
+    onChange: async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      if (file.size > ChatImageMaxBytes) {
+        alert(localizeStaticPhrase("Image must be 5MB or smaller."));
+        event.target.value = "";
+        return;
+      }
+      try {
+        imageState = { data: await readFileAsDataUrl(file), name: file.name || "image" };
+        renderAttachmentPreview();
+      } catch {
+        alert(localizeStaticPhrase("Image upload failed."));
+      }
+    }
+  });
+  const attachmentPreview = h("div", { className: "chat-attachment-preview" });
+  const sendButton = h("button", { className: "primary-btn", type: "button", onClick: () => sendMessage() },
+    h("i", { className: "fa-solid fa-paper-plane" }),
+    h("span", {}, localizeStaticPhrase("Send"))
+  );
+
+  function renderAttachmentPreview() {
+    attachmentPreview.innerHTML = "";
+    attachmentPreview.classList.toggle("visible", Boolean(imageState.data));
+    if (!imageState.data) return;
+    attachmentPreview.append(
+      h("img", { src: imageState.data, alt: "" }),
+      h("span", {}, imageState.name),
+      h("button", {
+        type: "button",
+        className: "ghost-btn icon-only",
+        title: localizeStaticPhrase("Remove image"),
+        onClick: () => {
+          imageState = { data: "", name: "" };
+          imageInput.value = "";
+          renderAttachmentPreview();
+        }
+      }, h("i", { className: "fa-solid fa-xmark" }))
+    );
+  }
+
+  function renderMessages() {
+    const messages = Data.chatMessages(order.id).slice().sort((a, b) => Date.parse(a.createdAt || "") - Date.parse(b.createdAt || ""));
+    thread.innerHTML = "";
+    if (!messages.length) {
+      thread.append(h("div", { className: "chat-empty-state" },
+        h("i", { className: "fa-regular fa-comments" }),
+        h("strong", {}, "Start Order Chat"),
+        h("span", { className: "notranslate", translate: "no" }, contextLine)
+      ));
+    } else {
+      messages.forEach((message) => {
+        const own = normalize(message.sender) === normalize(State.currentUser?.username);
+        const messageType = normalizeChatMessageType(message);
+        const contentType = normalizeChatContentType(message.type, message);
+        const image = chatMessageImage(message);
+        const text = chatMessageText(message);
+        const bubble = h("article", {
+          className: `chat-message ${own ? "own" : ""} ${messageType === "system" ? "system" : ""} ${messageType === "action_card" ? "action-card" : ""}`.trim()
+        },
+          h("div", { className: "chat-message-meta" },
+            h("span", {}, chatIsSystem(message) ? "IMPULSE J System" : (message.sender || (own ? State.currentUser?.username : vectorName) || "User")),
+            h("time", {}, formatDateTime(message.createdAt)),
+            own && messageType === "user_message" ? h("span", { className: "chat-read-state" }, message.readAt ? localizeStaticPhrase("Read") : localizeStaticPhrase("Sent")) : null
+          ),
+          text ? h("div", { className: "chat-message-body" }, text) : null,
+          image ? h("img", { className: "chat-image", src: image, alt: text || "chat image" }) : null,
+          messageType === "action_card" && message.metadata?.actionLabel ? h("button", { className: "secondary-btn compact", type: "button" }, message.metadata.actionLabel) : null,
+          contentType === "image" && !image && text ? null : null
+        );
+        thread.append(bubble);
+      });
+    }
+    const typing = PlatformChatRuntime.typing(order.id);
+    typingRow.textContent = typing.length ? `${typing.map((entry) => entry.username || "Vector").join(", ")} is typing...` : "";
+    window.requestAnimationFrame(() => {
+      thread.scrollTop = thread.scrollHeight;
+    });
+  }
+
+  async function sendMessage() {
+    const text = textarea.value.trim();
+    if (sending || (!text && !imageState.data)) return;
+    sending = true;
+    sendButton.disabled = true;
+    const payload = {
+      type: imageState.data ? "image" : "text",
+      messageType: "user_message",
+      message_type: "user_message",
+      text,
+      imageData: imageState.data,
+      metadata: { orderContext: contextLine }
+    };
+    try {
+      const result = await Backend.addChatMessage(order.id, payload);
+      if (!result?.ok && Backend.online) {
+        alert(result?.message || localizeStaticPhrase("Message failed."));
+        return;
+      }
+      if (!result?.ok) {
+        Data.addChatMessage(order.id, payload);
+      }
+      textarea.value = "";
+      imageState = { data: "", name: "" };
+      imageInput.value = "";
+      renderAttachmentPreview();
+      await Backend.markChatRead(order.id).catch(() => {});
+      Data.markChatRead(order.id);
+      renderMessages();
+      App.updateHeader?.();
+    } finally {
+      sending = false;
+      sendButton.disabled = false;
+    }
+  }
+
+  const room = h("div", { className: "order-chat-room" },
+    h("div", { className: "order-chat-head" },
+      h("div", {},
+        h("strong", {}, vectorName ? `Vector ${vectorName}` : "Start Order Chat"),
+        h("span", { className: "notranslate", translate: "no" }, contextLine)
+      ),
+      h("span", { className: "order-chat-badge notranslate", translate: "no" }, "Supabase Realtime")
+    ),
+    thread,
+    typingRow,
+    h("div", { className: "chat-compose" },
+      h("button", {
+        type: "button",
+        className: "ghost-btn icon-only",
+        title: localizeStaticPhrase("Upload image"),
+        onClick: () => imageInput.click()
+      }, h("i", { className: "fa-regular fa-image" })),
+      textarea,
+      sendButton,
+      imageInput,
+      attachmentPreview
+    )
+  );
+
+  window.setTimeout(async () => {
+    renderMessages();
+    await Backend.listChatMessages(order.id).catch(() => null);
+    await Backend.markChatRead(order.id).catch(() => null);
+    Data.markChatRead(order.id);
+    PlatformChatRuntime.start(order.id, renderMessages);
+    renderMessages();
+    App.updateHeader?.();
+  }, 0);
+
+  return room;
+}
+
+function mailboxHasClaim(message) {
     return message?.claim?.type === "recharge" && Number(message.claim.amountPoints || 0) > 0;
   }
 
@@ -2315,7 +2230,7 @@
     const sender = message.sender || "SYSTEM";
     const content = message.text
       ? message.text
-      : message.imageData
+      : (message.imageData || message.imageUrl)
         ? "[Image attachment]"
         : "[No text content]";
     return [
@@ -2333,7 +2248,7 @@
     if (!participants.length) {
       return [];
     }
-    if (message.sender === "SYSTEM" || message.role === "system" || message.type === "system") {
+    if (message.sender === "SYSTEM" || message.role === "system" || message.type === "system" || normalizeChatMessageType(message) === "system") {
       return participants;
     }
     const senderKey = normalize(message.sender);
@@ -2654,6 +2569,15 @@
     },
     async addChatMessage(orderId, message) {
       return this.applyMutationResult(await this.request("addChatMessage", { orderId, ...message }));
+    },
+    async listChatMessages(orderId) {
+      return this.applyMutationResult(await this.request("listChatMessages", { orderId }));
+    },
+    async markChatRead(orderId) {
+      return this.applyMutationResult(await this.request("markChatRead", { orderId }));
+    },
+    async setChatTyping(orderId, isTyping) {
+      return this.applyMutationResult(await this.request("setChatTyping", { orderId, isTyping }));
     },
     async uploadAsset(payload) {
       return this.request("uploadAsset", payload);
@@ -3311,10 +3235,11 @@
     },
     addChatMailboxNotifications(order, message) {
       chatMailboxRecipients(order, message).forEach((username) => {
+        const systemLike = message.sender === "SYSTEM" || message.type === "system" || normalizeChatMessageType(message) === "system";
         this.addMailboxMessage(username, {
           category: "chat",
-          subject: message.sender === "SYSTEM" || message.type === "system" ? "订单聊天更新" : "新聊天消息",
-          preview: message.text || (message.imageData ? "[Image attachment]" : "订单聊天更新"),
+          subject: systemLike ? "订单聊天更新" : "新聊天消息",
+          preview: message.text || ((message.imageData || message.imageUrl) ? "[Image attachment]" : "订单聊天更新"),
           body: chatMailboxBody(order, message),
           sender: message.sender || "SYSTEM",
           source: "chat",
@@ -3354,18 +3279,29 @@
       this.touchCurrentUser();
       const chats = this.chats();
       const sender = message.sender || (State.currentUser ? State.currentUser.username : "SYSTEM");
+      const contentType = normalizeChatContentType(message.type, message);
+      const messageType = normalizeChatMessageType(message);
+      const createdAt = message.createdAt || new Date().toISOString();
       const entry = {
         id: createId("msg"),
         orderId,
         sender,
         role: State.currentUser ? State.currentUser.role : "system",
-        type: "text",
         text: "",
         imageData: "",
+        imageUrl: "",
+        metadata: {},
         readBy: sender === "SYSTEM" ? ["SYSTEM"] : [sender],
-        readAt: sender === "SYSTEM" ? { SYSTEM: new Date().toISOString() } : { [sender]: new Date().toISOString() },
-        createdAt: new Date().toISOString(),
-        ...message
+        readAt: sender === "SYSTEM" ? { SYSTEM: createdAt } : { [sender]: createdAt },
+        createdAt,
+        ...message,
+        type: contentType,
+        messageType,
+        message_type: messageType,
+        text: String(message.text || "").slice(0, 5000),
+        imageData: message.imageData || "",
+        imageUrl: message.imageUrl || "",
+        metadata: message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? message.metadata : {}
       };
       chats[orderId] = [...(chats[orderId] || []), entry];
       this.saveChats(chats);
@@ -3379,7 +3315,7 @@
       const chats = this.chats();
       const now = new Date().toISOString();
       chats[orderId] = (chats[orderId] || []).map((message) => {
-        if (message.type === "system" || normalize(message.sender) === normalize(username)) {
+        if (normalize(message.sender) === normalize(username)) {
           return message;
         }
         const readBy = Array.isArray(message.readBy) ? message.readBy : [];
@@ -3399,7 +3335,7 @@
         return 0;
       }
       return this.chatMessages(orderId).filter((message) => {
-        if (message.type === "system" || normalize(message.sender) === normalize(username)) {
+        if (normalizeChatMessageType(message) === "system" || normalize(message.sender) === normalize(username)) {
           return false;
         }
         const readBy = Array.isArray(message.readBy) ? message.readBy : [];
@@ -3445,7 +3381,7 @@
         .sort((a, b) => (timestampMs(a.createdAt) || 0) - (timestampMs(b.createdAt) || 0));
       const participantMessages = messages.filter((message) => {
         const sender = normalize(message.sender);
-        return message.type !== "system" && message.role !== "system" && sender && sender !== "system";
+        return normalizeChatMessageType(message) !== "system" && message.role !== "system" && sender && sender !== "system";
       });
       const customerKey = normalize(order.customerUsername);
       const nonCustomerMessages = participantMessages.filter((message) => normalize(message.sender) !== customerKey);
@@ -5717,7 +5653,7 @@
           className: `button button-small ${contactLocked ? "button-disabled" : "button-ghost"}`,
           type: "button",
           dataset: { action: "open-order-chat", orderId: rowOrder.id }
-        }, icon("fa-regular fa-comments"), h("span", { className: "notranslate", translate: "no", text: TawkSupport.entryLabel }), unreadCount ? h("span", { className: "unread-badge", text: unreadCount }) : null));
+        }, icon("fa-regular fa-comments"), h("span", { className: "notranslate", translate: "no", text: PlatformChat.entryLabel }), unreadCount ? h("span", { className: "unread-badge", text: unreadCount }) : null));
       }
       if (canManage && rowOrder.status === "pending") {
         actions.push(h("button", { className: "button button-success button-small", type: "button", dataset: { action: "order-status", orderId: rowOrder.id, status: "processing" } }, "接单"));
@@ -5763,6 +5699,7 @@
 
   function OrderChatShell({
     order,
+    tools,
     customerProfile,
     staffProfile,
     participantCard,
@@ -5771,6 +5708,7 @@
     handledBy,
     role
   }) {
+    const actionTools = Array.isArray(tools) ? tools : [];
     const orderItem = localizedOrderContent(order, "productTitle", order.productTitle || "Order");
     const orderGame = localizedOrderContent(order, "gameTitle", order.gameTitle || "");
     const unread = Data.unreadChatCount(order.id, currentUsername);
@@ -5782,7 +5720,6 @@
       staffUsername: handledBy,
       conversationState
     };
-    const chatWidget = useOrderChatWidget(order, supportContext);
     const infoRow = (label, value, valueNode = null) => h("div", { className: "chat-info-row" },
       h("span", { text: label }),
       valueNode || h("strong", { text: value })
@@ -5792,18 +5729,22 @@
       h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
       h("div", { className: "chat-titlebar" },
         h("div", {},
-          h("p", { className: "release-badge notranslate", translate: "no" }, icon("fa-regular fa-comments"), TawkSupport.entryLabel),
-          h("h2", { className: "notranslate", translate: "no", text: "Chat with your Vector" }),
-          h("p", { className: "chat-brand-copy notranslate", translate: "no", text: TawkSupport.welcome })
+          h("p", { className: "release-badge notranslate", translate: "no" }, icon("fa-regular fa-comments"), PlatformChat.entryLabel),
+          h("h2", { className: "notranslate", translate: "no", text: PlatformChat.title }),
+          h("p", { className: "chat-brand-copy notranslate", translate: "no", text: PlatformChat.welcome })
         ),
         h("div", { className: "chat-unread-card" },
           h("strong", { text: unread }),
           h("span", { text: contentLanguage() === "zh-CN" ? "未读" : "Unread" })
         )
       ),
-      h("div", { className: "chat-shell chat-shell-direct" },
+      h("div", { className: "chat-shell" },
+        h("aside", { className: "chat-sidebar" },
+          h("h3", { text: contentLanguage() === "zh-CN" ? "操作" : "Actions" }),
+          actionTools.length ? actionTools : h("p", { text: contentLanguage() === "zh-CN" ? "暂无可用操作。" : "No available actions." })
+        ),
         h("section", { className: "chat-panel" },
-          EmbeddedSupportChat(supportContext, chatWidget)
+          OrderChatPanel(supportContext)
         ),
         h("aside", { className: "chat-context" },
           h("section", { className: "chat-context-card" },
@@ -5826,7 +5767,7 @@
           ),
           h("section", { className: "chat-context-card compact" },
             h("strong", { className: "notranslate", translate: "no", text: `${BrandName} / Vector` }),
-            h("p", { className: "notranslate", translate: "no", text: "Order actions stay inside IMPULSE J. Tawk.to only handles real-time text communication." })
+            h("p", { className: "notranslate", translate: "no", text: "Messages, images, protocol cards, and order actions stay inside IMPULSE J." })
           )
         )
       )
@@ -7327,7 +7268,7 @@
         handledBy,
         role: State.currentUser?.role || "customer"
       }), {
-        onClose: () => ChatProvider.closeOrderConversation()
+        onClose: () => PlatformChatRuntime.stop(order.id)
       });
     },
     openRushForm(orderId) {
@@ -8828,7 +8769,6 @@
       Translation.localizeStaticUi(document.body);
       Translation.refresh();
       UI.hideMenu();
-      ChatProvider.updatePublicWidget();
     }
   };
 
