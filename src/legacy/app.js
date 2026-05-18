@@ -190,6 +190,21 @@
   const DevelopmentRecords = [
     // AI: top item = next release draft. Do not mark Uploaded or push until user explicitly says upload.
     {
+      version: "v0.19.1",
+      releasedAt: "2026-05-18",
+      nameI18n: localizedPair("Order Chat Recovery Hotfix", "订单聊天恢复热补丁"),
+      statusI18n: localizedPair("Local draft, not uploaded", "本地草案，未上传"),
+      summaryI18n: localizedPair(
+        "Repairs stale Gamer order cards when chat or in-app mail proves a Vector has already accepted or completed the order.",
+        "当聊天记录或站内邮件已经证明 Vector 接单或结单时，自动修复 Gamer 端过期的订单卡片状态。"
+      ),
+      itemsI18n: [
+        localizedPair("Added a conversation-state recovery layer that infers the assigned Vector from chat messages and chat mailbox notices.", "新增会话状态恢复层，可从聊天消息和聊天类站内邮件反推出接单 Vector。"),
+        localizedPair("Unlocked order chat entry points when reliable conversation evidence exists, even if a local order snapshot is still pending.", "在存在可靠会话证据时解锁订单聊天入口，即使本地订单快照仍停留在待接单。"),
+        localizedPair("Updated order-row rendering to display recovered accepted or completed state instead of stale pending copy.", "更新订单行显示逻辑，优先展示恢复后的接单或结单状态，避免继续显示过期的待接单文案。")
+      ]
+    },
+    {
       version: "v0.19.0",
       releasedAt: "2026-05-17",
       nameI18n: localizedPair("Account Role and Mailbox", "账户角色与邮件中心"),
@@ -2918,6 +2933,103 @@
         return !readBy.some((item) => normalize(item) === normalize(username));
       }).length;
     },
+    orderConversationState(order) {
+      if (!order || order.type !== "order") {
+        return { available: false, order: order || null, handledBy: "", status: order?.status || "", acceptedAt: "", hasConversation: false };
+      }
+
+      const currentUsername = State.currentUser?.username || "";
+      const messages = this.chatMessages(order.id)
+        .filter((message) => message && typeof message === "object" && !Array.isArray(message))
+        .slice()
+        .sort((a, b) => (timestampMs(a.createdAt) || 0) - (timestampMs(b.createdAt) || 0));
+      const participantMessages = messages.filter((message) => {
+        const sender = normalize(message.sender);
+        return message.type !== "system" && message.role !== "system" && sender && sender !== "system";
+      });
+      const customerKey = normalize(order.customerUsername);
+      const nonCustomerMessages = participantMessages.filter((message) => normalize(message.sender) !== customerKey);
+      const staffMessage = nonCustomerMessages.find((message) => {
+        const profile = this.profileByUsername(message.sender);
+        return profile?.role === "staff";
+      }) || nonCustomerMessages[0];
+      const acceptedSystemMessage = messages.find((message) => /accepted|接单|已接单/i.test(`${message.text || ""} ${message.body || ""} ${message.preview || ""}`));
+      const relatedMailboxMessages = currentUsername
+        ? this.mailbox(currentUsername).filter((message) => message.orderId === order.id)
+        : [];
+      const chatMailboxMessages = relatedMailboxMessages.filter((message) => message.source === "chat" || mailboxCategory(message.category).id === "chat");
+      const mailboxStaffMessage = chatMailboxMessages.find((message) => {
+        const sender = normalize(message.sender);
+        return sender && sender !== "system" && sender !== customerKey && sender !== normalize("IMPULSE J System");
+      });
+      const completionEvidence = Boolean(
+        order.completedAt ||
+        order.settledAt ||
+        messages.some((message) => /completed|结单|完成/i.test(`${message.text || ""} ${message.body || ""} ${message.preview || ""}`)) ||
+        relatedMailboxMessages.some((message) => /completed|结单|完成/i.test(`${message.subject || ""} ${message.body || ""} ${message.preview || ""}`))
+      );
+      const mailboxEvidence = chatMailboxMessages.length > 0;
+      const handledBy = order.handledBy || staffMessage?.sender || mailboxStaffMessage?.sender || "";
+      const acceptedAt = order.acceptedAt || staffMessage?.createdAt || acceptedSystemMessage?.createdAt || mailboxStaffMessage?.createdAt || "";
+      const hasConversation = Boolean(handledBy || nonCustomerMessages.length || mailboxEvidence);
+      const recoveredStatus = completionEvidence
+        ? "completed"
+        : order.status === "pending" && hasConversation
+          ? "processing"
+          : order.status;
+      const recoveredOrder = {
+        ...order,
+        handledBy,
+        acceptedAt,
+        status: recoveredStatus
+      };
+
+      return {
+        available: Boolean(handledBy || nonCustomerMessages.length || mailboxEvidence),
+        order: recoveredOrder,
+        handledBy,
+        status: recoveredStatus,
+        acceptedAt,
+        hasConversation,
+        messages,
+        mailboxEvidence
+      };
+    },
+    repairOrderConversationState(orderId) {
+      const order = typeof orderId === "string" ? this.orderById(orderId) : orderId;
+      const state = this.orderConversationState(order);
+      if (!order || !state.available) {
+        return { order: order || null, state, changed: false };
+      }
+
+      const patch = {};
+      if (!order.handledBy && state.handledBy) {
+        patch.handledBy = state.handledBy;
+      }
+      if (!order.acceptedAt && state.acceptedAt) {
+        patch.acceptedAt = state.acceptedAt;
+      }
+      if (order.status === "pending" && state.hasConversation) {
+        patch.status = state.status || "processing";
+      }
+
+      if (!Object.keys(patch).length) {
+        return { order: state.order, state, changed: false };
+      }
+
+      const now = new Date().toISOString();
+      const nextOrder = this.patchOrder(order.id, (current) => ({
+        ...current,
+        ...patch,
+        updatedAt: now
+      })) || { ...order, ...patch, updatedAt: now };
+      this.queueMailboxSync("order-chat-repair");
+      return {
+        order: nextOrder,
+        state: this.orderConversationState(nextOrder),
+        changed: true
+      };
+    },
     adminLogs() {
       return Storage.get(Keys.adminLogs, []);
     },
@@ -5061,50 +5173,53 @@
     },
     orderRow(order, mode = "customer") {
       const canManage = mode === "staff" || mode === "admin";
-      const canCancel = mode === "customer" && order.status === "pending";
-      const contactLocked = order.type === "order" && (!order.handledBy || order.status === "pending");
-      const unreadCount = State.currentUser ? Data.unreadChatCount(order.id, State.currentUser.username) : 0;
+      const recovered = order.type === "order" ? Data.repairOrderConversationState(order.id) : { order, state: Data.orderConversationState(order) };
+      const rowOrder = recovered.order || order;
+      const conversationState = recovered.state || Data.orderConversationState(rowOrder);
+      const canCancel = mode === "customer" && rowOrder.status === "pending";
+      const contactLocked = rowOrder.type === "order" && !conversationState.available;
+      const unreadCount = State.currentUser ? Data.unreadChatCount(rowOrder.id, State.currentUser.username) : 0;
       const actions = [];
-      if (order.type === "order" && (mode === "customer" || (canManage && order.handledBy))) {
+      if (rowOrder.type === "order" && (mode === "customer" || (canManage && conversationState.available))) {
         actions.push(h("button", {
           className: `button button-small ${contactLocked ? "button-disabled" : "button-ghost"}`,
           type: "button",
-          dataset: { action: "open-order-chat", orderId: order.id }
+          dataset: { action: "open-order-chat", orderId: rowOrder.id }
         }, icon("fa-regular fa-comments"), "联系", unreadCount ? h("span", { className: "unread-badge", text: unreadCount }) : null));
       }
-      if (canManage && order.status === "pending") {
-        actions.push(h("button", { className: "button button-success button-small", type: "button", dataset: { action: "order-status", orderId: order.id, status: "processing" } }, "接单"));
+      if (canManage && rowOrder.status === "pending") {
+        actions.push(h("button", { className: "button button-success button-small", type: "button", dataset: { action: "order-status", orderId: rowOrder.id, status: "processing" } }, "接单"));
       }
-      if (canManage && order.status === "processing") {
-        actions.push(h("button", { className: "button button-primary button-small", type: "button", dataset: { action: "order-status", orderId: order.id, status: "completed" } }, "完成"));
+      if (canManage && rowOrder.status === "processing") {
+        actions.push(h("button", { className: "button button-primary button-small", type: "button", dataset: { action: "order-status", orderId: rowOrder.id, status: "completed" } }, "完成"));
       }
-      if (canManage && ["pending", "processing"].includes(order.status)) {
-        actions.push(h("button", { className: "button button-ghost button-small", type: "button", dataset: { action: "order-status", orderId: order.id, status: "cancelled" } }, "取消"));
+      if (canManage && ["pending", "processing"].includes(rowOrder.status)) {
+        actions.push(h("button", { className: "button button-ghost button-small", type: "button", dataset: { action: "order-status", orderId: rowOrder.id, status: "cancelled" } }, "取消"));
       }
       if (canCancel) {
-        actions.push(h("button", { className: "button button-ghost button-small", type: "button", dataset: { action: "cancel-order", orderId: order.id } }, "取消订单"));
+        actions.push(h("button", { className: "button button-ghost button-small", type: "button", dataset: { action: "cancel-order", orderId: rowOrder.id } }, "取消订单"));
       }
 
       return h("article", { className: "order-row" },
         h("div", {},
-          h("h3", { className: "row-title", text: localizedOrderContent(order, "productTitle") }),
+          h("h3", { className: "row-title", text: localizedOrderContent(rowOrder, "productTitle") }),
           h("div", { className: "row-meta" },
-            h("span", {}, localizeStaticPhrase(OrderTypeLabels[order.type] || "订单"), " ", order.id.slice(-6).toUpperCase()),
-            h("span", { text: localizedOrderContent(order, "gameTitle") }),
-            h("span", { className: "financial-value notranslate", translate: "no", text: formatPrice(order.price) }),
-            h("span", { text: formatFullDate(order.createdAt) }),
-            order.appointmentAt ? h("span", {}, localizeStaticPhrase("预约"), " ", formatFullDate(order.appointmentAt)) : null,
-            order.autoCancelAt && order.status === "pending" ? h("span", {}, localizeStaticPhrase("超时无人接单自动退单"), " ", formatFullDate(order.autoCancelAt)) : null,
-            order.acceptedAt ? h("span", {}, localizeStaticPhrase("接单时间"), " ", formatFullDate(order.acceptedAt)) : null,
-            rushStatusLabel(order.rush) ? h("span", { className: "tag status-value notranslate", translate: "no", text: rushStatusLabel(order.rush) }) : null,
-            order.handledBy ? h("span", {}, localizeStaticPhrase("接单"), " ", h("span", { className: "notranslate", translate: "no", text: order.handledBy })) : null,
-            order.refundedAt ? h("span", {}, localizeStaticPhrase("已退款"), " ", formatFullDate(order.refundedAt)) : null,
-            order.returnRefundedAt ? h("span", {}, localizeStaticPhrase("退单退款"), " ", financialText(order.returnRefundAmount)) : null,
-            order.settledAt ? h("span", {}, localizeStaticPhrase("已结算"), " ", formatFullDate(order.settledAt)) : null,
-            canManage ? h("span", {}, protectedText("Gamer", "role-term"), " ", h("span", { className: "notranslate", translate: "no", text: order.customerUsername })) : null,
-            UI.statusPill(order.status)
+            h("span", {}, localizeStaticPhrase(OrderTypeLabels[rowOrder.type] || "订单"), " ", rowOrder.id.slice(-6).toUpperCase()),
+            h("span", { text: localizedOrderContent(rowOrder, "gameTitle") }),
+            h("span", { className: "financial-value notranslate", translate: "no", text: formatPrice(rowOrder.price) }),
+            h("span", { text: formatFullDate(rowOrder.createdAt) }),
+            rowOrder.appointmentAt ? h("span", {}, localizeStaticPhrase("预约"), " ", formatFullDate(rowOrder.appointmentAt)) : null,
+            rowOrder.autoCancelAt && rowOrder.status === "pending" ? h("span", {}, localizeStaticPhrase("超时无人接单自动退单"), " ", formatFullDate(rowOrder.autoCancelAt)) : null,
+            rowOrder.acceptedAt ? h("span", {}, localizeStaticPhrase("接单时间"), " ", formatFullDate(rowOrder.acceptedAt)) : null,
+            rushStatusLabel(rowOrder.rush) ? h("span", { className: "tag status-value notranslate", translate: "no", text: rushStatusLabel(rowOrder.rush) }) : null,
+            rowOrder.handledBy ? h("span", {}, localizeStaticPhrase("接单"), " ", h("span", { className: "notranslate", translate: "no", text: rowOrder.handledBy })) : null,
+            rowOrder.refundedAt ? h("span", {}, localizeStaticPhrase("已退款"), " ", formatFullDate(rowOrder.refundedAt)) : null,
+            rowOrder.returnRefundedAt ? h("span", {}, localizeStaticPhrase("退单退款"), " ", financialText(rowOrder.returnRefundAmount)) : null,
+            rowOrder.settledAt ? h("span", {}, localizeStaticPhrase("已结算"), " ", formatFullDate(rowOrder.settledAt)) : null,
+            canManage ? h("span", {}, protectedText("Gamer", "role-term"), " ", h("span", { className: "notranslate", translate: "no", text: rowOrder.customerUsername })) : null,
+            UI.statusPill(rowOrder.status)
           ),
-          order.note ? h("p", { text: order.note }) : null
+          rowOrder.note ? h("p", { text: rowOrder.note }) : null
         ),
         h("div", { className: "row-actions" }, actions)
       );
@@ -6523,17 +6638,22 @@
     },
     openOrderChat(orderId) {
       Data.processRushBreaches();
-      const order = Data.orderById(orderId);
+      const repaired = Data.repairOrderConversationState(orderId);
+      let order = repaired.order || Data.orderById(orderId);
       if (!order || order.type !== "order") {
         UI.toast("订单不存在");
         return;
       }
-      if (!order.handledBy || order.status === "pending") {
+      const conversationState = repaired.state || Data.orderConversationState(order);
+      order = conversationState.order || order;
+      if (!conversationState.available) {
         UI.toast("尚未有人接单", "Vector 接单后即可打开聊天框。");
         return;
       }
-      const isCustomer = State.currentUser?.username === order.customerUsername;
-      const isStaff = State.currentUser?.username === order.handledBy;
+      const handledBy = conversationState.handledBy || order.handledBy || "";
+      const currentUserKey = normalize(State.currentUser?.username);
+      const isCustomer = currentUserKey === normalize(order.customerUsername);
+      const isStaff = currentUserKey === normalize(handledBy);
       const isAdmin = State.currentUser?.role === "admin";
       if (!isCustomer && !isStaff && !isAdmin) {
         UI.toast("无权查看", "只有订单 Gamer、接单 Vector 或管理员可以打开聊天。");
@@ -6543,8 +6663,8 @@
       const currentUsername = State.currentUser?.username || "";
       Data.markChatRead(order.id, currentUsername);
       const customerProfile = Data.profileByUsername(order.customerUsername);
-      const staffProfile = Data.profileByUsername(order.handledBy);
-      const counterpartUsername = isCustomer ? order.handledBy : isStaff ? order.customerUsername : "";
+      const staffProfile = Data.profileByUsername(handledBy);
+      const counterpartUsername = isCustomer ? handledBy : isStaff ? order.customerUsername : "";
       const participantCard = (label, profile) => {
         const online = isProfileOnline(profile);
         return h("div", { className: "chat-participant" },
