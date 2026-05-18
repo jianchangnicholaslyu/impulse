@@ -2438,6 +2438,25 @@ button.admin-table-row:hover {
   color: #8090ad;
 }
 
+.order-chat-room .chat-readonly-notice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  color: #fde68a;
+  border-top: 1px solid rgba(250, 204, 21, 0.28);
+  background:
+    linear-gradient(135deg, rgba(250, 204, 21, 0.13), rgba(15, 23, 42, 0.9)),
+    rgba(6, 13, 27, 0.9);
+  font-weight: 900;
+  text-align: center;
+}
+
+.order-chat-room .chat-readonly-notice i {
+  color: #facc15;
+}
+
 .order-chat-room .chat-attachment-preview {
   color: #dbe7ff;
   border-color: rgba(148, 163, 184, 0.28);

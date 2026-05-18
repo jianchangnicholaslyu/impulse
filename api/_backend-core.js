@@ -19,7 +19,7 @@ const VerificationIpLimit = 5;
 const EmailPrivacyResponse = "If this email is valid, a message has been sent.";
 // AI: mail auth spec: hash-only codes, 5m TTL, 60s/email, 5/10m/IP, generic response, no prod devCode.
 const DayMs = 24 * 60 * 60 * 1000;
-const ChatRetentionMs = 14 * DayMs;
+const ChatRetentionMs = 7 * DayMs;
 const ArchiveRetentionMs = 30 * DayMs;
 const AssetMaxBytes = Number(process.env.MAX_ASSET_BYTES || 5 * 1024 * 1024);
 const BuiltInUsers = [
@@ -518,17 +518,23 @@ async function fetchSupabasePresence(orderId) {
   }
 }
 
-async function pruneSupabaseChatRows() {
+async function pruneSupabaseChatRows(expiredOrderIds = []) {
   if (!hasSupabaseStorage()) {
     return false;
   }
-  const cutoff = new Date(Date.now() - ChatRetentionMs).toISOString();
   const stalePresenceCutoff = new Date(Date.now() - DayMs).toISOString();
+  const orderIds = Array.from(new Set(expiredOrderIds.filter(Boolean)));
   try {
-    await supabaseRequest(`/rest/v1/${supabaseMessagesTable()}?created_at=lt.${encodeURIComponent(cutoff)}`, {
-      method: "DELETE",
-      headers: { Prefer: "return=minimal" }
-    });
+    for (const orderId of orderIds) {
+      await supabaseRequest(`/rest/v1/${supabaseMessagesTable()}?order_id=eq.${encodeURIComponent(orderId)}`, {
+        method: "DELETE",
+        headers: { Prefer: "return=minimal" }
+      });
+      await supabaseRequest(`/rest/v1/${supabasePresenceTable()}?order_id=eq.${encodeURIComponent(orderId)}`, {
+        method: "DELETE",
+        headers: { Prefer: "return=minimal" }
+      });
+    }
     await supabaseRequest(`/rest/v1/${supabasePresenceTable()}?updated_at=lt.${encodeURIComponent(stalePresenceCutoff)}`, {
       method: "DELETE",
       headers: { Prefer: "return=minimal" }
@@ -1076,10 +1082,10 @@ function archiveAttachment(filename, payload) {
 }
 
 function closedOrderArchiveDate(order) {
-  if (!["completed", "cancelled"].includes(order?.status)) {
+  if (!orderChatIsReadOnly(order)) {
     return "";
   }
-  return order.completedAt || order.settledAt || order.updatedAt || order.createdAt || "";
+  return order.completedAt || order.settledAt || order.refundedAt || order.returnRefundedAt || order.updatedAt || order.createdAt || "";
 }
 
 async function sendArchivePackage(db, kind, records, dateFn) {
@@ -1128,25 +1134,25 @@ async function sendArchivePackage(db, kind, records, dateFn) {
 }
 
 async function applyRetentionPolicies(db) {
-  // AI: chat=14d purge; logs/orders=30d purge only after backup mail succeeds.
+  // AI: chat=7d after order end; logs/orders=30d purge only after backup mail succeeds.
   let changed = false;
   const now = Date.now();
   const chatCutoff = now - ChatRetentionMs;
   const archiveCutoff = now - ArchiveRetentionMs;
+  const ordersById = new Map((db.orders || []).map((order) => [order.id, order]));
+  const expiredChatOrderIds = [];
 
   Object.keys(db.orderChats || {}).forEach((orderId) => {
-    const current = Array.isArray(db.orderChats[orderId]) ? db.orderChats[orderId] : [];
-    const next = current.filter((message) => timestampMs(message.createdAt) >= chatCutoff);
-    if (next.length !== current.length) {
+    const order = ordersById.get(orderId);
+    const endedAt = closedOrderArchiveDate(order);
+    const endedTime = timestampMs(endedAt);
+    if (endedTime && endedTime < chatCutoff) {
       changed = true;
-      if (next.length) {
-        db.orderChats[orderId] = next;
-      } else {
-        delete db.orderChats[orderId];
-      }
+      expiredChatOrderIds.push(orderId);
+      delete db.orderChats[orderId];
     }
   });
-  await pruneSupabaseChatRows();
+  await pruneSupabaseChatRows(expiredChatOrderIds);
 
   const expiredLogs = db.adminLogs.filter((entry) => timestampMs(entry.createdAt) && timestampMs(entry.createdAt) < archiveCutoff);
   if (expiredLogs.length) {
@@ -1239,6 +1245,10 @@ function chatAccess(db, orderId, user) {
     return { ok: false, message: "无权查看" };
   }
   return { ok: true, order };
+}
+
+function orderChatIsReadOnly(order) {
+  return ["completed", "cancelled", "refunded", "closed", "settled"].includes(String(order?.status || "").toLowerCase());
 }
 
 function pruneChatTyping(db) {
@@ -2069,6 +2079,9 @@ async function handleAction(action, payload = {}, request = {}) {
   if (action === "addChatMessage") {
     const access = chatAccess(db, payload.orderId, request.user);
     if (!access.ok) return access;
+    if (orderChatIsReadOnly(access.order)) {
+      return { ok: false, message: "该订单已经结束，聊天记录将在7日后自动删除。" };
+    }
     const profile = profileByUsername(db, request.user.username);
     if (profile) {
       profile.lastOnlineAt = nowIso();

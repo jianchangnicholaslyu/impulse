@@ -57,7 +57,7 @@
   const ReturnRefundRate = 0.25;
   const ReturnWindowMs = 60 * 60 * 1000;
   const OnlineWindowMs = 5 * 60 * 1000;
-  const ChatRetentionMs = 14 * 24 * 60 * 60 * 1000;
+  const ChatRetentionMs = 7 * 24 * 60 * 60 * 1000;
   const DisplayImageMaxBytes = 2 * 1024 * 1024;
   const UserIdPattern = /^\d{18}$/;
   const DefaultLanguage = "en";
@@ -100,7 +100,7 @@
       sections: [
         ["Data We Process", `${BrandName} may process account identifiers, email addresses, profile fields, order records, wallet or point balance records, chat messages, uploaded images, system logs, and support records needed to operate the service.`],
         ["Purpose", "Data is used for authentication, account safety, order fulfillment, payment and refund handling, dispute review, support, anti-abuse controls, compliance, and service improvement."],
-        ["Retention", "Chat records are intended to be retained for 14 days. System logs and order-number records are intended to be retained for 30 days, then archived or removed according to the active operational policy."]
+        ["Retention", "Chat records are intended to be retained for 7 days after an order ends. System logs and order-number records are intended to be retained for 30 days, then archived or removed according to the active operational policy."]
       ]
     },
     refund: {
@@ -424,7 +424,7 @@
         localizedPair("Order chat is redesigned around grouped message bubbles, date separators, image previews, and clearer read state.", "订单聊天改为分组气泡、日期分隔、图片预览和更清晰的已读状态。"),
         localizedPair("Admin edit mode now supports visible add buttons and batch selection while keeping right-click menus.", "管理员编辑模式在保留右键菜单的同时，新增可见新增按钮和批量选择。"),
         localizedPair("Game sections and products can now carry editable display images with a 2MB upload limit.", "游戏分区和商品现在可以编辑展示图片，并限制单张不超过 2MB。"),
-        localizedPair("Chat messages older than 14 days are automatically removed from active storage.", "超过 14 天的聊天消息会自动从活跃存储中移除。"),
+        localizedPair("Chat messages are retained for 7 days after an order ends, then automatically removed from active storage.", "订单结束后的聊天消息保留 7 天，之后会自动从活跃存储中移除。"),
         localizedPair("System logs and closed order records older than 30 days are only deleted after a JSON backup package is emailed to the configured archive address.", "超过 30 天的系统日志和已关闭单号仅在 JSON 备份包发送到指定归档邮箱后才会删除。")
       ]
     },
@@ -1949,11 +1949,26 @@ function readFileAsDataUrl(file) {
 function orderHasAcceptedVector(order, conversationState = {}) {
   if (!order) return false;
   const status = String(order.status || "").toLowerCase();
-  const acceptedStatuses = new Set(["assigned", "accepted", "processing", "in_progress", "completed"]);
+  const acceptedStatuses = new Set(["assigned", "accepted", "processing", "in_progress", "completed", "cancelled", "refunded", "closed", "settled"]);
   const hasVector = Boolean(order.handledBy || order.assignedVectorId || order.assigned_vector_id || conversationState.handledBy || conversationState.vectorName);
   if (hasVector && acceptedStatuses.has(status)) return true;
   if (hasVector && order.acceptedAt) return true;
   return hasVector && Array.isArray(conversationState.messages) && conversationState.messages.some((message) => normalize(message.sender || message.role) === normalize(order.handledBy || conversationState.handledBy));
+}
+
+function orderChatIsReadOnly(order) {
+  return ["completed", "cancelled", "refunded", "closed", "settled"].includes(String(order?.status || "").toLowerCase());
+}
+
+function orderChatEndedAt(order) {
+  if (!orderChatIsReadOnly(order)) return "";
+  return order.completedAt || order.settledAt || order.refundedAt || order.returnRefundedAt || order.updatedAt || order.createdAt || "";
+}
+
+function orderChatReadOnlyNotice() {
+  return contentLanguage() === "zh-CN"
+    ? "该订单已经结束，7日后自动删除。"
+    : "This order has ended. Chat history will be automatically deleted after 7 days.";
 }
 
 function orderChatContextLine(order, vectorName) {
@@ -2026,6 +2041,8 @@ function OrderChatPanel(context = {}) {
   const vectorName = context.vectorName || conversationState.handledBy || order?.handledBy || order?.assignedVectorName || order?.assigned_vector_id;
   const enabled = orderHasAcceptedVector(order, { ...conversationState, vectorName });
   const contextLine = orderChatContextLine(order, vectorName);
+  const readOnly = orderChatIsReadOnly(order);
+  const readOnlyNotice = orderChatReadOnlyNotice();
 
   if (!enabled) {
     return h("div", { className: "order-chat-room disabled" },
@@ -2041,9 +2058,15 @@ function OrderChatPanel(context = {}) {
   const typingRow = h("div", { className: "chat-typing", "aria-live": "polite" });
   const textarea = h("textarea", {
     rows: "2",
-    placeholder: localizeStaticPhrase("Type your message..."),
-    onInput: () => PlatformChatRuntime.pulseTyping(order.id),
+    placeholder: readOnly ? readOnlyNotice : localizeStaticPhrase("Type your message..."),
+    disabled: readOnly,
+    onInput: () => {
+      if (!readOnly) {
+        PlatformChatRuntime.pulseTyping(order.id);
+      }
+    },
     onKeydown: (event) => {
+      if (readOnly) return;
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
         event.preventDefault();
         sendMessage();
@@ -2055,6 +2078,10 @@ function OrderChatPanel(context = {}) {
     accept: "image/*",
     className: "visually-hidden",
     onChange: async (event) => {
+      if (readOnly) {
+        event.target.value = "";
+        return;
+      }
       const file = event.target.files?.[0];
       if (!file) return;
       if (file.size > ChatImageMaxBytes) {
@@ -2071,7 +2098,7 @@ function OrderChatPanel(context = {}) {
     }
   });
   const attachmentPreview = h("div", { className: "chat-attachment-preview" });
-  const sendButton = h("button", { className: "primary-btn", type: "button", onClick: () => sendMessage() },
+  const sendButton = h("button", { className: "primary-btn", type: "button", disabled: readOnly, onClick: () => sendMessage() },
     h("i", { className: "fa-solid fa-paper-plane" }),
     h("span", {}, localizeStaticPhrase("Send"))
   );
@@ -2136,6 +2163,7 @@ function OrderChatPanel(context = {}) {
   }
 
   async function sendMessage() {
+    if (readOnly) return;
     const text = textarea.value.trim();
     if (sending || (!text && !imageState.data)) return;
     sending = true;
@@ -2167,7 +2195,7 @@ function OrderChatPanel(context = {}) {
       App.updateHeader?.();
     } finally {
       sending = false;
-      sendButton.disabled = false;
+      sendButton.disabled = readOnly;
     }
   }
 
@@ -2181,7 +2209,10 @@ function OrderChatPanel(context = {}) {
     ),
     thread,
     typingRow,
-    h("div", { className: "chat-compose" },
+    readOnly ? h("div", { className: "chat-readonly-notice", role: "note" },
+      h("i", { className: "fa-solid fa-lock" }),
+      h("span", {}, readOnlyNotice)
+    ) : h("div", { className: "chat-compose" },
       h("button", {
         type: "button",
         className: "ghost-btn icon-only",
@@ -3256,18 +3287,12 @@ function mailboxHasClaim(message) {
       const chats = this.chats();
       let changed = false;
       Object.keys(chats).forEach((orderId) => {
-        const list = Array.isArray(chats[orderId]) ? chats[orderId] : [];
-        const next = list.filter((message) => {
-          const time = new Date(message.createdAt || "").getTime();
-          return Number.isFinite(time) && time >= cutoff;
-        });
-        if (next.length !== list.length) {
+        const order = this.orderById(orderId);
+        const endedAt = orderChatEndedAt(order);
+        const endedTime = new Date(endedAt || "").getTime();
+        if (Number.isFinite(endedTime) && endedTime < cutoff) {
           changed = true;
-          if (next.length) {
-            chats[orderId] = next;
-          } else {
-            delete chats[orderId];
-          }
+          delete chats[orderId];
         }
       });
       if (changed) {
