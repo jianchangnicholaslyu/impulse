@@ -201,6 +201,22 @@
   const DevelopmentRecords = [
     // AI: top item = next release draft. Do not mark Uploaded or push until user explicitly says upload.
     {
+      version: "v0.20.1",
+      releasedAt: "2026-05-18",
+      nameI18n: localizedPair("Direct Vector Chat Entry", "Vector 对话直达入口"),
+      statusI18n: localizedPair("Local draft, not uploaded", "本地草案，未上传"),
+      summaryI18n: localizedPair(
+        "Makes accepted order chats open as a direct Vector conversation flow instead of a generic support-center flow.",
+        "让已接单订单的聊天以 Vector 直接对话流程打开，而不是普通客服中心流程。"
+      ),
+      itemsI18n: [
+        localizedPair("Added an order chat widget controller that decides when Tawk.to should load, injects order context, and opens the chat widget automatically.", "新增订单聊天组件控制器，用于判断何时加载 Tawk.to、注入订单上下文并自动打开聊天组件。"),
+        localizedPair("Shows a waiting state for unassigned orders instead of loading the chat provider before a Vector accepts the order.", "未接单订单显示等待状态，不会提前加载聊天服务商。"),
+        localizedPair("Adds a Start Order Chat action, visitor attributes, and an order context event for Tawk.to operator visibility.", "新增 Start Order Chat 入口、访客属性和订单上下文事件，便于 Tawk.to 坐席识别订单。"),
+        localizedPair("Minimizes and hides the Tawk.to widget when the order chat modal closes so it does not interfere with the rest of the site.", "订单聊天弹窗关闭时自动最小化并隐藏 Tawk.to 组件，避免干扰网站其他页面。")
+      ]
+    },
+    {
       version: "v0.20.0",
       releasedAt: "2026-05-18",
       nameI18n: localizedPair("Semi-Managed Support Chat", "半自建聊天系统"),
@@ -1863,6 +1879,28 @@
     return Boolean(expires && expires <= Date.now());
   }
 
+  function tawkSafeValue(value) {
+    return String(value || "").replace(/\s+/g, " ").trim().slice(0, 240);
+  }
+
+  function tawkSafePayload(payload = {}) {
+    return Object.fromEntries(Object.entries(payload)
+      .map(([key, value]) => [String(key).replace(/[^a-zA-Z0-9-]/g, "-").toLowerCase(), tawkSafeValue(value)])
+      .filter(([, value]) => Boolean(value)));
+  }
+
+  function orderHasAcceptedVector(order, conversationState = {}) {
+    const status = String(order?.status || "").toLowerCase();
+    const vectorName = conversationState.handledBy || order?.handledBy || order?.assignedVectorId || order?.assigned_vector_id || "";
+    return Boolean(vectorName && ["processing", "accepted", "assigned", "in_progress", "completed"].includes(status));
+  }
+
+  function orderChatContextLine(order, vectorName) {
+    const orderId = order?.id || "";
+    const itemName = localizedOrderContent(order, "productTitle", order?.productTitle || "Order");
+    return `Order: ${orderId} | Vector: ${vectorName || "Unassigned"} | Item: ${itemName}`;
+  }
+
   const ChatProvider = {
     scriptId: "impulse-tawk-script",
     configPromise: null,
@@ -1888,13 +1926,16 @@
       const order = context.order || {};
       const currentUser = State.currentUser || {};
       const email = userEmail(currentUser);
+      const visitorName = context.visitorName || context.username || currentUser.username || "Guest";
       return {
-        name: context.username || currentUser.username || "Guest",
+        name: visitorName,
         email,
         role: context.role || currentUser.role || "visitor",
         orderId: order.id || "",
         orderStatus: order.status || "",
         item: localizedOrderContent(order, "productTitle", order.productTitle || ""),
+        vector: context.staffUsername || order.handledBy || "",
+        orderContext: context.orderContext || "",
         brand: BrandName
       };
     },
@@ -1985,19 +2026,54 @@
         return;
       }
       const meta = this.metadata(context);
-      const attributes = Object.fromEntries(Object.entries({
+      const identity = Object.fromEntries(Object.entries({
         name: meta.name,
-        email: meta.email,
+        email: meta.email
+      }).map(([key, value]) => [key, tawkSafeValue(value)]).filter(([, value]) => Boolean(value)));
+      const attributes = Object.fromEntries(Object.entries({
+        "visitor-name": meta.name,
+        "visitor-email": meta.email,
         role: meta.role,
-        order_id: meta.orderId,
-        order_status: meta.orderStatus,
+        "order-id": meta.orderId,
+        "order-status": meta.orderStatus,
         item: meta.item,
+        vector: meta.vector,
+        "order-context": meta.orderContext,
         platform: meta.brand
-      }).filter(([, value]) => Boolean(value)));
+      }).map(([key, value]) => [key, tawkSafeValue(value)]).filter(([, value]) => Boolean(value)));
       try {
+        if (Object.keys(identity).length) {
+          api.setAttributes(identity, () => {});
+        }
         api.setAttributes(attributes, () => {});
       } catch (error) {
         console.warn("Tawk.to metadata sync failed", error);
+      }
+    },
+    addEvent(eventName, metadata = {}) {
+      const api = window.Tawk_API;
+      if (!api || typeof api.addEvent !== "function") {
+        return;
+      }
+      try {
+        api.addEvent(String(eventName || "order-chat-opened").replace(/[^a-zA-Z0-9-]/g, "-"), tawkSafePayload(metadata), () => {});
+      } catch (error) {
+        console.warn("Tawk.to event sync failed", error);
+      }
+    },
+    maximize() {
+      try {
+        window.Tawk_API?.showWidget?.();
+        window.Tawk_API?.maximize?.();
+      } catch (error) {
+        console.warn("Tawk.to maximize failed", error);
+      }
+    },
+    minimize() {
+      try {
+        window.Tawk_API?.minimize?.();
+      } catch (error) {
+        console.warn("Tawk.to minimize failed", error);
       }
     },
     hideWidget() {
@@ -2013,6 +2089,28 @@
       } catch (error) {
         console.warn("Tawk.to widget show failed", error);
       }
+    },
+    openOrderConversation(context = {}) {
+      return this.load(context).then((loaded) => {
+        if (!loaded) {
+          return false;
+        }
+        this.showWidget();
+        this.setMetadata(context);
+        this.addEvent("order-chat-opened", {
+          "order-id": context.order?.id || "",
+          "order-status": context.order?.status || "",
+          vector: context.staffUsername || "",
+          item: localizedOrderContent(context.order || {}, "productTitle", context.order?.productTitle || ""),
+          context: context.orderContext || ""
+        });
+        window.setTimeout(() => this.maximize(), 240);
+        return true;
+      });
+    },
+    closeOrderConversation() {
+      this.minimize();
+      window.setTimeout(() => this.hideWidget(), 120);
     },
     updatePublicWidget() {
       if (this.publicLoadTimer) {
@@ -2038,10 +2136,54 @@
     }
   };
 
-  function EmbeddedSupportChat(context = {}) {
+  function useOrderChatWidget(order, context = {}) {
+    const conversationState = context.conversationState || Data.orderConversationState(order);
+    const vectorName = context.staffUsername || conversationState.handledBy || order?.handledBy || "";
+    const currentUser = State.currentUser || {};
+    const roleName = currentUser.role === "staff" ? "Vector" : currentUser.role === "admin" ? "Admin" : "Gamer";
+    const visitorName = `${roleName} ${currentUser.username || context.username || "Guest"}`.trim();
+    const enabled = orderHasAcceptedVector(order, { ...conversationState, handledBy: vectorName });
+    const orderContext = orderChatContextLine(order, vectorName);
+    const widgetContext = {
+      ...context,
+      order,
+      conversationState,
+      staffUsername: vectorName,
+      role: currentUser.role || context.role || "customer",
+      username: currentUser.username || context.username || "",
+      visitorName,
+      orderContext
+    };
+    return {
+      enabled,
+      readOnly: order?.status === "completed",
+      vectorName,
+      orderContext,
+      context: widgetContext,
+      open() {
+        if (!enabled) {
+          return Promise.resolve(false);
+        }
+        return ChatProvider.openOrderConversation(widgetContext);
+      },
+      close() {
+        ChatProvider.closeOrderConversation();
+      }
+    };
+  }
+
+  function EmbeddedSupportChat(context = {}, chatWidget = useOrderChatWidget(context.order, context)) {
+    if (!chatWidget.enabled) {
+      return h("div", { className: "embedded-support-chat unavailable waiting" },
+        icon("fa-regular fa-comments"),
+        h("strong", { className: "notranslate", translate: "no", text: "Chat will be available once a Vector accepts your order." }),
+        h("p", { className: "notranslate", translate: "no", text: chatWidget.orderContext || TawkSupport.welcome })
+      );
+    }
+
     const chatNode = h("div", { className: "embedded-support-chat unavailable loading" },
       h("span", { className: "loading-dot" }),
-      h("strong", { className: "notranslate", translate: "no", text: "Loading Vector Support..." }),
+      h("strong", { className: "notranslate", translate: "no", text: "Opening order chat..." }),
       h("p", { className: "notranslate", translate: "no", text: TawkSupport.welcome })
     );
 
@@ -2058,12 +2200,26 @@
     const renderChat = () => {
       chatNode.className = "embedded-support-chat";
       clear(chatNode);
+      const startButton = h("button", {
+        className: "button button-primary embedded-support-start",
+        type: "button",
+        onClick: () => {
+          startButton.classList.add("is-interaction-loading");
+          chatWidget.open().then((loaded) => {
+            startButton.classList.remove("is-interaction-loading");
+            if (!loaded) {
+              renderUnavailable();
+            }
+          });
+        }
+      }, icon("fa-regular fa-paper-plane"), h("span", { className: "notranslate", translate: "no", text: "Start Order Chat" }));
       append(chatNode, [
         h("div", { className: "embedded-support-head" },
           h("div", {},
-            h("strong", { className: "notranslate", translate: "no", text: TawkSupport.entryLabel }),
-            h("span", { className: "notranslate", translate: "no", text: TawkSupport.welcome })
+            h("strong", { className: "notranslate", translate: "no", text: "Start Order Chat" }),
+            h("span", { className: "notranslate", translate: "no", text: chatWidget.orderContext })
           ),
+          startButton,
           h("span", { className: "embedded-support-provider notranslate", translate: "no", text: "Tawk.to" })
         ),
         h("iframe", {
@@ -2084,11 +2240,10 @@
           return false;
         }
         renderChat();
-        return ChatProvider.load(context);
+        return chatWidget.open();
       }).then((loaded) => {
         if (loaded) {
-          ChatProvider.setMetadata(context);
-          ChatProvider.hideWidget();
+          ChatProvider.setMetadata(chatWidget.context);
         }
       });
     }, 0);
@@ -4786,6 +4941,7 @@
   };
 
   const UI = {
+    modalCleanup: null,
     hideAppLoader() {
       const loader = Dom.appLoader || $("#appLoader");
       document.body.classList.remove("app-loading");
@@ -4802,10 +4958,20 @@
       window.setTimeout(() => item.remove(), 3600);
     },
     closeModal() {
+      const cleanup = this.modalCleanup;
+      this.modalCleanup = null;
+      if (typeof cleanup === "function") {
+        try {
+          cleanup();
+        } catch (error) {
+          console.warn("Modal cleanup failed", error);
+        }
+      }
       clear(Dom.modalRoot);
     },
-    openModal(card) {
-      clear(Dom.modalRoot);
+    openModal(card, options = {}) {
+      this.closeModal();
+      this.modalCleanup = typeof options.onClose === "function" ? options.onClose : null;
       Dom.modalRoot.appendChild(
         h("div", { className: "modal" },
           h("div", { className: "modal-backdrop", dataset: { action: "close-modal" } }),
@@ -5571,8 +5737,10 @@
       order,
       username: currentUsername,
       role,
-      staffUsername: handledBy
+      staffUsername: handledBy,
+      conversationState
     };
+    const chatWidget = useOrderChatWidget(order, supportContext);
     const infoRow = (label, value, valueNode = null) => h("div", { className: "chat-info-row" },
       h("span", { text: label }),
       valueNode || h("strong", { text: value })
@@ -5583,7 +5751,7 @@
       h("div", { className: "chat-titlebar" },
         h("div", {},
           h("p", { className: "release-badge notranslate", translate: "no" }, icon("fa-regular fa-comments"), TawkSupport.entryLabel),
-          h("h2", { className: "notranslate", translate: "no", text: TawkSupport.entryLabel }),
+          h("h2", { className: "notranslate", translate: "no", text: "Chat with your Vector" }),
           h("p", { className: "chat-brand-copy notranslate", translate: "no", text: TawkSupport.welcome })
         ),
         h("div", { className: "chat-unread-card" },
@@ -5597,7 +5765,7 @@
           tools.length ? tools : h("p", { text: contentLanguage() === "zh-CN" ? "暂无可用操作。" : "No available actions." })
         ),
         h("section", { className: "chat-panel" },
-          EmbeddedSupportChat(supportContext)
+          EmbeddedSupportChat(supportContext, chatWidget)
         ),
         h("aside", { className: "chat-context" },
           h("section", { className: "chat-context-card" },
@@ -7044,10 +7212,6 @@
       }
       const conversationState = repaired.state || Data.orderConversationState(order);
       order = conversationState.order || order;
-      if (!conversationState.available) {
-        UI.toast("尚未有人接单", "Vector 接单后即可打开聊天框。");
-        return;
-      }
       const handledBy = conversationState.handledBy || order.handledBy || "";
       const currentUserKey = normalize(State.currentUser?.username);
       const isCustomer = currentUserKey === normalize(order.customerUsername);
@@ -7124,7 +7288,9 @@
         currentUsername,
         handledBy,
         role: State.currentUser?.role || "customer"
-      }));
+      }), {
+        onClose: () => ChatProvider.closeOrderConversation()
+      });
     },
     openRushForm(orderId) {
       const order = Data.orderById(orderId);

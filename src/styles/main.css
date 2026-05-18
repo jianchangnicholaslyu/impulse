@@ -1974,6 +1974,10 @@ button.admin-table-row:hover {
   color: var(--ink);
 }
 
+.embedded-support-chat.waiting {
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(239, 246, 255, 0.9));
+}
+
 .embedded-support-chat.loading .loading-dot {
   width: 24px;
   height: 24px;
@@ -2015,6 +2019,13 @@ button.admin-table-row:hover {
   border: 1px solid #d0d5dd;
   border-radius: 999px;
   background: #ffffff;
+}
+
+.embedded-support-start {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 12px;
+  white-space: nowrap;
 }
 
 .embedded-support-frame {
