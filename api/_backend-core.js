@@ -1236,6 +1236,10 @@ function updateOrderStatusOnBackend(db, orderId, status, actor) {
     return { ok: false, message: "无权操作订单。" };
   }
   const updatedAt = nowIso();
+  const actorProfile = profileByUsername(db, actor.username);
+  if (actorProfile) {
+    actorProfile.lastOnlineAt = updatedAt;
+  }
   if (status === "processing") {
     if (order.status !== "pending") {
       return { ok: false, message: "该订单已不在待处理状态。" };
@@ -1805,6 +1809,10 @@ async function handleAction(action, payload = {}, request = {}) {
     const allowed = [order.customerUsername, order.handledBy].filter(Boolean).map(normalize);
     if (!allowed.includes(normalize(request.user.username)) && request.user.role !== "admin") {
       return { ok: false, message: "无权查看" };
+    }
+    const profile = profileByUsername(db, request.user.username);
+    if (profile) {
+      profile.lastOnlineAt = nowIso();
     }
     const result = addChatMessage(db, payload.orderId, {
       sender: request.user.username,

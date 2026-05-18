@@ -65,6 +65,17 @@
   const LocalContentLanguageCodes = ["en", "zh-CN"];
   const BrandName = "IMPULSE J";
   const BrandTagline = "Driven by Gamers' Momentum";
+  const PublicEnv = (() => {
+    const buildEnv = typeof __IMPULSE_PUBLIC_ENV__ !== "undefined" ? __IMPULSE_PUBLIC_ENV__ : {};
+    const runtimeEnv = window.IMPULSE_PUBLIC_ENV || {};
+    return { ...(buildEnv || {}), ...(runtimeEnv || {}) };
+  })();
+  const TawkSupport = {
+    propertyId: String(PublicEnv.NEXT_PUBLIC_TAWK_PROPERTY_ID || "").trim(),
+    widgetId: String(PublicEnv.NEXT_PUBLIC_TAWK_WIDGET_ID || "").trim(),
+    entryLabel: "Vector Support",
+    welcome: "Welcome to IMPULSE J. Driven by Gamers' Momentum."
+  };
   const RoleDisplayNames = {
     customer: "Gamer",
     staff: "Vector",
@@ -189,6 +200,37 @@
 
   const DevelopmentRecords = [
     // AI: top item = next release draft. Do not mark Uploaded or push until user explicitly says upload.
+    {
+      version: "v0.20.0",
+      releasedAt: "2026-05-18",
+      nameI18n: localizedPair("Semi-Managed Support Chat", "半自建聊天系统"),
+      statusI18n: localizedPair("Local draft, not uploaded", "本地草案，未上传"),
+      summaryI18n: localizedPair(
+        "Keeps the IMPULSE J order chat shell while moving the live chat kernel to a dynamically loaded Tawk.to support widget.",
+        "保留 IMPULSE J 订单聊天外壳，将实时聊天内核改为动态加载的 Tawk.to 支持组件。"
+      ),
+      itemsI18n: [
+        localizedPair("Added a ChatProvider abstraction that centralizes third-party chat loading and keeps Tawk.to configuration behind public environment variables.", "新增 ChatProvider 抽象层，统一管理第三方聊天加载，并通过公开环境变量配置 Tawk.to。"),
+        localizedPair("Rebuilt the order chat modal as an OrderChatShell so order details, Gamer / Vector status cards, and platform operation buttons remain owned by IMPULSE J.", "将订单聊天弹窗重构为 OrderChatShell，订单信息、Gamer / Vector 状态卡和平台操作按钮继续由 IMPULSE J 自主管理。"),
+        localizedPair("Embedded Tawk.to only in the live conversation area and preserved the provider branding instead of covering or replacing it.", "仅在实时沟通区域嵌入 Tawk.to，并保留服务商品牌展示，不遮挡或替换。"),
+        localizedPair("Added a safe unavailable state when Tawk.to property or widget IDs are not configured.", "当 Tawk.to property 或 widget ID 未配置时，显示安全的不可用状态。")
+      ]
+    },
+    {
+      version: "v0.19.2",
+      releasedAt: "2026-05-18",
+      nameI18n: localizedPair("Vector Presence Recovery Hotfix", "Vector 在线状态恢复热补丁"),
+      statusI18n: localizedPair("Local draft, not uploaded", "本地草案，未上传"),
+      summaryI18n: localizedPair(
+        "Improves order chat recovery so the assigned Vector name and online state are restored from chat messages, in-app mail, and recent activity.",
+        "增强订单聊天恢复能力，从聊天消息、站内邮件和最近活动中恢复接单 Vector 的名称与在线状态。"
+      ),
+      itemsI18n: [
+        localizedPair("Extracted Vector identity from mailbox sender fields, chat mail bodies, and acceptance notices when the local order snapshot is incomplete.", "在本地订单快照不完整时，从邮件发件人、聊天邮件正文和接单通知中提取 Vector 身份。"),
+        localizedPair("Used recent Vector chat or order activity as a fallback online signal in the chat participant card.", "在聊天参与者卡片中使用 Vector 最近聊天或订单活动作为在线状态兜底信号。"),
+        localizedPair("Refreshed Vector online timestamps when staff users accept, complete, or send chat messages through the backend.", "当 Vector 在后端接单、结单或发送聊天消息时刷新在线时间。")
+      ]
+    },
     {
       version: "v0.19.1",
       releasedAt: "2026-05-18",
@@ -1821,6 +1863,199 @@
     return Boolean(expires && expires <= Date.now());
   }
 
+  const ChatProvider = {
+    scriptId: "impulse-tawk-script",
+    scriptPromise: null,
+    publicLoadTimer: null,
+    publicRoutes: new Set(["home", "category", "products", "search", "info"]),
+    configured() {
+      return Boolean(TawkSupport.propertyId && TawkSupport.widgetId);
+    },
+    scriptUrl() {
+      if (!this.configured()) {
+        return "";
+      }
+      return `https://embed.tawk.to/${encodeURIComponent(TawkSupport.propertyId)}/${encodeURIComponent(TawkSupport.widgetId)}`;
+    },
+    chatUrl() {
+      if (!this.configured()) {
+        return "";
+      }
+      return `https://tawk.to/chat/${encodeURIComponent(TawkSupport.propertyId)}/${encodeURIComponent(TawkSupport.widgetId)}`;
+    },
+    metadata(context = {}) {
+      const order = context.order || {};
+      const currentUser = State.currentUser || {};
+      const email = userEmail(currentUser);
+      return {
+        name: context.username || currentUser.username || "Guest",
+        email,
+        role: context.role || currentUser.role || "visitor",
+        orderId: order.id || "",
+        orderStatus: order.status || "",
+        item: localizedOrderContent(order, "productTitle", order.productTitle || ""),
+        brand: BrandName
+      };
+    },
+    prime(context = {}) {
+      if (!this.configured()) {
+        return;
+      }
+      window.Tawk_API = window.Tawk_API || {};
+      window.Tawk_LoadStart = window.Tawk_LoadStart || new Date();
+      const meta = this.metadata(context);
+      if (meta.name) {
+        window.Tawk_API.visitor = {
+          ...(window.Tawk_API.visitor || {}),
+          name: meta.name,
+          email: meta.email || undefined
+        };
+      }
+    },
+    load(context = {}) {
+      if (!this.configured()) {
+        return Promise.resolve(false);
+      }
+      this.prime(context);
+      if (this.scriptPromise) {
+        return this.scriptPromise.then((loaded) => {
+          this.setMetadata(context);
+          return loaded;
+        });
+      }
+      const existing = document.getElementById(this.scriptId);
+      if (existing) {
+        this.scriptPromise = Promise.resolve(true);
+        return this.scriptPromise;
+      }
+      this.scriptPromise = new Promise((resolve) => {
+        const previousOnLoad = window.Tawk_API?.onLoad;
+        window.Tawk_API = window.Tawk_API || {};
+        window.Tawk_API.onLoad = () => {
+          if (typeof previousOnLoad === "function") {
+            previousOnLoad();
+          }
+          this.setMetadata(context);
+          resolve(true);
+        };
+        const script = h("script", {
+          id: this.scriptId,
+          src: this.scriptUrl(),
+          async: true,
+          charset: "UTF-8",
+          crossorigin: "*"
+        });
+        script.addEventListener("load", () => {
+          window.setTimeout(() => {
+            this.setMetadata(context);
+            resolve(true);
+          }, 250);
+        }, { once: true });
+        script.addEventListener("error", () => resolve(false), { once: true });
+        document.head.appendChild(script);
+      });
+      return this.scriptPromise;
+    },
+    setMetadata(context = {}) {
+      if (!this.configured()) {
+        return;
+      }
+      const api = window.Tawk_API;
+      if (!api || typeof api.setAttributes !== "function") {
+        return;
+      }
+      const meta = this.metadata(context);
+      const attributes = Object.fromEntries(Object.entries({
+        name: meta.name,
+        email: meta.email,
+        role: meta.role,
+        order_id: meta.orderId,
+        order_status: meta.orderStatus,
+        item: meta.item,
+        platform: meta.brand
+      }).filter(([, value]) => Boolean(value)));
+      try {
+        api.setAttributes(attributes, () => {});
+      } catch (error) {
+        console.warn("Tawk.to metadata sync failed", error);
+      }
+    },
+    hideWidget() {
+      try {
+        window.Tawk_API?.hideWidget?.();
+      } catch (error) {
+        console.warn("Tawk.to widget hide failed", error);
+      }
+    },
+    showWidget() {
+      try {
+        window.Tawk_API?.showWidget?.();
+      } catch (error) {
+        console.warn("Tawk.to widget show failed", error);
+      }
+    },
+    updatePublicWidget() {
+      if (this.publicLoadTimer) {
+        window.clearTimeout(this.publicLoadTimer);
+        this.publicLoadTimer = null;
+      }
+      if (!this.configured()) {
+        return;
+      }
+      const routeName = State.route?.name || "home";
+      const shouldLoad = State.mode !== "admin" && this.publicRoutes.has(routeName);
+      if (!shouldLoad) {
+        this.hideWidget();
+        return;
+      }
+      this.publicLoadTimer = window.setTimeout(() => {
+        this.load({
+          role: State.currentUser?.role || "visitor",
+          username: State.currentUser?.username || "Guest"
+        }).then((loaded) => {
+          if (loaded) {
+            this.showWidget();
+          }
+        });
+      }, 1200);
+    }
+  };
+
+  function EmbeddedSupportChat(context = {}) {
+    if (!ChatProvider.configured()) {
+      return h("div", { className: "embedded-support-chat unavailable" },
+        icon("fa-regular fa-comments"),
+        h("strong", { className: "notranslate", translate: "no", text: "Chat is currently unavailable." }),
+        h("p", { className: "notranslate", translate: "no", text: TawkSupport.welcome })
+      );
+    }
+    window.setTimeout(() => {
+      ChatProvider.load(context).then((loaded) => {
+        if (loaded) {
+          ChatProvider.setMetadata(context);
+          ChatProvider.hideWidget();
+        }
+      });
+    }, 0);
+    return h("div", { className: "embedded-support-chat" },
+      h("div", { className: "embedded-support-head" },
+        h("div", {},
+          h("strong", { className: "notranslate", translate: "no", text: TawkSupport.entryLabel }),
+          h("span", { className: "notranslate", translate: "no", text: TawkSupport.welcome })
+        ),
+        h("span", { className: "embedded-support-provider notranslate", translate: "no", text: "Tawk.to" })
+      ),
+      h("iframe", {
+        className: "embedded-support-frame",
+        title: TawkSupport.entryLabel,
+        src: ChatProvider.chatUrl(context),
+        loading: "lazy",
+        allow: "microphone; camera; clipboard-write",
+        referrerpolicy: "strict-origin-when-cross-origin"
+      })
+    );
+  }
+
   function mailboxHasClaim(message) {
     return message?.claim?.type === "recharge" && Number(message.claim.amountPoints || 0) > 0;
   }
@@ -2879,6 +3114,7 @@
       return changed;
     },
     addChatMessage(orderId, message) {
+      this.touchCurrentUser();
       const chats = this.chats();
       const sender = message.sender || (State.currentUser ? State.currentUser.username : "SYSTEM");
       const entry = {
@@ -2939,6 +3175,33 @@
       }
 
       const currentUsername = State.currentUser?.username || "";
+      const systemSenderKeys = new Set(["system", normalize("SYSTEM"), normalize("IMPULSE J System"), normalize("IMPULSE J Admin")]);
+      const cleanSenderName = (value) => {
+        const candidate = String(value || "").trim();
+        const key = normalize(candidate);
+        if (!candidate || systemSenderKeys.has(key) || key === normalize(order.customerUsername) || key.startsWith("impulse j")) {
+          return "";
+        }
+        return candidate;
+      };
+      const extractMailboxSender = (message) => {
+        const direct = cleanSenderName(message?.sender);
+        if (direct) {
+          return direct;
+        }
+        const text = `${message?.body || ""}\n${message?.preview || ""}\n${message?.subject || ""}`;
+        const fromMatch = text.match(/From:\s*(.+?)(?:\.\s*Message:|\r?\n|$)/i);
+        const acceptedMatch = text.match(/Accepted by\s+(.+?)(?:\.|\r?\n|$)/i);
+        const acceptedSentenceMatch = text.match(/([^\s.]+)\s+accepted the order/i);
+        return cleanSenderName(fromMatch?.[1]) || cleanSenderName(acceptedMatch?.[1]) || cleanSenderName(acceptedSentenceMatch?.[1]);
+      };
+      const latestIso = (values) => {
+        const latest = values
+          .map((value) => ({ value, time: timestampMs(value) }))
+          .filter((item) => item.time)
+          .sort((a, b) => b.time - a.time)[0];
+        return latest?.value || "";
+      };
       const messages = this.chatMessages(order.id)
         .filter((message) => message && typeof message === "object" && !Array.isArray(message))
         .slice()
@@ -2959,9 +3222,10 @@
         : [];
       const chatMailboxMessages = relatedMailboxMessages.filter((message) => message.source === "chat" || mailboxCategory(message.category).id === "chat");
       const mailboxStaffMessage = chatMailboxMessages.find((message) => {
-        const sender = normalize(message.sender);
-        return sender && sender !== "system" && sender !== customerKey && sender !== normalize("IMPULSE J System");
+        const sender = cleanSenderName(message.sender) || extractMailboxSender(message);
+        return Boolean(sender);
       });
+      const mailboxStaffName = extractMailboxSender(mailboxStaffMessage) || relatedMailboxMessages.map(extractMailboxSender).find(Boolean) || "";
       const completionEvidence = Boolean(
         order.completedAt ||
         order.settledAt ||
@@ -2969,8 +3233,26 @@
         relatedMailboxMessages.some((message) => /completed|结单|完成/i.test(`${message.subject || ""} ${message.body || ""} ${message.preview || ""}`))
       );
       const mailboxEvidence = chatMailboxMessages.length > 0;
-      const handledBy = order.handledBy || staffMessage?.sender || mailboxStaffMessage?.sender || "";
-      const acceptedAt = order.acceptedAt || staffMessage?.createdAt || acceptedSystemMessage?.createdAt || mailboxStaffMessage?.createdAt || "";
+      const handledBy = order.handledBy || staffMessage?.sender || mailboxStaffName || "";
+      const handledByKey = normalize(handledBy);
+      const inferredAcceptedAt = order.acceptedAt || staffMessage?.createdAt || acceptedSystemMessage?.createdAt || mailboxStaffMessage?.createdAt || "";
+      const staffLastActivityAt = latestIso([
+        inferredAcceptedAt,
+        order.completedAt,
+        order.settledAt,
+        staffMessage?.createdAt,
+        mailboxStaffMessage?.createdAt,
+        ...messages
+          .filter((message) => handledByKey ? normalize(message.sender) === handledByKey : nonCustomerMessages.includes(message))
+          .map((message) => message.createdAt),
+        ...relatedMailboxMessages
+          .filter((message) => {
+            const sender = extractMailboxSender(message);
+            return handledByKey ? normalize(sender) === handledByKey : Boolean(sender);
+          })
+          .map((message) => message.createdAt)
+      ]);
+      const acceptedAt = inferredAcceptedAt || staffLastActivityAt;
       const hasConversation = Boolean(handledBy || nonCustomerMessages.length || mailboxEvidence);
       const recoveredStatus = completionEvidence
         ? "completed"
@@ -2990,6 +3272,7 @@
         handledBy,
         status: recoveredStatus,
         acceptedAt,
+        staffLastActivityAt,
         hasConversation,
         messages,
         mailboxEvidence
@@ -3553,6 +3836,7 @@
       return { ok: true, order };
     },
     updateOrder(orderId, patch) {
+      this.touchCurrentUser();
       const updatedAt = new Date().toISOString();
       this.saveOrders(this.orders().map((order) => {
         if (order.id !== orderId) {
@@ -5185,7 +5469,7 @@
           className: `button button-small ${contactLocked ? "button-disabled" : "button-ghost"}`,
           type: "button",
           dataset: { action: "open-order-chat", orderId: rowOrder.id }
-        }, icon("fa-regular fa-comments"), "联系", unreadCount ? h("span", { className: "unread-badge", text: unreadCount }) : null));
+        }, icon("fa-regular fa-comments"), h("span", { className: "notranslate", translate: "no", text: TawkSupport.entryLabel }), unreadCount ? h("span", { className: "unread-badge", text: unreadCount }) : null));
       }
       if (canManage && rowOrder.status === "pending") {
         actions.push(h("button", { className: "button button-success button-small", type: "button", dataset: { action: "order-status", orderId: rowOrder.id, status: "processing" } }, "接单"));
@@ -5228,6 +5512,81 @@
       return h("div", { className: "empty-state" }, h("div", {}, h("p", { text }), actionNode));
     }
   };
+
+  function OrderChatShell({
+    order,
+    tools,
+    customerProfile,
+    staffProfile,
+    participantCard,
+    conversationState,
+    currentUsername,
+    handledBy,
+    role
+  }) {
+    const orderItem = localizedOrderContent(order, "productTitle", order.productTitle || "Order");
+    const orderGame = localizedOrderContent(order, "gameTitle", order.gameTitle || "");
+    const unread = Data.unreadChatCount(order.id, currentUsername);
+    const rushText = rushStatusLabel(order.rush);
+    const supportContext = {
+      order,
+      username: currentUsername,
+      role,
+      staffUsername: handledBy
+    };
+    const infoRow = (label, value, valueNode = null) => h("div", { className: "chat-info-row" },
+      h("span", { text: label }),
+      valueNode || h("strong", { text: value })
+    );
+
+    return h("div", { className: "modal-card modal-wide chat-modal slide-up" },
+      h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+      h("div", { className: "chat-titlebar" },
+        h("div", {},
+          h("p", { className: "release-badge notranslate", translate: "no" }, icon("fa-regular fa-comments"), TawkSupport.entryLabel),
+          h("h2", { className: "notranslate", translate: "no", text: TawkSupport.entryLabel }),
+          h("p", { className: "chat-brand-copy notranslate", translate: "no", text: TawkSupport.welcome })
+        ),
+        h("div", { className: "chat-unread-card" },
+          h("strong", { text: unread }),
+          h("span", { text: contentLanguage() === "zh-CN" ? "未读" : "Unread" })
+        )
+      ),
+      h("div", { className: "chat-shell" },
+        h("aside", { className: "chat-sidebar" },
+          h("h3", { text: contentLanguage() === "zh-CN" ? "操作" : "Actions" }),
+          tools.length ? tools : h("p", { text: contentLanguage() === "zh-CN" ? "暂无可用操作。" : "No available actions." })
+        ),
+        h("section", { className: "chat-panel" },
+          EmbeddedSupportChat(supportContext)
+        ),
+        h("aside", { className: "chat-context" },
+          h("section", { className: "chat-context-card" },
+            h("h3", { text: contentLanguage() === "zh-CN" ? "订单信息" : "Order Info" }),
+            infoRow(contentLanguage() === "zh-CN" ? "订单号" : "Order ID", "", protectedText(order.id, "mono")),
+            infoRow(contentLanguage() === "zh-CN" ? "项目" : "Item", orderItem),
+            orderGame ? infoRow(contentLanguage() === "zh-CN" ? "游戏" : "Game", orderGame) : null,
+            infoRow(contentLanguage() === "zh-CN" ? "金额" : "Amount", "", financialText(order.price)),
+            infoRow(contentLanguage() === "zh-CN" ? "状态" : "Status", "", UI.statusPill(order.status)),
+            order.acceptedAt ? infoRow(contentLanguage() === "zh-CN" ? "接单时间" : "Accepted", formatFullDate(order.acceptedAt)) : null,
+            order.completedAt ? infoRow(contentLanguage() === "zh-CN" ? "结单时间" : "Completed", formatFullDate(order.completedAt)) : null,
+            rushText ? h("p", { className: "balance-note order-locked-term notranslate", translate: "no", text: `${rushText}${order.rush?.deadlineAt ? ` / ${contentLanguage() === "zh-CN" ? "期限" : "Deadline"}: ${formatFullDate(order.rush.deadlineAt)}` : ""}` }) : null
+          ),
+          h("section", { className: "chat-context-card" },
+            h("h3", { text: contentLanguage() === "zh-CN" ? "参与者" : "Participants" }),
+            h("div", { className: "chat-presence" },
+              participantCard("Gamer", customerProfile),
+              participantCard("Vector", staffProfile, { username: handledBy, lastOnlineAt: conversationState.staffLastActivityAt })
+            )
+          ),
+          h("section", { className: "chat-context-card compact" },
+            h("strong", { className: "notranslate", translate: "no", text: `${BrandName} / Vector` }),
+            h("p", { className: "notranslate", translate: "no", text: "Order actions stay inside IMPULSE J. Tawk.to only handles real-time text communication." })
+          )
+        )
+      )
+    );
+  }
 
   const Views = {
     render() {
@@ -6664,19 +7023,18 @@
       Data.markChatRead(order.id, currentUsername);
       const customerProfile = Data.profileByUsername(order.customerUsername);
       const staffProfile = Data.profileByUsername(handledBy);
-      const counterpartUsername = isCustomer ? handledBy : isStaff ? order.customerUsername : "";
-      const participantCard = (label, profile) => {
-        const online = isProfileOnline(profile);
+      const participantCard = (label, profile, fallback = {}) => {
+        const displayProfile = profile || (fallback.username ? { username: fallback.username, lastOnlineAt: fallback.lastOnlineAt || "" } : null);
+        const fallbackOnline = Boolean(fallback.lastOnlineAt && Date.now() - timestampMs(fallback.lastOnlineAt) <= OnlineWindowMs);
+        const online = isProfileOnline(displayProfile) || fallbackOnline;
         return h("div", { className: "chat-participant" },
           h("span", { className: `presence-dot ${online ? "online" : "offline"}` }),
           h("div", {},
-            h("strong", {}, protectedText(label, "role-term"), " ", h("span", { className: "notranslate", translate: "no", text: profile?.username || "未分配" })),
-            h("small", { text: online ? "在线" : profile?.lastOnlineAt ? `离线 · 最后在线 ${formatDate(profile.lastOnlineAt)}` : "离线" })
+            h("strong", {}, protectedText(label, "role-term"), " ", h("span", { className: "notranslate", translate: "no", text: displayProfile?.username || "未分配" })),
+            h("small", { text: online ? "在线" : displayProfile?.lastOnlineAt ? `离线 · 最后在线 ${formatDate(displayProfile.lastOnlineAt)}` : "离线" })
           )
         );
       };
-      Data.pruneExpiredChats();
-      const messages = Data.chatMessages(order.id);
       const activeRush = ["pending", "accepted", "breached", "continue_requested", "continued"].includes(order.rush?.status);
       const makeTool = (label, iconName, enabled, disabledReason, onClick) => h("button", {
         className: `chat-tool ${enabled ? "" : "disabled"}`,
@@ -6717,168 +7075,17 @@
         }
       }
 
-      const messageNodes = [];
-      let previousDateKey = "";
-      let previousSender = "";
-      let previousTime = 0;
-      messages.forEach((message) => {
-        const createdAt = new Date(message.createdAt || Date.now());
-        const dateKey = Number.isFinite(createdAt.getTime()) ? createdAt.toISOString().slice(0, 10) : "";
-        if (dateKey && dateKey !== previousDateKey) {
-          messageNodes.push(h("div", { className: "chat-day-separator" }, h("span", { text: formatFullDate(createdAt).slice(0, 10) })));
-          previousDateKey = dateKey;
-          previousSender = "";
-          previousTime = 0;
-        }
-        if (message.type === "system") {
-          messageNodes.push(h("div", { className: "chat-message system" }, h("span", { text: message.text }), h("small", { text: formatFullDate(message.createdAt) })));
-          previousSender = "";
-          previousTime = 0;
-          return;
-        }
-        const own = normalize(message.sender) === normalize(currentUsername);
-        const readBy = Array.isArray(message.readBy) ? message.readBy : [];
-        const counterpartRead = counterpartUsername && readBy.some((item) => normalize(item) === normalize(counterpartUsername));
-        const sentTime = timestampMs(message.createdAt);
-        const compact = previousSender === normalize(message.sender) && sentTime - previousTime < 4 * 60 * 1000;
-        messageNodes.push(h("div", { className: `chat-message ${own ? "own" : ""} ${compact ? "compact" : ""}` },
-          compact ? null : h("div", { className: "chat-message-meta" },
-            h("strong", { className: "notranslate", translate: "no", text: message.sender }),
-            h("small", { text: formatDate(message.createdAt) })
-          ),
-          message.text ? h("p", { text: message.text }) : null,
-          message.imageData ? h("button", { className: "chat-image-button", type: "button", onClick: () => UI.openModal(h("div", { className: "modal-card modal-wide slide-up" },
-            h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
-            h("img", { className: "chat-image-large", src: message.imageData, alt: "聊天图片" })
-          )) }, h("img", { className: "chat-image", src: message.imageData, alt: "聊天图片" })) : null,
-          own && counterpartUsername ? h("div", { className: `read-state ${counterpartRead ? "read" : "unread"}` }, counterpartRead ? "已读" : "未读") : null
-        ));
-        previousSender = normalize(message.sender);
-        previousTime = sentTime;
-      });
-      if (!messageNodes.length) {
-        messageNodes.push(h("div", { className: "chat-empty", text: "暂无消息。" }));
-      }
-
-      let selectedImageData = "";
-      const attachmentPreview = h("div", { className: "chat-attachment-preview" });
-      const textInput = h("textarea", { name: "message", rows: "2", placeholder: "输入消息，Enter 发送，Shift + Enter 换行" });
-      const fileInput = h("input", { type: "file", name: "image", accept: "image/*" });
-      const form = h("form", { className: "chat-compose" },
-        textInput,
-        h("label", { className: "image-picker" }, icon("fa-regular fa-image"), "图片", fileInput),
-        h("button", { className: "button button-primary button-small", type: "submit" }, "发送"),
-        attachmentPreview
-      );
-      const renderAttachmentPreview = () => {
-        clear(attachmentPreview);
-        attachmentPreview.classList.toggle("is-visible", Boolean(selectedImageData));
-        if (!selectedImageData) {
-          return;
-        }
-        attachmentPreview.append(
-          h("img", { src: selectedImageData, alt: "待发送图片" }),
-          h("button", {
-            className: "icon-button square",
-            type: "button",
-            onClick: () => {
-              selectedImageData = "";
-              fileInput.value = "";
-              renderAttachmentPreview();
-            },
-            ariaLabel: "移除图片"
-          }, icon("fa-solid fa-xmark"))
-        );
-      };
-      textInput.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" && !event.shiftKey) {
-          event.preventDefault();
-          form.requestSubmit();
-        }
-      });
-      fileInput.addEventListener("change", () => {
-        const file = fileInput.files?.[0];
-        if (!file) {
-          selectedImageData = "";
-          renderAttachmentPreview();
-          return;
-        }
-        if (!file.type.startsWith("image/")) {
-          UI.toast("图片格式不支持", "请选择图片文件。");
-          fileInput.value = "";
-          return;
-        }
-        if (file.size > 3 * 1024 * 1024) {
-          UI.toast("图片过大", "聊天图片请控制在 3MB 内。");
-          fileInput.value = "";
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = () => {
-          selectedImageData = String(reader.result || "");
-          renderAttachmentPreview();
-        };
-        reader.readAsDataURL(file);
-      });
-      form.addEventListener("submit", (event) => {
-        event.preventDefault();
-        const loader = UI.beginInteractionLoading(form.querySelector("button[type='submit']"));
-        const text = textInput.value.trim();
-        if (!text && !selectedImageData) {
-          UI.toast("请输入内容", "可以发送文字或图片。");
-          loader?.done();
-          return;
-        }
-        const send = async () => {
-          const messagePayload = {
-            type: selectedImageData ? "image" : "text",
-            text,
-            imageData: selectedImageData
-          };
-          const backendResult = await Backend.addChatMessage(order.id, messagePayload);
-          if (backendResult.offline) {
-            Data.addChatMessage(order.id, messagePayload);
-          } else if (!backendResult.ok) {
-            UI.toast("操作失败", backendResult.message || "请稍后重试。");
-            return;
-          }
-          this.openOrderChat(order.id);
-        };
-        send().finally(() => loader?.done());
-      });
-      const messageList = h("div", { className: "chat-messages" }, messageNodes);
-
-      UI.openModal(
-        h("div", { className: "modal-card modal-wide chat-modal slide-up" },
-          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
-          h("h2", { text: "订单联系" }),
-          h("div", { className: "chat-header" },
-            h("div", {},
-              h("p", {}, "订单 ", h("span", { className: "mono notranslate", translate: "no", text: order.id })),
-              h("small", { text: `未读消息：${Data.unreadChatCount(order.id, currentUsername)} 条` })
-            ),
-            h("div", { className: "chat-presence" },
-              participantCard("Gamer", customerProfile),
-              participantCard("Vector", staffProfile)
-            )
-          ),
-          order.rush ? h("p", { className: "balance-note order-locked-term notranslate", translate: "no", text: `${rushStatusLabel(order.rush)}${order.rush.deadlineAt ? ` / ${contentLanguage() === "zh-CN" ? "期限" : "Deadline"}: ${formatFullDate(order.rush.deadlineAt)}` : ""}` }) : null,
-          h("div", { className: "chat-shell" },
-            h("aside", { className: "chat-sidebar" },
-              h("h3", { text: "操作" }),
-              tools.length ? tools : h("p", { text: "暂无可用操作。" })
-            ),
-            h("section", { className: "chat-panel" },
-              messageList,
-              form
-            )
-          )
-        )
-      );
-      window.setTimeout(() => {
-        messageList.scrollTop = messageList.scrollHeight;
-        textInput.focus();
-      }, 0);
+      UI.openModal(OrderChatShell({
+        order,
+        tools,
+        customerProfile,
+        staffProfile,
+        participantCard,
+        conversationState,
+        currentUsername,
+        handledBy,
+        role: State.currentUser?.role || "customer"
+      }));
     },
     openRushForm(orderId) {
       const order = Data.orderById(orderId);
@@ -8378,6 +8585,7 @@
       Translation.localizeStaticUi(document.body);
       Translation.refresh();
       UI.hideMenu();
+      ChatProvider.updatePublicWidget();
     }
   };
 
