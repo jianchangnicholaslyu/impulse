@@ -1140,6 +1140,7 @@
     "正在上传图片...": { en: "Uploading image..." },
     "图片已保存为本地数据。": { en: "Image saved as local data." },
     "图片上传失败，已保留为本地数据。": { en: "Image upload failed. Local data was kept." },
+    "Image upload is temporarily unavailable.": { "zh-CN": "图片上传暂未开放。", "zh-TW": "圖片上傳暫未開放。", en: "Image upload is temporarily unavailable.", fr: "Le televersement d'image est temporairement indisponible.", ja: "画像のアップロードは現在利用できません。", ko: "이미지 업로드는 현재 사용할 수 없습니다.", es: "La carga de imagenes no esta disponible temporalmente." },
     "头像保存失败，请换用更小的图片。": { en: "Avatar saving failed. Please use a smaller image." },
     "头像已更新": { en: "Avatar Updated" },
     "头像已移除": { en: "Avatar Removed" },
@@ -1971,6 +1972,21 @@ function orderChatReadOnlyNotice() {
     : "This order has ended. Chat history will be automatically deleted after 7 days.";
 }
 
+function chatMessageMergeKey(message) {
+  return message?.id || `${message?.sender || "SYSTEM"}:${message?.createdAt || ""}:${message?.text || ""}:${message?.imageUrl || message?.imageData || ""}`;
+}
+
+function mergeChatMessageList(localMessages = [], remoteMessages = []) {
+  const byKey = new Map();
+  [...(Array.isArray(localMessages) ? localMessages : []), ...(Array.isArray(remoteMessages) ? remoteMessages : [])].forEach((message) => {
+    if (!message) return;
+    const key = chatMessageMergeKey(message);
+    if (!key) return;
+    byKey.set(key, { ...(byKey.get(key) || {}), ...message, id: message.id || key });
+  });
+  return Array.from(byKey.values()).sort((a, b) => (timestampMs(a.createdAt) || 0) - (timestampMs(b.createdAt) || 0));
+}
+
 function orderChatContextLine(order, vectorName) {
   const orderId = order?.id || order?.orderNumber || "order";
   const vector = vectorName || order?.handledBy || order?.assignedVectorName || order?.assigned_vector_id || "Vector";
@@ -1978,12 +1994,89 @@ function orderChatContextLine(order, vectorName) {
   return `Order: ${orderId} | Vector: ${vector} | Item: ${service}`;
 }
 
+const PlatformRealtimeConfig = {
+  promise: null,
+  async load() {
+    if (!this.promise) {
+      this.promise = fetch("/api/public-config", { headers: { Accept: "application/json" } })
+        .then((response) => response.ok ? response.json() : null)
+        .catch(() => null);
+    }
+    return this.promise;
+  }
+};
+
+function realtimeWebsocketUrl(config) {
+  const supabase = config?.supabase || {};
+  const url = String(supabase.url || "").replace(/\/+$/, "");
+  const anonKey = String(supabase.anonKey || "");
+  if (!url || !anonKey) return "";
+  return `${url.replace(/^http/i, "ws")}/realtime/v1/websocket?apikey=${encodeURIComponent(anonKey)}&vsn=1.0.0`;
+}
+
+function chatMessageFromRealtimeRow(row = {}) {
+  const contentType = normalizeChatContentType(row.content_type, row);
+  const messageType = normalizeChatMessageType({
+    message_type: row.message_type,
+    type: contentType,
+    role: row.sender_role
+  });
+  const metadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata) ? row.metadata : {};
+  const readAt = row.read_at && typeof row.read_at === "object" && !Array.isArray(row.read_at) ? row.read_at : {};
+  return {
+    id: row.id || createId("msg"),
+    orderId: row.order_id || "",
+    sender: row.sender_username || "SYSTEM",
+    role: row.sender_role || "system",
+    type: contentType,
+    messageType,
+    message_type: messageType,
+    text: String(row.body || "").slice(0, 5000),
+    imageData: "",
+    imageUrl: row.image_url || "",
+    metadata,
+    readBy: Array.isArray(row.read_by) ? row.read_by : [],
+    readAt,
+    createdAt: row.created_at || new Date().toISOString()
+  };
+}
+
 const PlatformChatRuntime = {
   timers: new Map(),
+  realtimeByOrder: new Map(),
   typingByOrder: new Map(),
+  presenceByOrder: new Map(),
+  presenceTimers: new Map(),
   typingTimers: new Map(),
+  mergeMessages(orderId, messages = []) {
+    if (!orderId || !Array.isArray(messages) || !messages.length) return;
+    const chats = Data.chats();
+    chats[orderId] = mergeChatMessageList(chats[orderId] || [], messages);
+    Data.saveChats(chats);
+  },
   updateTyping(orderId, typing = {}) {
     this.typingByOrder.set(orderId, typing && typeof typing === "object" ? typing : {});
+  },
+  updatePresence(orderId, presence = {}) {
+    if (!orderId) return;
+    const current = this.presenceByOrder.get(orderId) || {};
+    const next = { ...current };
+    Object.entries(presence && typeof presence === "object" ? presence : {}).forEach(([username, entry]) => {
+      if (!username || !entry) return;
+      next[username] = {
+        ...next[username],
+        ...entry,
+        username: entry.username || username,
+        lastOnlineAt: entry.lastOnlineAt || entry.updatedAt || next[username]?.lastOnlineAt || ""
+      };
+    });
+    this.presenceByOrder.set(orderId, next);
+    window.dispatchEvent(new CustomEvent("impulse:chat-presence", { detail: { orderId } }));
+  },
+  presence(orderId, username) {
+    const presence = this.presenceByOrder.get(orderId) || {};
+    const key = normalize(username);
+    return Object.values(presence).find((entry) => normalize(entry?.username) === key) || null;
   },
   typing(orderId) {
     const typing = this.typingByOrder.get(orderId) || {};
@@ -2000,23 +2093,152 @@ const PlatformChatRuntime = {
     try {
       const result = await Backend.listChatMessages(orderId);
       if (result?.ok) {
+        if (Array.isArray(result.messages)) {
+          this.mergeMessages(orderId, result.messages);
+        }
         this.updateTyping(orderId, result.typing || {});
+        this.updatePresence(orderId, result.presence || {});
         render?.();
       }
     } catch {
       // Local state remains available if the backend is temporarily unreachable.
     }
   },
+  async connectRealtime(orderId, render) {
+    const config = await PlatformRealtimeConfig.load();
+    const websocketUrl = realtimeWebsocketUrl(config);
+    const supabase = config?.supabase || {};
+    const messageTable = supabase.messagesTable || "messages";
+    const presenceTable = supabase.presenceTable || "message_presence";
+    const accessToken = String(supabase.anonKey || "");
+    if (!websocketUrl || !window.WebSocket) return null;
+
+    let socket = null;
+    let heartbeatTimer = null;
+    let reconnectTimer = null;
+    let closed = false;
+    let ref = 1;
+    const messageTopic = `realtime:public:${messageTable}`;
+    const presenceTopic = `realtime:public:${presenceTable}`;
+    const nextRef = () => String(ref++);
+    const send = (event, payload = {}, topicName = messageTopic) => {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      socket.send(JSON.stringify([null, nextRef(), topicName, event, payload]));
+    };
+    const joinTable = (topicName, tableName) => {
+      send("phx_join", {
+        config: {
+          broadcast: { self: false },
+          presence: { key: "" },
+          postgres_changes: [{
+            event: "*",
+            schema: "public",
+            table: tableName,
+            filter: `order_id=eq.${orderId}`
+          }]
+        },
+        access_token: accessToken
+      }, topicName);
+    };
+    const handleRecord = (row) => {
+      if (!row || row.order_id !== orderId) return;
+      this.mergeMessages(orderId, [chatMessageFromRealtimeRow(row)]);
+      render?.();
+      App.updateHeader?.();
+    };
+    const handlePresence = (row) => {
+      if (!row || row.order_id !== orderId || !row.username) return;
+      this.updatePresence(orderId, {
+        [row.username]: {
+          username: row.username,
+          role: row.role,
+          isTyping: Boolean(row.is_typing),
+          updatedAt: row.updated_at || row.last_seen_at || "",
+          lastOnlineAt: row.last_seen_at || row.updated_at || ""
+        }
+      });
+    };
+    const open = () => {
+      socket = new WebSocket(websocketUrl);
+      socket.addEventListener("open", () => {
+        joinTable(messageTopic, messageTable);
+        if (presenceTable) joinTable(presenceTopic, presenceTable);
+        heartbeatTimer = window.setInterval(() => send("heartbeat", {}, "phoenix"), 25000);
+      });
+      socket.addEventListener("message", (event) => {
+        let packet = null;
+        try {
+          packet = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        const eventName = Array.isArray(packet) ? packet[3] : packet?.event;
+        const payload = Array.isArray(packet) ? packet[4] : packet?.payload;
+        if (eventName !== "postgres_changes") return;
+        const row = payload?.data?.record || payload?.record || payload?.new || null;
+        const tableName = payload?.data?.table || payload?.table || "";
+        if (!row) return;
+        if (tableName === presenceTable || Object.prototype.hasOwnProperty.call(row, "is_typing")) {
+          handlePresence(row);
+        } else {
+          handleRecord(row);
+        }
+      });
+      socket.addEventListener("close", () => {
+        if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+        if (closed) return;
+        reconnectTimer = window.setTimeout(open, 4000);
+      });
+      socket.addEventListener("error", () => {
+        try {
+          socket?.close();
+        } catch {
+          // The polling fallback will keep the thread fresh.
+        }
+      });
+    };
+    open();
+    return {
+      close() {
+        closed = true;
+        if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+        if (reconnectTimer) window.clearTimeout(reconnectTimer);
+        try {
+          socket?.close();
+        } catch {
+          // Ignore close races during modal teardown.
+        }
+      }
+    };
+  },
   start(orderId, render) {
     this.stop(orderId, { silent: true });
     this.refresh(orderId, render);
-    const timer = window.setInterval(() => this.refresh(orderId, render), 3500);
+    this.pulsePresence(orderId);
+    this.connectRealtime(orderId, render).then((connection) => {
+      if (connection) {
+        const previous = this.realtimeByOrder.get(orderId);
+        previous?.close?.();
+        this.realtimeByOrder.set(orderId, connection);
+      }
+    }).catch(() => {});
+    const timer = window.setInterval(() => this.refresh(orderId, render), 12000);
     this.timers.set(orderId, timer);
+    const presenceTimer = window.setInterval(() => this.pulsePresence(orderId), 25000);
+    this.presenceTimers.set(orderId, presenceTimer);
   },
   stop(orderId, options = {}) {
     const timer = this.timers.get(orderId);
     if (timer) window.clearInterval(timer);
     this.timers.delete(orderId);
+    const presenceTimer = this.presenceTimers.get(orderId);
+    if (presenceTimer) window.clearInterval(presenceTimer);
+    this.presenceTimers.delete(orderId);
+    const realtime = this.realtimeByOrder.get(orderId);
+    realtime?.close?.();
+    this.realtimeByOrder.delete(orderId);
+    this.presenceByOrder.delete(orderId);
     const typingTimer = this.typingTimers.get(orderId);
     if (typingTimer) window.clearTimeout(typingTimer);
     this.typingTimers.delete(orderId);
@@ -2025,9 +2247,21 @@ const PlatformChatRuntime = {
       Backend.setChatTyping(orderId, false).catch(() => {});
     }
   },
+  pulsePresence(orderId) {
+    if (!State.currentUser || !orderId) return;
+    Backend.setChatTyping(orderId, false).then((result) => {
+      if (result?.presence) {
+        this.updatePresence(orderId, result.presence);
+      }
+    }).catch(() => {});
+  },
   pulseTyping(orderId) {
     if (!State.currentUser || !orderId) return;
-    Backend.setChatTyping(orderId, true).catch(() => {});
+    Backend.setChatTyping(orderId, true).then((result) => {
+      if (result?.presence) {
+        this.updatePresence(orderId, result.presence);
+      }
+    }).catch(() => {});
     const oldTimer = this.typingTimers.get(orderId);
     if (oldTimer) window.clearTimeout(oldTimer);
     const timer = window.setTimeout(() => Backend.setChatTyping(orderId, false).catch(() => {}), 1600);
@@ -2052,7 +2286,6 @@ function OrderChatPanel(context = {}) {
     );
   }
 
-  let imageState = { data: "", name: "" };
   let sending = false;
   const thread = h("div", { className: "chat-thread", role: "log", "aria-live": "polite" });
   const typingRow = h("div", { className: "chat-typing", "aria-live": "polite" });
@@ -2073,55 +2306,10 @@ function OrderChatPanel(context = {}) {
       }
     }
   });
-  const imageInput = h("input", {
-    type: "file",
-    accept: "image/*",
-    className: "visually-hidden",
-    onChange: async (event) => {
-      if (readOnly) {
-        event.target.value = "";
-        return;
-      }
-      const file = event.target.files?.[0];
-      if (!file) return;
-      if (file.size > ChatImageMaxBytes) {
-        alert(localizeStaticPhrase("Image must be 5MB or smaller."));
-        event.target.value = "";
-        return;
-      }
-      try {
-        imageState = { data: await readFileAsDataUrl(file), name: file.name || "image" };
-        renderAttachmentPreview();
-      } catch {
-        alert(localizeStaticPhrase("Image upload failed."));
-      }
-    }
-  });
-  const attachmentPreview = h("div", { className: "chat-attachment-preview" });
   const sendButton = h("button", { className: "primary-btn", type: "button", disabled: readOnly, onClick: () => sendMessage() },
     h("i", { className: "fa-solid fa-paper-plane" }),
     h("span", {}, localizeStaticPhrase("Send"))
   );
-
-  function renderAttachmentPreview() {
-    attachmentPreview.innerHTML = "";
-    attachmentPreview.classList.toggle("visible", Boolean(imageState.data));
-    if (!imageState.data) return;
-    attachmentPreview.append(
-      h("img", { src: imageState.data, alt: "" }),
-      h("span", {}, imageState.name),
-      h("button", {
-        type: "button",
-        className: "ghost-btn icon-only",
-        title: localizeStaticPhrase("Remove image"),
-        onClick: () => {
-          imageState = { data: "", name: "" };
-          imageInput.value = "";
-          renderAttachmentPreview();
-        }
-      }, h("i", { className: "fa-solid fa-xmark" }))
-    );
-  }
 
   function renderMessages() {
     const messages = Data.chatMessages(order.id).slice().sort((a, b) => Date.parse(a.createdAt || "") - Date.parse(b.createdAt || ""));
@@ -2165,32 +2353,39 @@ function OrderChatPanel(context = {}) {
   async function sendMessage() {
     if (readOnly) return;
     const text = textarea.value.trim();
-    if (sending || (!text && !imageState.data)) return;
+    if (sending || !text) return;
     sending = true;
     sendButton.disabled = true;
+    const optimisticId = createId("msg");
+    const createdAt = new Date().toISOString();
     const payload = {
-      type: imageState.data ? "image" : "text",
+      id: optimisticId,
+      sender: State.currentUser?.username || "",
+      role: State.currentUser?.role || context.role || "customer",
+      type: "text",
       messageType: "user_message",
       message_type: "user_message",
       text,
-      imageData: imageState.data,
+      createdAt,
       metadata: { orderContext: contextLine }
     };
+    Data.addChatMessage(order.id, payload, { notify: false });
+    textarea.value = "";
+    renderMessages();
+    App.updateHeader?.();
     try {
       const result = await Backend.addChatMessage(order.id, payload);
       if (!result?.ok && Backend.online) {
+        const chats = Data.chats();
+        chats[order.id] = (chats[order.id] || []).filter((message) => message.id !== optimisticId);
+        Data.saveChats(chats);
+        renderMessages();
         alert(result?.message || localizeStaticPhrase("Message failed."));
         return;
       }
       if (!result?.ok) {
-        Data.addChatMessage(order.id, payload);
+        Backend.queueSync?.("chat-offline-message");
       }
-      textarea.value = "";
-      imageState = { data: "", name: "" };
-      imageInput.value = "";
-      renderAttachmentPreview();
-      await Backend.markChatRead(order.id).catch(() => {});
-      Data.markChatRead(order.id);
       renderMessages();
       App.updateHeader?.();
     } finally {
@@ -2216,19 +2411,24 @@ function OrderChatPanel(context = {}) {
       h("button", {
         type: "button",
         className: "ghost-btn icon-only",
-        title: localizeStaticPhrase("Upload image"),
-        onClick: () => imageInput.click()
+        disabled: true,
+        title: localizeStaticPhrase("Image upload is temporarily unavailable.")
       }, h("i", { className: "fa-regular fa-image" })),
       textarea,
-      sendButton,
-      imageInput,
-      attachmentPreview
+      sendButton
     )
   );
 
   window.setTimeout(async () => {
     renderMessages();
-    await Backend.listChatMessages(order.id).catch(() => null);
+    const initial = await Backend.listChatMessages(order.id).catch(() => null);
+    if (initial?.ok) {
+      if (Array.isArray(initial.messages)) {
+        PlatformChatRuntime.mergeMessages(order.id, initial.messages);
+      }
+      PlatformChatRuntime.updateTyping(order.id, initial.typing || {});
+      PlatformChatRuntime.updatePresence(order.id, initial.presence || {});
+    }
     await Backend.markChatRead(order.id).catch(() => null);
     Data.markChatRead(order.id);
     PlatformChatRuntime.start(order.id, renderMessages);
@@ -2275,7 +2475,15 @@ function mailboxHasClaim(message) {
     if (!order) {
       return [];
     }
-    const participants = [order.customerUsername, order.handledBy].filter(Boolean);
+    const participants = [
+      order.customerUsername,
+      order.handledBy,
+      order.assignedVectorId,
+      order.assigned_vector_id,
+      order.assignedVectorName,
+      order.vectorUsername,
+      order.staffUsername
+    ].filter(Boolean).filter((name, index, list) => list.findIndex((item) => normalize(item) === normalize(name)) === index);
     if (!participants.length) {
       return [];
     }
@@ -3300,7 +3508,7 @@ function mailboxHasClaim(message) {
       }
       return changed;
     },
-    addChatMessage(orderId, message) {
+    addChatMessage(orderId, message, options = {}) {
       this.touchCurrentUser();
       const chats = this.chats();
       const sender = message.sender || (State.currentUser ? State.currentUser.username : "SYSTEM");
@@ -3330,7 +3538,9 @@ function mailboxHasClaim(message) {
       };
       chats[orderId] = [...(chats[orderId] || []), entry];
       this.saveChats(chats);
-      this.addChatMailboxNotifications(this.orderById(orderId), entry);
+      if (options.notify !== false) {
+        this.addChatMailboxNotifications(this.orderById(orderId), entry);
+      }
       return entry;
     },
     markChatRead(orderId, username) {
@@ -7231,16 +7441,41 @@ function mailboxHasClaim(message) {
       const customerProfile = Data.profileByUsername(order.customerUsername);
       const staffProfile = Data.profileByUsername(handledBy);
       const participantCard = (label, profile, fallback = {}) => {
-        const displayProfile = profile || (fallback.username ? { username: fallback.username, lastOnlineAt: fallback.lastOnlineAt || "" } : null);
-        const fallbackOnline = Boolean(fallback.lastOnlineAt && Date.now() - timestampMs(fallback.lastOnlineAt) <= OnlineWindowMs);
-        const online = isProfileOnline(displayProfile) || fallbackOnline;
-        return h("div", { className: "chat-participant" },
-          h("span", { className: `presence-dot ${online ? "online" : "offline"}` }),
+        const baseProfile = profile || (fallback.username ? { username: fallback.username, lastOnlineAt: fallback.lastOnlineAt || "" } : null);
+        const username = baseProfile?.username || fallback.username || "";
+        const dot = h("span", { className: "presence-dot offline" });
+        const nameNode = h("span", { className: "notranslate", translate: "no" });
+        const statusNode = h("small", {});
+        const row = h("div", { className: "chat-participant" },
+          dot,
           h("div", {},
-            h("strong", {}, protectedText(label, "role-term"), " ", h("span", { className: "notranslate", translate: "no", text: displayProfile?.username || "未分配" })),
-            h("small", { text: online ? "在线" : displayProfile?.lastOnlineAt ? `离线 · 最后在线 ${formatDate(displayProfile.lastOnlineAt)}` : "离线" })
+            h("strong", {}, protectedText(label, "role-term"), " ", nameNode),
+            statusNode
           )
         );
+        const renderPresence = () => {
+          const live = username ? PlatformChatRuntime.presence(order.id, username) : null;
+          const lastOnlineAt = live?.lastOnlineAt || live?.updatedAt || baseProfile?.lastOnlineAt || fallback.lastOnlineAt || "";
+          const displayProfile = baseProfile ? { ...baseProfile, lastOnlineAt } : (username ? { username, lastOnlineAt } : null);
+          const online = isProfileOnline(displayProfile) || Boolean(live?.lastOnlineAt && Date.now() - timestampMs(live.lastOnlineAt) <= OnlineWindowMs);
+          dot.className = `presence-dot ${online ? "online" : "offline"}`;
+          nameNode.textContent = displayProfile?.username || "未分配";
+          statusNode.textContent = online ? "在线" : displayProfile?.lastOnlineAt ? `离线 · 最后在线 ${formatDate(displayProfile.lastOnlineAt)}` : "离线";
+        };
+        const handlePresence = (event) => {
+          if (event.detail?.orderId === order.id) {
+            renderPresence();
+          }
+        };
+        const cleanup = (event) => {
+          if (event.detail?.orderId !== order.id) return;
+          window.removeEventListener("impulse:chat-presence", handlePresence);
+          window.removeEventListener("impulse:chat-close", cleanup);
+        };
+        window.addEventListener("impulse:chat-presence", handlePresence);
+        window.addEventListener("impulse:chat-close", cleanup);
+        renderPresence();
+        return row;
       };
       const activeRush = ["pending", "accepted", "breached", "continue_requested", "continued"].includes(order.rush?.status);
       const makeTool = (label, iconName, enabled, disabledReason, onClick) => h("button", {
@@ -7293,7 +7528,10 @@ function mailboxHasClaim(message) {
         handledBy,
         role: State.currentUser?.role || "customer"
       }), {
-        onClose: () => PlatformChatRuntime.stop(order.id)
+        onClose: () => {
+          window.dispatchEvent(new CustomEvent("impulse:chat-close", { detail: { orderId: order.id } }));
+          PlatformChatRuntime.stop(order.id);
+        }
       });
     },
     openRushForm(orderId) {

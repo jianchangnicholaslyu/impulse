@@ -502,16 +502,19 @@ async function fetchSupabasePresence(orderId) {
     if (!Array.isArray(rows)) {
       return {};
     }
-    return rows.reduce((typing, row) => {
-      if (row?.is_typing) {
-        typing[row.username] = {
-          username: row.username,
-          role: row.role || "customer",
-          isTyping: true,
-          updatedAt: row.updated_at || row.last_seen_at || nowIso()
-        };
+    return rows.reduce((presence, row) => {
+      if (!row?.username) {
+        return presence;
       }
-      return typing;
+      const updatedAt = row.updated_at || row.last_seen_at || nowIso();
+      presence[row.username] = {
+        username: row.username,
+        role: row.role || "customer",
+        isTyping: Boolean(row.is_typing),
+        updatedAt,
+        lastOnlineAt: row.last_seen_at || updatedAt
+      };
+      return presence;
     }, {});
   } catch {
     return null;
@@ -1240,7 +1243,15 @@ function chatAccess(db, orderId, user) {
   if (!order) {
     return { ok: false, message: "订单不存在" };
   }
-  const allowed = [order.customerUsername, order.handledBy].filter(Boolean).map(normalize);
+  const allowed = [
+    order.customerUsername,
+    order.handledBy,
+    order.assignedVectorId,
+    order.assigned_vector_id,
+    order.assignedVectorName,
+    order.vectorUsername,
+    order.staffUsername
+  ].filter(Boolean).map(normalize);
   if (!allowed.includes(normalize(user.username)) && user.role !== "admin") {
     return { ok: false, message: "无权查看" };
   }
@@ -1280,7 +1291,7 @@ function addChatMessage(db, orderId, message, actor = "SYSTEM") {
   const sender = message.sender || actor;
   const createdAt = message.createdAt || nowIso();
   const next = {
-    id: createId("msg"),
+    id: message.id || createId("msg"),
     orderId,
     sender,
     role: message.role || "system",
@@ -1439,7 +1450,15 @@ function chatMailboxRecipients(order, message) {
   if (!order) {
     return [];
   }
-  const participants = [order.customerUsername, order.handledBy].filter(Boolean);
+  const participants = [
+    order.customerUsername,
+    order.handledBy,
+    order.assignedVectorId,
+    order.assigned_vector_id,
+    order.assignedVectorName,
+    order.vectorUsername,
+    order.staffUsername
+  ].filter(Boolean).filter((name, index, list) => list.findIndex((item) => normalize(item) === normalize(name)) === index);
   if (!participants.length) {
     return [];
   }
@@ -2082,43 +2101,34 @@ async function handleAction(action, payload = {}, request = {}) {
     if (orderChatIsReadOnly(access.order)) {
       return { ok: false, message: "该订单已经结束，聊天记录将在7日后自动删除。" };
     }
+    if (normalizeChatContentType(payload.type, payload) === "image" || payload.imageData || payload.imageUrl) {
+      return { ok: false, message: "图片上传暂未开放。" };
+    }
     const profile = profileByUsername(db, request.user.username);
     if (profile) {
       profile.lastOnlineAt = nowIso();
     }
-    let chatImageData = payload.imageData;
-    let chatImageUrl = payload.imageUrl;
-    if (payload.imageData && normalizeChatContentType(payload.type, payload) === "image") {
-      const uploaded = await uploadSupabaseAsset({
-        dataUrl: payload.imageData,
-        filename: payload.filename || "chat-image",
-        scope: `chat-${payload.orderId}`
-      }, request.user).catch(() => null);
-      if (uploaded?.ok) {
-        chatImageData = "";
-        chatImageUrl = uploaded.url;
-      }
-    }
     const result = addChatMessage(db, payload.orderId, {
+      id: payload.id,
       sender: request.user.username,
       role: request.user.role,
-      type: payload.type,
+      type: "text",
       messageType: payload.messageType,
       message_type: payload.message_type,
       text: payload.text,
-      imageData: chatImageData,
-      imageUrl: chatImageUrl,
-      metadata: {
-        ...(payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata) ? payload.metadata : {}),
-        imageStoredExternally: Boolean(chatImageUrl && !chatImageData)
-      }
+      createdAt: payload.createdAt,
+      metadata: payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata) ? payload.metadata : {}
     }, request.user.username);
     if (!result.ok) {
       return result;
     }
-    await persistSupabaseMessage(payload.orderId, result.message);
+    const realtimePersisted = await persistSupabaseMessage(payload.orderId, result.message);
+    if (realtimePersisted) {
+      writeDb(db).catch(() => {});
+      return { ok: true, message: result.message, realtime: true };
+    }
     await writeDb(db);
-    return { ok: true, message: result.message, snapshot: sanitizeSnapshot(db) };
+    return { ok: true, message: result.message, realtime: false, snapshot: sanitizeSnapshot(db) };
   }
 
   if (action === "listChatMessages") {
@@ -2128,24 +2138,27 @@ async function handleAction(action, payload = {}, request = {}) {
     if (profile) {
       profile.lastOnlineAt = nowIso();
     }
+    let messages = db.orderChats[payload.orderId] || [];
     const remoteMessages = await fetchSupabaseMessages(payload.orderId);
     if (Array.isArray(remoteMessages)) {
-      db.orderChats[payload.orderId] = mergeChatMessages(db.orderChats[payload.orderId] || [], remoteMessages);
+      messages = mergeChatMessages(messages, remoteMessages);
+      db.orderChats[payload.orderId] = messages;
     }
-    const remoteTyping = await fetchSupabasePresence(payload.orderId);
-    if (remoteTyping && typeof remoteTyping === "object") {
+    const remotePresence = await fetchSupabasePresence(payload.orderId);
+    if (remotePresence && typeof remotePresence === "object") {
+      const typing = Object.fromEntries(Object.entries(remotePresence).filter(([, entry]) => entry?.isTyping));
       db.chatTyping[payload.orderId] = {
         ...(db.chatTyping[payload.orderId] || {}),
-        ...remoteTyping
+        ...typing
       };
     }
     pruneChatTyping(db);
-    await writeDb(db);
     return {
       ok: true,
-      messages: db.orderChats[payload.orderId] || [],
+      messages,
       typing: db.chatTyping[payload.orderId] || {},
-      snapshot: sanitizeSnapshot(db)
+      presence: remotePresence && typeof remotePresence === "object" ? remotePresence : {},
+      realtime: Array.isArray(remoteMessages)
     };
   }
 
@@ -2197,9 +2210,26 @@ async function handleAction(action, payload = {}, request = {}) {
     if (profile) {
       profile.lastOnlineAt = nowIso();
     }
-    await persistSupabasePresence(payload.orderId, request.user, Boolean(payload.isTyping));
+    const presencePersisted = await persistSupabasePresence(payload.orderId, request.user, Boolean(payload.isTyping));
+    if (presencePersisted) {
+      const updatedAt = nowIso();
+      return {
+        ok: true,
+        typing: db.chatTyping[payload.orderId] || {},
+        presence: {
+          [request.user.username]: {
+            username: request.user.username,
+            role: request.user.role,
+            isTyping: Boolean(payload.isTyping),
+            updatedAt,
+            lastOnlineAt: updatedAt
+          }
+        },
+        realtime: true
+      };
+    }
     await writeDb(db);
-    return { ok: true, typing: db.chatTyping[payload.orderId] || {}, snapshot: sanitizeSnapshot(db) };
+    return { ok: true, typing: db.chatTyping[payload.orderId] || {}, realtime: false, snapshot: sanitizeSnapshot(db) };
   }
 
   return { ok: false, message: "Unknown backend action." };
