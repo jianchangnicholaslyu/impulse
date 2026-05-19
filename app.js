@@ -2662,10 +2662,14 @@ function OrderChatPanel(context = {}) {
       ),
       h("span", { className: "order-chat-badge" }, chatUiText("快捷消息", "Quick Messages"))
     ),
-    thread,
-    typingRow,
-    quickPanel,
-    statusRow
+    h("div", { className: "quick-chat-body" },
+      thread,
+      h("aside", { className: "quick-chat-actions" },
+        quickPanel,
+        typingRow,
+        statusRow
+      )
+    )
   );
 
   window.setTimeout(async () => {

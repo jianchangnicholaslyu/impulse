@@ -1751,7 +1751,7 @@ button.admin-table-row:hover {
 }
 
 .chat-modal {
-  width: min(1180px, 100%);
+  width: min(1060px, 100%);
 }
 
 .chat-titlebar {
@@ -1851,8 +1851,8 @@ button.admin-table-row:hover {
 
 .chat-shell {
   display: grid;
-  grid-template-columns: 174px minmax(0, 1fr) 242px;
-  gap: 14px;
+  grid-template-columns: 160px minmax(0, 1fr) 226px;
+  gap: 12px;
   margin-top: 18px;
 }
 
@@ -2249,7 +2249,7 @@ button.admin-table-row:hover {
 }
 
 .order-chat-room.quick-chat {
-  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .order-chat-room.disabled {
@@ -2322,6 +2322,22 @@ button.admin-table-row:hover {
   background-size: 28px 28px;
 }
 
+.order-chat-room .quick-chat-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
+  overflow: hidden;
+}
+
+.order-chat-room .quick-chat-actions {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  overflow: hidden;
+  border-left: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(6, 13, 27, 0.88);
+}
+
 .order-chat-room .chat-empty-state {
   min-height: 360px;
   display: grid;
@@ -2343,7 +2359,7 @@ button.admin-table-row:hover {
 }
 
 .order-chat-room .chat-message {
-  width: min(76%, 560px);
+  width: min(72%, 500px);
   display: grid;
   gap: 8px;
   padding: 12px 14px;
@@ -2468,13 +2484,13 @@ button.admin-table-row:hover {
 }
 
 .order-chat-room .chat-quick-panel {
-  max-height: 280px;
+  min-height: 0;
   display: grid;
+  align-content: start;
   gap: 12px;
   overflow: auto;
   padding: 14px;
-  border-top: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(6, 13, 27, 0.88);
+  background: transparent;
 }
 
 .order-chat-room .chat-quick-panel.locked {
@@ -2494,7 +2510,7 @@ button.admin-table-row:hover {
 
 .order-chat-room .chat-quick-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 
@@ -2554,7 +2570,7 @@ button.admin-table-row:hover {
 
 .order-chat-room .chat-guided-actions {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 
@@ -3447,6 +3463,26 @@ body {
 
   .chat-presence {
     min-width: 0;
+  }
+
+  .order-chat-room {
+    min-height: 640px;
+  }
+
+  .order-chat-room .quick-chat-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .order-chat-room .quick-chat-actions {
+    max-height: 300px;
+    grid-template-rows: auto auto auto;
+    border-top: 1px solid rgba(148, 163, 184, 0.22);
+    border-left: 0;
+  }
+
+  .order-chat-room .chat-quick-panel {
+    max-height: 230px;
   }
 
   .embedded-support-chat {
