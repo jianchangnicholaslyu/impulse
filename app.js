@@ -1926,8 +1926,124 @@ function normalizeChatMessageType(message = {}) {
   return "user_message";
 }
 
+function chatUiText(zh, en) {
+  return contentLanguage() === "zh-CN" ? zh : en;
+}
+
+const ChatQuickMessageCatalog = Object.freeze({
+  "quick.i_am_ready": {
+    zh: "我准备好了。",
+    en: "I am ready."
+  },
+  "quick.wait_5_minutes": {
+    zh: "请等我 5 分钟。",
+    en: "Please wait 5 minutes."
+  },
+  "quick.ask_game_id": {
+    zh: "你的游戏 ID 是什么？",
+    en: "What is your game ID?"
+  },
+  "quick.share_game_id": {
+    zh: "我的游戏 ID 是：{game_id}",
+    en: "My game ID is: {game_id}"
+  },
+  "quick.please_invite_me": {
+    zh: "请邀请我。",
+    en: "Please invite me."
+  },
+  "quick.joined_lobby": {
+    zh: "我已经进入房间。",
+    en: "I have joined the lobby."
+  },
+  "quick.lets_start": {
+    zh: "我们开始吧。",
+    en: "Let's start."
+  },
+  "quick.good_game": {
+    zh: "打得不错。",
+    en: "Good game."
+  },
+  "quick.need_help": {
+    zh: "我需要帮助。",
+    en: "I need help."
+  },
+  "quick.contact_support": {
+    zh: "请联系支持。",
+    en: "Please contact support."
+  },
+  "quick.ask_completion_eta": {
+    zh: "还需要多久才能结单？",
+    en: "How much longer until completion?"
+  },
+  "flow.completion.ready_now": {
+    zh: "已经满足结单条件，随时可以结单。",
+    en: "Completion conditions are met. We can complete the order now."
+  },
+  "flow.completion.eta_days": {
+    zh: "预计还需 {days} 天。",
+    en: "Estimated remaining time: {days} day(s)."
+  },
+  "flow.completion.unknown": {
+    zh: "我不确定，暂时无法告诉你。",
+    en: "I am not sure yet and cannot give an estimate right now."
+  },
+  "flow.customer.complete_now": {
+    zh: "我同意，现在就结单吧。",
+    en: "I agree. Complete the order now."
+  },
+  "flow.customer.need_confirm": {
+    zh: "我需要再确认一下。",
+    en: "I need to confirm again."
+  }
+});
+
+const ChatQuickMessageGroups = Object.freeze([
+  {
+    titleZh: "协作",
+    titleEn: "Coordination",
+    keys: ["quick.i_am_ready", "quick.wait_5_minutes", "quick.ask_completion_eta", "quick.need_help"]
+  },
+  {
+    titleZh: "游戏",
+    titleEn: "Game",
+    keys: ["quick.ask_game_id", "quick.share_game_id", "quick.please_invite_me", "quick.joined_lobby", "quick.lets_start", "quick.good_game", "quick.contact_support"]
+  }
+]);
+
+function chatMetadataObject(message = {}) {
+  const metadata = message.metadata;
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {};
+}
+
+function chatMessageKey(message = {}) {
+  const metadata = chatMetadataObject(message);
+  const key = String(message.messageKey || message.message_key || message.key || metadata.messageKey || metadata.message_key || metadata.key || "");
+  return Object.prototype.hasOwnProperty.call(ChatQuickMessageCatalog, key) ? key : "";
+}
+
+function chatMessageParams(message = {}) {
+  const metadata = chatMetadataObject(message);
+  const candidates = [
+    message.messageParams,
+    message.message_params,
+    message.params,
+    metadata.messageParams,
+    metadata.message_params,
+    metadata.params
+  ];
+  const params = candidates.find((item) => item && typeof item === "object" && !Array.isArray(item));
+  return params ? { ...params } : {};
+}
+
+function formatChatQuickMessage(key, params = {}) {
+  const template = ChatQuickMessageCatalog[key];
+  if (!template) return "";
+  const raw = contentLanguage() === "zh-CN" ? template.zh : template.en;
+  return raw.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, name) => String(params[name] ?? ""));
+}
+
 function chatMessageText(message = {}) {
-  return String(message.text || message.body || message.preview || "");
+  return formatChatQuickMessage(chatMessageKey(message), chatMessageParams(message)) || String(message.text || message.body || message.preview || "");
 }
 
 function chatMessageImage(message = {}) {
@@ -1973,7 +2089,9 @@ function orderChatReadOnlyNotice() {
 }
 
 function chatMessageMergeKey(message) {
-  return message?.id || `${message?.sender || "SYSTEM"}:${message?.createdAt || ""}:${message?.text || ""}:${message?.imageUrl || message?.imageData || ""}`;
+  const key = chatMessageKey(message);
+  const params = key ? JSON.stringify(chatMessageParams(message)) : "";
+  return message?.id || `${message?.sender || "SYSTEM"}:${message?.createdAt || ""}:${key || message?.text || ""}:${params}:${message?.imageUrl || message?.imageData || ""}`;
 }
 
 function mergeChatMessageList(localMessages = [], remoteMessages = []) {
@@ -1992,6 +2110,36 @@ function orderChatContextLine(order, vectorName) {
   const vector = vectorName || order?.handledBy || order?.assignedVectorName || order?.assigned_vector_id || "Vector";
   const service = order?.item || order?.title || order?.name || "Order service";
   return `Order: ${orderId} | Vector: ${vector} | Item: ${service}`;
+}
+
+function chatQuickButtonLabel(key) {
+  return formatChatQuickMessage(key, {}) || key;
+}
+
+function chatRoleIsVector(role) {
+  return ["staff", "employee", "vector", "admin"].includes(String(role || "").toLowerCase());
+}
+
+function chatReplyTargetId(message = {}) {
+  const metadata = chatMetadataObject(message);
+  return String(message.replyTo || message.reply_to || metadata.replyTo || metadata.reply_to || "");
+}
+
+function chatHasReply(messages = [], targetId = "") {
+  if (!targetId) return false;
+  return messages.some((message) => chatReplyTargetId(message) === targetId);
+}
+
+function findPendingChatFlow(messages = [], key = "", currentUsername = "") {
+  const current = normalize(currentUsername);
+  return messages
+    .slice()
+    .reverse()
+    .find((message) => {
+      if (!message?.id || chatMessageKey(message) !== key) return false;
+      if (current && normalize(message.sender) === current) return false;
+      return !chatHasReply(messages, message.id);
+    }) || null;
 }
 
 const PlatformRealtimeConfig = {
@@ -2022,6 +2170,14 @@ function chatMessageFromRealtimeRow(row = {}) {
     role: row.sender_role
   });
   const metadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata) ? row.metadata : {};
+  const messageKey = String(row.message_key || metadata.messageKey || metadata.message_key || "");
+  const messageParams = row.message_params && typeof row.message_params === "object" && !Array.isArray(row.message_params)
+    ? row.message_params
+    : (metadata.messageParams && typeof metadata.messageParams === "object" && !Array.isArray(metadata.messageParams))
+      ? metadata.messageParams
+      : (metadata.message_params && typeof metadata.message_params === "object" && !Array.isArray(metadata.message_params))
+        ? metadata.message_params
+        : {};
   const readAt = row.read_at && typeof row.read_at === "object" && !Array.isArray(row.read_at) ? row.read_at : {};
   return {
     id: row.id || createId("msg"),
@@ -2031,7 +2187,11 @@ function chatMessageFromRealtimeRow(row = {}) {
     type: contentType,
     messageType,
     message_type: messageType,
-    text: String(row.body || "").slice(0, 5000),
+    messageKey,
+    message_key: messageKey,
+    messageParams,
+    message_params: messageParams,
+    text: formatChatQuickMessage(messageKey, messageParams) || String(row.body || "").slice(0, 5000),
     imageData: "",
     imageUrl: row.image_url || "",
     metadata,
@@ -2277,6 +2437,9 @@ function OrderChatPanel(context = {}) {
   const contextLine = orderChatContextLine(order, vectorName);
   const readOnly = orderChatIsReadOnly(order);
   const readOnlyNotice = orderChatReadOnlyNotice();
+  const currentUsername = State.currentUser?.username || "";
+  const currentRole = State.currentUser?.role || context.role || "customer";
+  const isVectorUser = chatRoleIsVector(currentRole) || (vectorName && normalize(currentUsername) === normalize(vectorName));
 
   if (!enabled) {
     return h("div", { className: "order-chat-room disabled" },
@@ -2289,27 +2452,8 @@ function OrderChatPanel(context = {}) {
   let sending = false;
   const thread = h("div", { className: "chat-thread", role: "log", "aria-live": "polite" });
   const typingRow = h("div", { className: "chat-typing", "aria-live": "polite" });
-  const textarea = h("textarea", {
-    rows: "2",
-    placeholder: readOnly ? readOnlyNotice : localizeStaticPhrase("Type your message..."),
-    disabled: readOnly,
-    onInput: () => {
-      if (!readOnly) {
-        PlatformChatRuntime.pulseTyping(order.id);
-      }
-    },
-    onKeydown: (event) => {
-      if (readOnly) return;
-      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-        event.preventDefault();
-        sendMessage();
-      }
-    }
-  });
-  const sendButton = h("button", { className: "primary-btn", type: "button", disabled: readOnly, onClick: () => sendMessage() },
-    h("i", { className: "fa-solid fa-paper-plane" }),
-    h("span", {}, localizeStaticPhrase("Send"))
-  );
+  const quickPanel = h("div", { className: "chat-quick-panel" });
+  const statusRow = h("div", { className: "chat-status", "aria-live": "polite" });
 
   function renderMessages() {
     const messages = Data.chatMessages(order.id).slice().sort((a, b) => Date.parse(a.createdAt || "") - Date.parse(b.createdAt || ""));
@@ -2345,32 +2489,66 @@ function OrderChatPanel(context = {}) {
     }
     const typing = PlatformChatRuntime.typing(order.id);
     typingRow.textContent = typing.length ? `${typing.map((entry) => entry.username || "Vector").join(", ")} is typing...` : "";
+    renderQuickPanel(messages);
     window.requestAnimationFrame(() => {
       thread.scrollTop = thread.scrollHeight;
     });
   }
 
-  async function sendMessage() {
-    if (readOnly) return;
-    const text = textarea.value.trim();
-    if (sending || !text) return;
-    sending = true;
-    sendButton.disabled = true;
-    const optimisticId = createId("msg");
+  function promptParamsForKey(key) {
+    if (key === "quick.share_game_id") {
+      const value = window.prompt(chatUiText("请输入你的游戏 ID。", "Enter your game ID."), "")?.trim();
+      if (!value) return null;
+      return { game_id: value.slice(0, 64) };
+    }
+    if (key === "flow.completion.eta_days") {
+      const value = window.prompt(chatUiText("预计还需要几天？请输入 1 到 30。", "How many days are needed? Enter 1 to 30."), "1")?.trim();
+      const days = Number(value);
+      if (!Number.isInteger(days) || days < 1 || days > 30) {
+        alert(chatUiText("请输入 1 到 30 之间的天数。", "Enter a number of days between 1 and 30."));
+        return null;
+      }
+      return { days: String(days) };
+    }
+    return {};
+  }
+
+  function buildMessagePayload(key, params = {}, extraMetadata = {}) {
     const createdAt = new Date().toISOString();
-    const payload = {
-      id: optimisticId,
-      sender: State.currentUser?.username || "",
-      role: State.currentUser?.role || context.role || "customer",
+    const text = formatChatQuickMessage(key, params);
+    return {
+      id: createId("msg"),
+      sender: currentUsername,
+      role: currentRole,
       type: "text",
       messageType: "user_message",
       message_type: "user_message",
+      messageKey: key,
+      message_key: key,
+      messageParams: params,
+      message_params: params,
       text,
       createdAt,
-      metadata: { orderContext: contextLine }
+      metadata: {
+        orderContext: contextLine,
+        messageKey: key,
+        message_key: key,
+        messageParams: params,
+        message_params: params,
+        ...extraMetadata
+      }
     };
+  }
+
+  async function sendStructuredMessage(key, params, extraMetadata = {}) {
+    if (readOnly || sending || !key) return;
+    const resolvedParams = params || promptParamsForKey(key);
+    if (resolvedParams === null) return;
+    sending = true;
+    statusRow.textContent = chatUiText("正在发送...", "Sending...");
+    const payload = buildMessagePayload(key, resolvedParams, extraMetadata);
+    const optimisticId = payload.id;
     Data.addChatMessage(order.id, payload, { notify: false });
-    textarea.value = "";
     renderMessages();
     App.updateHeader?.();
     try {
@@ -2390,33 +2568,104 @@ function OrderChatPanel(context = {}) {
       App.updateHeader?.();
     } finally {
       sending = false;
-      sendButton.disabled = readOnly;
+      statusRow.textContent = "";
+      renderMessages();
     }
   }
 
-  const room = h("div", { className: "order-chat-room" },
+  function quickButton(key, params = null, metadata = {}) {
+    return h("button", {
+      className: "chat-quick-btn",
+      type: "button",
+      disabled: sending || readOnly,
+      onClick: () => sendStructuredMessage(key, params, metadata)
+    }, chatQuickButtonLabel(key));
+  }
+
+  function guidedButton(key, replyToMessage, params = null) {
+    return quickButton(key, params, {
+      replyTo: replyToMessage?.id || "",
+      reply_to: replyToMessage?.id || "",
+      flow: "completion_eta"
+    });
+  }
+
+  function renderGuidedPanel(title, note, actions = []) {
+    quickPanel.className = "chat-quick-panel";
+    quickPanel.innerHTML = "";
+    quickPanel.append(h("div", { className: "chat-guided-panel" },
+      h("strong", {}, title),
+      note ? h("p", {}, note) : null,
+      h("div", { className: "chat-guided-actions" }, ...actions)
+    ));
+  }
+
+  function renderQuickPanel(messages = []) {
+    quickPanel.className = `chat-quick-panel ${readOnly ? "locked" : ""}`.trim();
+    quickPanel.innerHTML = "";
+    if (readOnly) {
+      quickPanel.append(h("div", { className: "chat-unavailable-note" },
+        h("i", { className: "fa-solid fa-lock" }),
+        h("span", {}, readOnlyNotice)
+      ));
+      quickPanel.append(h("button", { className: "chat-quick-btn", type: "button", disabled: true },
+        h("i", { className: "fa-regular fa-image" }),
+        h("span", {}, chatUiText("图片上传暂未开放", "Image upload is temporarily unavailable"))
+      ));
+      return;
+    }
+
+    const pendingEtaQuestion = findPendingChatFlow(messages, "quick.ask_completion_eta", currentUsername);
+    if (isVectorUser && pendingEtaQuestion) {
+      renderGuidedPanel(
+        chatUiText("Gamer 正在询问结单时间", "Gamer is asking for completion timing"),
+        chatUiText("请先回复该问题，然后再继续发送其他快捷消息。", "Reply to this question before sending other quick messages."),
+        [
+          guidedButton("flow.completion.ready_now", pendingEtaQuestion),
+          guidedButton("flow.completion.eta_days", pendingEtaQuestion),
+          guidedButton("flow.completion.unknown", pendingEtaQuestion)
+        ]
+      );
+      return;
+    }
+
+    const pendingReadyReply = findPendingChatFlow(messages, "flow.completion.ready_now", currentUsername);
+    if (!isVectorUser && pendingReadyReply) {
+      renderGuidedPanel(
+        chatUiText("Vector 表示已经满足结单条件", "Vector says the order can be completed now"),
+        chatUiText("请选择是否同意现在结单。", "Choose whether you agree to complete the order now."),
+        [
+          guidedButton("flow.customer.complete_now", pendingReadyReply),
+          guidedButton("flow.customer.need_confirm", pendingReadyReply)
+        ]
+      );
+      return;
+    }
+
+    ChatQuickMessageGroups.forEach((group) => {
+      quickPanel.append(h("section", { className: "chat-quick-group" },
+        h("div", { className: "chat-quick-title" }, chatUiText(group.titleZh, group.titleEn)),
+        h("div", { className: "chat-quick-grid" }, ...group.keys.map((key) => quickButton(key)))
+      ));
+    });
+    quickPanel.append(h("div", { className: "chat-flow-note" },
+      h("i", { className: "fa-regular fa-image" }),
+      h("span", {}, chatUiText("图片上传暂未开放。", "Image upload is temporarily unavailable."))
+    ));
+  }
+
+  const room = h("div", { className: "order-chat-room quick-chat" },
     h("div", { className: "order-chat-head" },
       h("div", {},
-        h("strong", {}, vectorName ? `Vector ${vectorName}` : "Start Order Chat"),
+        h("strong", {}, vectorName ? `Vector ${vectorName}` : "Quick Messages"),
         h("span", { className: "notranslate", translate: "no" }, contextLine)
       ),
-      h("span", { className: "order-chat-badge notranslate", translate: "no" }, "Supabase Realtime")
+      h("span", { className: "order-chat-badge" }, chatUiText("快捷消息", "Quick Messages"))
     ),
     thread,
     typingRow,
-    readOnly ? h("div", { className: "chat-readonly-notice", role: "note" },
-      h("i", { className: "fa-solid fa-lock" }),
-      h("span", {}, readOnlyNotice)
-    ) : h("div", { className: "chat-compose" },
-      h("button", {
-        type: "button",
-        className: "ghost-btn icon-only",
-        disabled: true,
-        title: localizeStaticPhrase("Image upload is temporarily unavailable.")
-      }, h("i", { className: "fa-regular fa-image" })),
-      textarea,
-      sendButton
-    )
+    quickPanel,
+    statusRow
   );
 
   window.setTimeout(async () => {
@@ -2459,8 +2708,9 @@ function mailboxHasClaim(message) {
 
   function chatMailboxBody(order, message) {
     const sender = message.sender || "SYSTEM";
-    const content = message.text
-      ? message.text
+    const renderedText = chatMessageText(message);
+    const content = renderedText
+      ? renderedText
       : (message.imageData || message.imageUrl)
         ? "[Image attachment]"
         : "[No text content]";
@@ -3475,10 +3725,11 @@ function mailboxHasClaim(message) {
     addChatMailboxNotifications(order, message) {
       chatMailboxRecipients(order, message).forEach((username) => {
         const systemLike = message.sender === "SYSTEM" || message.type === "system" || normalizeChatMessageType(message) === "system";
+        const previewText = chatMessageText(message) || ((message.imageData || message.imageUrl) ? "[Image attachment]" : "订单聊天更新");
         this.addMailboxMessage(username, {
           category: "chat",
           subject: systemLike ? "订单聊天更新" : "新聊天消息",
-          preview: message.text || ((message.imageData || message.imageUrl) ? "[Image attachment]" : "订单聊天更新"),
+          preview: previewText,
           body: chatMailboxBody(order, message),
           sender: message.sender || "SYSTEM",
           source: "chat",
@@ -3515,6 +3766,26 @@ function mailboxHasClaim(message) {
       const contentType = normalizeChatContentType(message.type, message);
       const messageType = normalizeChatMessageType(message);
       const createdAt = message.createdAt || new Date().toISOString();
+      const rawMetadata = message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? { ...message.metadata } : {};
+      const messageKey = chatMessageKey({ ...message, metadata: rawMetadata });
+      const messageParams = chatMessageParams({ ...message, metadata: rawMetadata });
+      const metadata = {
+        ...rawMetadata,
+        ...(messageKey ? {
+          messageKey,
+          message_key: messageKey,
+          messageParams,
+          message_params: messageParams
+        } : {})
+      };
+      const renderedText = chatMessageText({
+        ...message,
+        messageKey,
+        message_key: messageKey,
+        messageParams,
+        message_params: messageParams,
+        metadata
+      });
       const entry = {
         id: createId("msg"),
         orderId,
@@ -3531,10 +3802,14 @@ function mailboxHasClaim(message) {
         type: contentType,
         messageType,
         message_type: messageType,
-        text: String(message.text || "").slice(0, 5000),
+        messageKey,
+        message_key: messageKey,
+        messageParams,
+        message_params: messageParams,
+        text: String(renderedText || message.text || "").slice(0, 5000),
         imageData: message.imageData || "",
         imageUrl: message.imageUrl || "",
-        metadata: message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? message.metadata : {}
+        metadata
       };
       chats[orderId] = [...(chats[orderId] || []), entry];
       this.saveChats(chats);

@@ -371,6 +371,15 @@ function supabaseMessageRow(orderId, message = {}) {
   const messageType = normalizeChatMessageType({ ...message, type: contentType });
   const imageUrl = message.imageUrl || message.image_url || message.imageData || "";
   const createdAt = message.createdAt || message.created_at || nowIso();
+  const metadata = message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? { ...message.metadata } : {};
+  const messageKey = normalizeChatMessageKey({ ...message, metadata });
+  const messageParams = chatMessageParamsFrom({ ...message, metadata });
+  if (messageKey) {
+    metadata.messageKey = messageKey;
+    metadata.message_key = messageKey;
+    metadata.messageParams = messageParams;
+    metadata.message_params = messageParams;
+  }
   return {
     id: message.id || createId("msg"),
     order_id: orderId || message.orderId || message.order_id || "",
@@ -378,9 +387,11 @@ function supabaseMessageRow(orderId, message = {}) {
     sender_role: message.role || message.sender_role || "system",
     message_type: messageType,
     content_type: contentType,
-    body: String(message.text || message.body || "").slice(0, 5000),
+    message_key: messageKey,
+    message_params: messageParams,
+    body: String(chatTextForKey(messageKey, messageParams) || message.text || message.body || "").slice(0, 5000),
     image_url: imageUrl,
-    metadata: message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? message.metadata : {},
+    metadata,
     read_by: Array.isArray(message.readBy) ? message.readBy : jsonOrFallback(message.read_by, []),
     read_at: message.readAt && typeof message.readAt === "object" && !Array.isArray(message.readAt) ? message.readAt : jsonOrFallback(message.read_at, {}),
     created_at: createdAt,
@@ -390,6 +401,9 @@ function supabaseMessageRow(orderId, message = {}) {
 
 function messageFromSupabaseRow(row = {}) {
   const contentType = normalizeChatContentType(row.content_type, row);
+  const metadata = jsonOrFallback(row.metadata, {});
+  const messageKey = normalizeChatMessageKey({ ...row, metadata });
+  const messageParams = chatMessageParamsFrom({ ...row, metadata });
   const messageType = normalizeChatMessageType({
     message_type: row.message_type,
     type: contentType,
@@ -403,10 +417,14 @@ function messageFromSupabaseRow(row = {}) {
     type: contentType,
     messageType,
     message_type: messageType,
-    text: String(row.body || "").slice(0, 5000),
+    text: String(chatTextForKey(messageKey, messageParams) || row.body || "").slice(0, 5000),
     imageData: "",
     imageUrl: row.image_url || "",
-    metadata: jsonOrFallback(row.metadata, {}),
+    messageKey,
+    message_key: messageKey,
+    messageParams,
+    message_params: messageParams,
+    metadata,
     readBy: Array.isArray(row.read_by) ? row.read_by : jsonOrFallback(row.read_by, []),
     readAt: row.read_at && typeof row.read_at === "object" && !Array.isArray(row.read_at) ? row.read_at : jsonOrFallback(row.read_at, {}),
     createdAt: row.created_at || nowIso()
@@ -1235,6 +1253,121 @@ function normalizeChatMessageType(message = {}) {
   return "user_message";
 }
 
+const ChatQuickMessageTemplates = Object.freeze({
+  "quick.i_am_ready": "I am ready.",
+  "quick.wait_5_minutes": "Please wait 5 minutes.",
+  "quick.ask_game_id": "What is your game ID?",
+  "quick.share_game_id": "My game ID is: {game_id}",
+  "quick.please_invite_me": "Please invite me.",
+  "quick.joined_lobby": "I have joined the lobby.",
+  "quick.lets_start": "Let's start.",
+  "quick.good_game": "Good game.",
+  "quick.need_help": "I need help.",
+  "quick.contact_support": "Please contact support.",
+  "quick.ask_completion_eta": "How much longer until completion?",
+  "flow.completion.ready_now": "Completion conditions are met. We can complete the order now.",
+  "flow.completion.eta_days": "Estimated remaining time: {days} day(s).",
+  "flow.completion.unknown": "I am not sure yet and cannot give an estimate right now.",
+  "flow.customer.complete_now": "I agree. Complete the order now.",
+  "flow.customer.need_confirm": "I need to confirm again."
+});
+
+function chatMetadataObject(message = {}) {
+  return message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? message.metadata : {};
+}
+
+function normalizeChatMessageKey(message = {}) {
+  const metadata = chatMetadataObject(message);
+  const key = String(
+    message.messageKey ||
+    message.message_key ||
+    metadata.messageKey ||
+    metadata.message_key ||
+    ""
+  ).trim();
+  return ChatQuickMessageTemplates[key] ? key : "";
+}
+
+function chatMessageParamsFrom(message = {}) {
+  const metadata = chatMetadataObject(message);
+  const params =
+    (message.messageParams && typeof message.messageParams === "object" && !Array.isArray(message.messageParams) ? message.messageParams : null) ||
+    (message.message_params && typeof message.message_params === "object" && !Array.isArray(message.message_params) ? message.message_params : null) ||
+    (metadata.messageParams && typeof metadata.messageParams === "object" && !Array.isArray(metadata.messageParams) ? metadata.messageParams : null) ||
+    (metadata.message_params && typeof metadata.message_params === "object" && !Array.isArray(metadata.message_params) ? metadata.message_params : null) ||
+    {};
+  return { ...params };
+}
+
+function chatTextForKey(key, params = {}) {
+  const template = ChatQuickMessageTemplates[key];
+  if (!template) {
+    return "";
+  }
+  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, name) => String(params?.[name] ?? ""));
+}
+
+function sanitizeChatParam(value, limit = 80) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
+}
+
+function normalizeClientChatPayload(payload = {}) {
+  const contentType = normalizeChatContentType(payload.type, payload);
+  if (contentType === "image" || payload.imageData || payload.imageUrl) {
+    return { ok: false, message: "图片上传暂未开放。" };
+  }
+  const requestedType = normalizeChatMessageType(payload);
+  if (requestedType !== "user_message") {
+    return { ok: false, message: "系统消息和动作卡片只能由平台生成。" };
+  }
+
+  const metadata = chatMetadataObject(payload);
+  const messageKey = normalizeChatMessageKey(payload);
+  if (!messageKey) {
+    return { ok: false, message: "请选择一条快捷消息。" };
+  }
+  const params = chatMessageParamsFrom(payload);
+  const normalizedParams = {};
+  if (messageKey === "quick.share_game_id") {
+    normalizedParams.game_id = sanitizeChatParam(params.game_id || params.gameId, 64);
+    if (!normalizedParams.game_id) {
+      return { ok: false, message: "请填写游戏 ID。" };
+    }
+  }
+  if (messageKey === "flow.completion.eta_days") {
+    const days = Number(params.days);
+    if (!Number.isInteger(days) || days < 1 || days > 30) {
+      return { ok: false, message: "预计时间必须是 1 到 30 天。" };
+    }
+    normalizedParams.days = days;
+  }
+
+  return {
+    ok: true,
+    message: {
+      id: payload.id,
+      type: "text",
+      messageType: "user_message",
+      message_type: "user_message",
+      text: chatTextForKey(messageKey, normalizedParams),
+      messageKey,
+      message_key: messageKey,
+      messageParams: normalizedParams,
+      message_params: normalizedParams,
+      createdAt: payload.createdAt,
+      metadata: {
+        ...metadata,
+        messageKey,
+        message_key: messageKey,
+        messageParams: normalizedParams,
+        message_params: normalizedParams,
+        replyTo: sanitizeChatParam(metadata.replyTo || metadata.reply_to, 80),
+        reply_to: sanitizeChatParam(metadata.replyTo || metadata.reply_to, 80)
+      }
+    }
+  };
+}
+
 function chatAccess(db, orderId, user) {
   if (!user) {
     return { ok: false, message: "请先登录" };
@@ -1290,6 +1423,15 @@ function addChatMessage(db, orderId, message, actor = "SYSTEM") {
   const messageType = normalizeChatMessageType({ ...message, type: contentType });
   const sender = message.sender || actor;
   const createdAt = message.createdAt || nowIso();
+  const metadata = message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? { ...message.metadata } : {};
+  const messageKey = normalizeChatMessageKey({ ...message, metadata });
+  const messageParams = chatMessageParamsFrom({ ...message, metadata });
+  if (messageKey) {
+    metadata.messageKey = messageKey;
+    metadata.message_key = messageKey;
+    metadata.messageParams = messageParams;
+    metadata.message_params = messageParams;
+  }
   const next = {
     id: message.id || createId("msg"),
     orderId,
@@ -1298,10 +1440,14 @@ function addChatMessage(db, orderId, message, actor = "SYSTEM") {
     type: contentType,
     messageType,
     message_type: messageType,
-    text: String(message.text || "").slice(0, 5000),
+    text: String(chatTextForKey(messageKey, messageParams) || message.text || "").slice(0, 5000),
     imageData: message.imageData || "",
     imageUrl: message.imageUrl || "",
-    metadata: message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? message.metadata : {},
+    messageKey,
+    message_key: messageKey,
+    messageParams,
+    message_params: messageParams,
+    metadata,
     readBy: [sender],
     readAt: { [sender]: createdAt },
     createdAt
@@ -1434,11 +1580,12 @@ function addNoticeMailboxMessage(db, username, noticeKey, context = {}) {
 }
 
 function chatMailboxBody(order, message) {
-  const content = message.text
+  const quickText = chatTextForKey(normalizeChatMessageKey(message), chatMessageParamsFrom(message));
+  const content = quickText || (message.text
     ? message.text
     : (message.imageData || message.imageUrl)
       ? "[Image attachment]"
-      : "[No text content]";
+      : "[No text content]");
   return [
     `Order ID: ${order?.id || "unknown"}.`,
     `From: ${message.sender || "SYSTEM"}.`,
@@ -1472,10 +1619,13 @@ function chatMailboxRecipients(order, message) {
 function addChatMailboxNotifications(db, order, message) {
   chatMailboxRecipients(order, message).forEach((username) => {
     const systemLike = message.sender === "SYSTEM" || message.type === "system" || normalizeChatMessageType(message) === "system";
+    const previewText = chatTextForKey(normalizeChatMessageKey(message), chatMessageParamsFrom(message))
+      || message.text
+      || ((message.imageData || message.imageUrl) ? "[Image attachment]" : "Order Chat Update");
     addMailboxMessage(db, username, {
       category: "chat",
       subject: systemLike ? "Order Chat Update" : "New Chat Message",
-      preview: message.text || ((message.imageData || message.imageUrl) ? "[Image attachment]" : "Order Chat Update"),
+      preview: previewText,
       body: chatMailboxBody(order, message),
       sender: message.sender || "SYSTEM",
       source: "chat",
@@ -2104,20 +2254,19 @@ async function handleAction(action, payload = {}, request = {}) {
     if (normalizeChatContentType(payload.type, payload) === "image" || payload.imageData || payload.imageUrl) {
       return { ok: false, message: "图片上传暂未开放。" };
     }
+    const normalizedPayload = normalizeClientChatPayload(payload);
+    if (!normalizedPayload.ok) {
+      return normalizedPayload;
+    }
     const profile = profileByUsername(db, request.user.username);
     if (profile) {
       profile.lastOnlineAt = nowIso();
     }
     const result = addChatMessage(db, payload.orderId, {
-      id: payload.id,
+      ...normalizedPayload.message,
+      id: normalizedPayload.message.id || payload.id,
       sender: request.user.username,
-      role: request.user.role,
-      type: "text",
-      messageType: payload.messageType,
-      message_type: payload.message_type,
-      text: payload.text,
-      createdAt: payload.createdAt,
-      metadata: payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata) ? payload.metadata : {}
+      role: request.user.role
     }, request.user.username);
     if (!result.ok) {
       return result;
