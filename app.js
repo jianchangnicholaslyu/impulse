@@ -2678,12 +2678,14 @@ function OrderChatPanel(context = {}) {
     ),
     h("div", { className: "quick-chat-body" },
       thread
-    ),
-    h("aside", { className: "quick-chat-actions" },
-      quickPanel,
-      typingRow,
-      statusRow
     )
+  );
+
+  // Keep quick replies outside the clipped chat room so the picker stays visible under the message area.
+  const actions = h("aside", { className: "quick-chat-actions" },
+    quickPanel,
+    typingRow,
+    statusRow
   );
 
   window.setTimeout(async () => {
@@ -2703,7 +2705,7 @@ function OrderChatPanel(context = {}) {
     App.updateHeader?.();
   }, 0);
 
-  return room;
+  return h("div", { className: "quick-chat-stack" }, room, actions);
 }
 
 function mailboxHasClaim(message) {
