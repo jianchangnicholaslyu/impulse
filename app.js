@@ -1999,11 +1999,13 @@ const ChatQuickMessageCatalog = Object.freeze({
 
 const ChatQuickMessageGroups = Object.freeze([
   {
+    id: "coordination",
     titleZh: "协作",
     titleEn: "Coordination",
     keys: ["quick.i_am_ready", "quick.wait_5_minutes", "quick.ask_completion_eta", "quick.need_help"]
   },
   {
+    id: "game",
     titleZh: "游戏",
     titleEn: "Game",
     keys: ["quick.ask_game_id", "quick.share_game_id", "quick.please_invite_me", "quick.joined_lobby", "quick.lets_start", "quick.good_game", "quick.contact_support"]
@@ -2450,6 +2452,7 @@ function OrderChatPanel(context = {}) {
   }
 
   let sending = false;
+  let activeQuickGroupId = ChatQuickMessageGroups[0]?.id || "coordination";
   const thread = h("div", { className: "chat-thread", role: "log", "aria-live": "polite" });
   const typingRow = h("div", { className: "chat-typing", "aria-live": "polite" });
   const quickPanel = h("div", { className: "chat-quick-panel" });
@@ -2642,12 +2645,24 @@ function OrderChatPanel(context = {}) {
       return;
     }
 
-    ChatQuickMessageGroups.forEach((group) => {
-      quickPanel.append(h("section", { className: "chat-quick-group" },
-        h("div", { className: "chat-quick-title" }, chatUiText(group.titleZh, group.titleEn)),
-        h("div", { className: "chat-quick-grid" }, ...group.keys.map((key) => quickButton(key)))
+    const activeGroup = ChatQuickMessageGroups.find((group) => group.id === activeQuickGroupId) || ChatQuickMessageGroups[0];
+    quickPanel.append(h("div", { className: "chat-quick-tabs", role: "tablist" },
+      ...ChatQuickMessageGroups.map((group) => h("button", {
+        className: `chat-quick-tab ${group.id === activeQuickGroupId ? "active" : ""}`.trim(),
+        type: "button",
+        role: "tab",
+        "aria-selected": group.id === activeQuickGroupId ? "true" : "false",
+        onClick: () => {
+          activeQuickGroupId = group.id;
+          renderQuickPanel(messages);
+        }
+      }, chatUiText(group.titleZh, group.titleEn)))
+    ));
+    if (activeGroup) {
+      quickPanel.append(h("div", { className: "chat-quick-grid" },
+        ...activeGroup.keys.map((key) => quickButton(key))
       ));
-    });
+    }
     quickPanel.append(h("div", { className: "chat-flow-note" },
       h("i", { className: "fa-regular fa-image" }),
       h("span", {}, chatUiText("图片上传暂未开放。", "Image upload is temporarily unavailable."))
@@ -2659,16 +2674,15 @@ function OrderChatPanel(context = {}) {
       h("div", {},
         h("strong", {}, vectorName ? `Vector ${vectorName}` : "Quick Messages"),
         h("span", { className: "notranslate", translate: "no" }, contextLine)
-      ),
-      h("span", { className: "order-chat-badge" }, chatUiText("快捷消息", "Quick Messages"))
+      )
     ),
     h("div", { className: "quick-chat-body" },
-      thread,
-      h("aside", { className: "quick-chat-actions" },
-        quickPanel,
-        typingRow,
-        statusRow
-      )
+      thread
+    ),
+    h("aside", { className: "quick-chat-actions" },
+      quickPanel,
+      typingRow,
+      statusRow
     )
   );
 
@@ -6238,20 +6252,46 @@ function mailboxHasClaim(message) {
       h("span", { text: label }),
       valueNode || h("strong", { text: value })
     );
+    const orderInfoCard = h("section", { className: "chat-context-card chat-info-popover-card" },
+      h("h3", { text: contentLanguage() === "zh-CN" ? "订单信息" : "Order Info" }),
+      infoRow(contentLanguage() === "zh-CN" ? "订单号" : "Order ID", "", protectedText(order.id, "mono")),
+      infoRow(contentLanguage() === "zh-CN" ? "项目" : "Item", orderItem),
+      orderGame ? infoRow(contentLanguage() === "zh-CN" ? "游戏" : "Game", orderGame) : null,
+      infoRow(contentLanguage() === "zh-CN" ? "金额" : "Amount", "", financialText(order.price)),
+      infoRow(contentLanguage() === "zh-CN" ? "状态" : "Status", "", UI.statusPill(order.status)),
+      order.acceptedAt ? infoRow(contentLanguage() === "zh-CN" ? "接单时间" : "Accepted", formatFullDate(order.acceptedAt)) : null,
+      order.completedAt ? infoRow(contentLanguage() === "zh-CN" ? "结单时间" : "Completed", formatFullDate(order.completedAt)) : null,
+      rushText ? h("p", { className: "balance-note order-locked-term notranslate", translate: "no", text: `${rushText}${order.rush?.deadlineAt ? ` / ${contentLanguage() === "zh-CN" ? "期限" : "Deadline"}: ${formatFullDate(order.rush.deadlineAt)}` : ""}` }) : null
+    );
+    const orderInfoPopover = h("div", { className: "chat-info-popover", hidden: true }, orderInfoCard);
+    const orderInfoButton = h("button", {
+      className: "secondary-btn compact chat-info-trigger",
+      type: "button",
+      onClick: () => {
+        orderInfoPopover.hidden = !orderInfoPopover.hidden;
+      }
+    }, icon("fa-regular fa-clipboard"), h("span", { text: contentLanguage() === "zh-CN" ? "订单信息" : "Order Info" }));
+    const participantStrip = h("div", { className: "chat-top-participants" },
+      participantCard("Gamer", customerProfile),
+      participantCard("Vector", staffProfile, { username: handledBy, lastOnlineAt: conversationState.staffLastActivityAt })
+    );
 
     return h("div", { className: "modal-card modal-wide chat-modal slide-up" },
       h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
-      h("div", { className: "chat-titlebar" },
-        h("div", {},
-          h("p", { className: "release-badge notranslate", translate: "no" }, icon("fa-regular fa-comments"), PlatformChat.entryLabel),
-          h("h2", { className: "notranslate", translate: "no", text: PlatformChat.title }),
-          h("p", { className: "chat-brand-copy notranslate", translate: "no", text: PlatformChat.welcome })
+      h("div", { className: "chat-titlebar compact" },
+        h("div", { className: "chat-title-left" },
+          h("p", { className: "release-badge notranslate", translate: "no" }, icon("fa-regular fa-comments"), PlatformChat.entryLabel)
         ),
-        h("div", { className: "chat-unread-card" },
-          h("strong", { text: unread }),
-          h("span", { text: contentLanguage() === "zh-CN" ? "未读" : "Unread" })
+        h("div", { className: "chat-topbar-actions" },
+          participantStrip,
+          orderInfoButton,
+          h("div", { className: "chat-unread-card" },
+            h("strong", { text: unread }),
+            h("span", { text: contentLanguage() === "zh-CN" ? "未读" : "Unread" })
+          )
         )
       ),
+      orderInfoPopover,
       h("div", { className: "chat-shell" },
         h("aside", { className: "chat-sidebar" },
           h("h3", { text: contentLanguage() === "zh-CN" ? "操作" : "Actions" }),
@@ -6259,30 +6299,6 @@ function mailboxHasClaim(message) {
         ),
         h("section", { className: "chat-panel" },
           OrderChatPanel(supportContext)
-        ),
-        h("aside", { className: "chat-context" },
-          h("section", { className: "chat-context-card" },
-            h("h3", { text: contentLanguage() === "zh-CN" ? "订单信息" : "Order Info" }),
-            infoRow(contentLanguage() === "zh-CN" ? "订单号" : "Order ID", "", protectedText(order.id, "mono")),
-            infoRow(contentLanguage() === "zh-CN" ? "项目" : "Item", orderItem),
-            orderGame ? infoRow(contentLanguage() === "zh-CN" ? "游戏" : "Game", orderGame) : null,
-            infoRow(contentLanguage() === "zh-CN" ? "金额" : "Amount", "", financialText(order.price)),
-            infoRow(contentLanguage() === "zh-CN" ? "状态" : "Status", "", UI.statusPill(order.status)),
-            order.acceptedAt ? infoRow(contentLanguage() === "zh-CN" ? "接单时间" : "Accepted", formatFullDate(order.acceptedAt)) : null,
-            order.completedAt ? infoRow(contentLanguage() === "zh-CN" ? "结单时间" : "Completed", formatFullDate(order.completedAt)) : null,
-            rushText ? h("p", { className: "balance-note order-locked-term notranslate", translate: "no", text: `${rushText}${order.rush?.deadlineAt ? ` / ${contentLanguage() === "zh-CN" ? "期限" : "Deadline"}: ${formatFullDate(order.rush.deadlineAt)}` : ""}` }) : null
-          ),
-          h("section", { className: "chat-context-card" },
-            h("h3", { text: contentLanguage() === "zh-CN" ? "参与者" : "Participants" }),
-            h("div", { className: "chat-presence" },
-              participantCard("Gamer", customerProfile),
-              participantCard("Vector", staffProfile, { username: handledBy, lastOnlineAt: conversationState.staffLastActivityAt })
-            )
-          ),
-          h("section", { className: "chat-context-card compact" },
-            h("strong", { className: "notranslate", translate: "no", text: `${BrandName} / Vector` }),
-            h("p", { className: "notranslate", translate: "no", text: "Messages, images, protocol cards, and order actions stay inside IMPULSE J." })
-          )
         )
       )
     );
