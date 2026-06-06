@@ -1,4 +1,4 @@
-const { handleAction, parseRequestBody } = require("../_backend-core");
+const { handleAction, isStorageError, parseRequestBody, storageUnavailableResponse } = require("../_backend-core");
 
 // AI: scaffolded for future UI; generic response prevents account discovery.
 function sendJson(response, status, body) {
@@ -23,8 +23,13 @@ module.exports = async function handler(request, response) {
   try {
     const body = await parseRequestBody(request);
     const result = await handleAction("sendMagicLink", { email: body.email }, { request });
-    sendJson(response, result.ok ? 200 : 400, result);
+    sendJson(response, result.ok ? 200 : (result.status || 400), result);
   } catch (error) {
+    if (isStorageError(error)) {
+      const result = storageUnavailableResponse(error);
+      sendJson(response, result.status, result);
+      return;
+    }
     sendJson(response, 500, { ok: false, message: error.message || "Request failed." });
   }
 };

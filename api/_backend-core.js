@@ -642,6 +642,33 @@ function storageType() {
   return IsVercel ? "temporary-file" : "file";
 }
 
+// AI: API facades depend on this shape to turn storage outages into 503/offline instead of generic 500s.
+function storageErrorCode(error) {
+  const message = String(error?.message || "");
+  if (/fetch failed|Supabase request failed|KV .* failed/i.test(message)) {
+    return "storage_unavailable";
+  }
+  return "backend_unavailable";
+}
+
+function isStorageError(error) {
+  return storageErrorCode(error) === "storage_unavailable";
+}
+
+function storageUnavailableResponse(error) {
+  return {
+    ok: false,
+    offline: true,
+    status: 503,
+    message: "后端存储暂不可用，请稍后重试。",
+    backend: {
+      storage: storageType(),
+      unavailable: true,
+      error: storageErrorCode(error)
+    }
+  };
+}
+
 function canUseClientSnapshot() {
   return !hasSupabaseStorage() && !hasKvStorage();
 }
@@ -1968,17 +1995,31 @@ function updateOrderStatusOnBackend(db, orderId, status, actor) {
 }
 
 async function handleAction(action, payload = {}, request = {}) {
-  let db = await readDb();
+  if (action === "health") {
+    const email = emailHealth();
+    const backend = {
+      storage: storageType(),
+      database: { ok: true }
+    };
+    try {
+      await readDb();
+    } catch (error) {
+      backend.database = { ok: false, error: storageErrorCode(error) };
+    }
+    return { ok: true, storage: backend.storage, hasEmail: email.configured, email, backend };
+  }
+
+  let db;
+  try {
+    db = await readDb();
+  } catch (error) {
+    return storageUnavailableResponse(error);
+  }
   if (!["setBackupEmail", "runRetentionCleanup"].includes(action)) {
     const retention = await applyRetentionPolicies(db);
     if (retention.changed) {
       await writeDb(db);
     }
-  }
-
-  if (action === "health") {
-    const email = emailHealth();
-    return { ok: true, storage: storageType(), hasEmail: email.configured, email };
   }
 
   if (action === "bootstrap") {
@@ -2155,8 +2196,14 @@ async function handleAction(action, payload = {}, request = {}) {
       return available;
     }
     log(db, "用户登录", user.username, user.username);
-    await writeDb(db);
-    return makeSessionResponse(db, user);
+    const session = makeSessionResponse(db, user);
+    try {
+      await writeDb(db);
+    } catch (error) {
+      // AI: password auth already succeeded; login audit/lastOnline writes are best effort for this path.
+      session.backend = { storage: storageType(), unavailable: isStorageError(error), error: storageErrorCode(error) };
+    }
+    return session;
   }
 
   if (action === "loginCode") {
@@ -2174,8 +2221,10 @@ async function handleAction(action, payload = {}, request = {}) {
       return available;
     }
     log(db, "用户登录", user.username, user.username);
+    const session = makeSessionResponse(db, user);
+    // AI: this write consumes the login code; failing closed prevents issuing a session with a reusable code.
     await writeDb(db);
-    return makeSessionResponse(db, user);
+    return session;
   }
 
   if (action === "register") {
@@ -2636,6 +2685,8 @@ module.exports = {
   readDb,
   writeDb,
   normalizeDb,
+  isStorageError,
+  storageUnavailableResponse,
   recordEmailLog,
   sendTrackedEmail,
   emailHealth

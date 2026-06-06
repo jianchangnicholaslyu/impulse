@@ -1,4 +1,4 @@
-const { handleAction, parseRequestBody, verifyToken } = require("./_backend-core");
+const { handleAction, isStorageError, parseRequestBody, storageUnavailableResponse, verifyToken } = require("./_backend-core");
 
 function sendJson(response, status, body) {
   response.statusCode = status;
@@ -34,8 +34,13 @@ module.exports = async function handler(request, response) {
 
   try {
     const result = await handleAction(body.action, body.payload || {}, { user, request });
-    sendJson(response, result.ok ? 200 : 400, result);
+    sendJson(response, result.ok ? 200 : (result.status || 400), result);
   } catch (error) {
+    if (isStorageError(error)) {
+      const result = storageUnavailableResponse(error);
+      sendJson(response, result.status, result);
+      return;
+    }
     sendJson(response, 500, {
       ok: false,
       message: error.message || "Backend request failed."

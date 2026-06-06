@@ -3224,9 +3224,21 @@ function mailboxHasClaim(message) {
           body: JSON.stringify({ action, payload })
         });
         const result = await response.json().catch(() => ({}));
-        this.online = response.ok || Boolean(result && result.message);
+        // AI: successful auth may report best-effort write trouble; only failed responses enter offline fallback.
+        const backendUnavailable = !result?.ok && (response.status >= 500 || Boolean(result?.offline || result?.backend?.unavailable));
+        this.online = backendUnavailable ? false : (response.ok || Boolean(result && result.message));
         if (result?.backend?.storage) {
           this.storage = result.backend.storage;
+        }
+        if (backendUnavailable) {
+          return {
+            ...result,
+            ok: false,
+            offline: true,
+            message: result?.message && !/fetch failed/i.test(result.message) ? result.message : "后端暂不可用，已切换为本地模式。",
+            httpOk: response.ok,
+            httpStatus: response.status
+          };
         }
         return { ...result, httpOk: response.ok };
       } catch (error) {

@@ -1,4 +1,4 @@
-const { handleAction, parseRequestBody } = require("../_backend-core");
+const { handleAction, isStorageError, parseRequestBody, storageUnavailableResponse } = require("../_backend-core");
 
 // AI: public auth facade; real mail/security/rate-limit logic stays in _backend-core.
 function sendJson(response, status, body) {
@@ -26,8 +26,13 @@ module.exports = async function handler(request, response) {
       email: body.email,
       purpose: body.purpose || "login"
     }, { request });
-    sendJson(response, result.ok ? 200 : 400, result);
+    sendJson(response, result.ok ? 200 : (result.status || 400), result);
   } catch (error) {
+    if (isStorageError(error)) {
+      const result = storageUnavailableResponse(error);
+      sendJson(response, result.status, result);
+      return;
+    }
     sendJson(response, 500, { ok: false, message: error.message || "Request failed." });
   }
 };
