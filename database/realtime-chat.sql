@@ -2,11 +2,13 @@ create table if not exists public.messages (
   id text primary key,
   order_id text not null,
   sender_username text not null,
+  sender_id text not null default '',
   sender_role text not null default 'system',
-  message_type text not null default 'user_message' check (message_type in ('user_message', 'system', 'action_card')),
+  message_type text not null default 'user_message' check (message_type in ('user_message', 'quick_message', 'system', 'action_card')),
   content_type text not null default 'text' check (content_type in ('text', 'image', 'system', 'action_card')),
   message_key text not null default '',
   message_params jsonb not null default '{}'::jsonb,
+  action_status text not null default '',
   body text not null default '',
   image_url text not null default '',
   metadata jsonb not null default '{}'::jsonb,
@@ -16,11 +18,17 @@ create table if not exists public.messages (
   updated_at timestamptz not null default now()
 );
 
+alter table public.messages add column if not exists sender_id text not null default '';
 alter table public.messages add column if not exists message_key text not null default '';
 alter table public.messages add column if not exists message_params jsonb not null default '{}'::jsonb;
+alter table public.messages add column if not exists action_status text not null default '';
+alter table public.messages drop constraint if exists messages_message_type_check;
+alter table public.messages add constraint messages_message_type_check
+  check (message_type in ('user_message', 'quick_message', 'system', 'action_card'));
 
 create index if not exists messages_order_created_idx on public.messages(order_id, created_at);
 create index if not exists messages_sender_idx on public.messages(sender_username);
+create index if not exists messages_order_sender_idx on public.messages(order_id, sender_id, created_at);
 create index if not exists messages_order_key_idx on public.messages(order_id, message_key, created_at);
 
 create table if not exists public.message_presence (

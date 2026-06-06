@@ -372,23 +372,40 @@ function supabaseMessageRow(orderId, message = {}) {
   const imageUrl = message.imageUrl || message.image_url || message.imageData || "";
   const createdAt = message.createdAt || message.created_at || nowIso();
   const metadata = message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? { ...message.metadata } : {};
-  const messageKey = normalizeChatMessageKey({ ...message, metadata });
+  const catalogKey = normalizeChatCatalogKey({ ...message, metadata });
+  const messageKey = chatCanonicalMessageKey(catalogKey);
   const messageParams = chatMessageParamsFrom({ ...message, metadata });
+  const senderId = String(message.senderId || message.sender_id || metadata.senderId || metadata.sender_id || "").trim();
+  const senderRole = normalizeChatSenderRole(message.role || message.sender_role || metadata.senderRole || metadata.sender_role);
+  const actionStatus = chatActionStatus({ ...message, metadata }, catalogKey);
   if (messageKey) {
+    metadata.catalogKey = catalogKey;
+    metadata.catalog_key = catalogKey;
     metadata.messageKey = messageKey;
     metadata.message_key = messageKey;
     metadata.messageParams = messageParams;
     metadata.message_params = messageParams;
   }
+  // Mirror routing/status fields so local fallback and Supabase rows stay compatible.
+  metadata.senderId = senderId;
+  metadata.sender_id = senderId;
+  metadata.senderRole = senderRole;
+  metadata.sender_role = senderRole;
+  if (actionStatus) {
+    metadata.actionStatus = actionStatus;
+    metadata.action_status = actionStatus;
+  }
   return {
     id: message.id || createId("msg"),
     order_id: orderId || message.orderId || message.order_id || "",
     sender_username: message.sender || message.sender_username || "SYSTEM",
-    sender_role: message.role || message.sender_role || "system",
+    sender_id: senderId,
+    sender_role: senderRole,
     message_type: messageType,
     content_type: contentType,
     message_key: messageKey,
     message_params: messageParams,
+    action_status: actionStatus,
     body: String(chatTextForKey(messageKey, messageParams) || message.text || message.body || "").slice(0, 5000),
     image_url: imageUrl,
     metadata,
@@ -402,29 +419,46 @@ function supabaseMessageRow(orderId, message = {}) {
 function messageFromSupabaseRow(row = {}) {
   const contentType = normalizeChatContentType(row.content_type, row);
   const metadata = jsonOrFallback(row.metadata, {});
-  const messageKey = normalizeChatMessageKey({ ...row, metadata });
+  const catalogKey = normalizeChatCatalogKey({ ...row, metadata });
+  const messageKey = chatCanonicalMessageKey(catalogKey);
   const messageParams = chatMessageParamsFrom({ ...row, metadata });
+  const senderId = String(row.sender_id || metadata.senderId || metadata.sender_id || "").trim();
+  const senderRole = normalizeChatSenderRole(row.sender_role || metadata.senderRole || metadata.sender_role);
+  const actionStatus = chatActionStatus({ ...row, metadata }, catalogKey);
+  const nextMetadata = { ...metadata, catalogKey, catalog_key: catalogKey, senderId, sender_id: senderId, senderRole, sender_role: senderRole };
+  if (actionStatus) {
+    nextMetadata.actionStatus = actionStatus;
+    nextMetadata.action_status = actionStatus;
+  }
   const messageType = normalizeChatMessageType({
     message_type: row.message_type,
     type: contentType,
-    role: row.sender_role
+    role: senderRole
   });
   return {
     id: row.id || createId("msg"),
     orderId: row.order_id || "",
     sender: row.sender_username || "SYSTEM",
-    role: row.sender_role || "system",
+    senderId,
+    sender_id: senderId,
+    role: senderRole,
+    senderRole,
+    sender_role: senderRole,
     type: contentType,
     messageType,
     message_type: messageType,
     text: String(chatTextForKey(messageKey, messageParams) || row.body || "").slice(0, 5000),
     imageData: "",
     imageUrl: row.image_url || "",
+    catalogKey,
+    catalog_key: catalogKey,
     messageKey,
     message_key: messageKey,
     messageParams,
     message_params: messageParams,
-    metadata,
+    actionStatus,
+    action_status: actionStatus,
+    metadata: nextMetadata,
     readBy: Array.isArray(row.read_by) ? row.read_by : jsonOrFallback(row.read_by, []),
     readAt: row.read_at && typeof row.read_at === "object" && !Array.isArray(row.read_at) ? row.read_at : jsonOrFallback(row.read_at, {}),
     createdAt: row.created_at || nowIso()
@@ -1248,44 +1282,128 @@ function normalizeChatContentType(value, message = {}) {
 
 function normalizeChatMessageType(message = {}) {
   const raw = String(message.messageType || message.message_type || "").toLowerCase().replace(/-/g, "_");
+  const catalogType = ChatQuickMessageCatalog[normalizeChatCatalogKey(message)]?.type || "";
   if (raw === "system" || message.type === "system" || message.role === "system") return "system";
-  if (raw === "action_card" || message.type === "action_card") return "action_card";
+  if (raw === "action_card" || message.type === "action_card" || catalogType === "action_card") return "action_card";
+  if (raw === "quick_message" || catalogType === "quick_message") return "quick_message";
   return "user_message";
 }
 
-const ChatQuickMessageTemplates = Object.freeze({
-  "quick.i_am_ready": "I am ready.",
-  "quick.wait_5_minutes": "Please wait 5 minutes.",
-  "quick.ask_game_id": "What is your game ID?",
-  "quick.share_game_id": "My game ID is: {game_id}",
-  "quick.please_invite_me": "Please invite me.",
-  "quick.joined_lobby": "I have joined the lobby.",
-  "quick.lets_start": "Let's start.",
-  "quick.good_game": "Good game.",
-  "quick.need_help": "I need help.",
-  "quick.contact_support": "Please contact support.",
-  "quick.ask_completion_eta": "How much longer until completion?",
-  "flow.completion.ready_now": "Completion conditions are met. We can complete the order now.",
-  "flow.completion.eta_days": "Estimated remaining time: {days} day(s).",
-  "flow.completion.unknown": "I am not sure yet and cannot give an estimate right now.",
-  "flow.customer.complete_now": "I agree. Complete the order now.",
-  "flow.customer.need_confirm": "I need to confirm again."
+function normalizeChatSenderRole(role = "system") {
+  const normalized = String(role || "system").toLowerCase().replace(/-/g, "_");
+  if (normalized === "staff" || normalized === "employee") return "vector";
+  if (normalized === "customer" || normalized === "user") return "gamer";
+  if (["gamer", "vector", "admin", "system"].includes(normalized)) return normalized;
+  return "system";
+}
+
+const ChatQuickMessageCatalog = Object.freeze({
+  "quick.i_am_ready": { code: "BASIC_READY", type: "quick_message", en: "I am ready." },
+  "quick.wait_moment": { code: "BASIC_WAIT", type: "quick_message", en: "Please wait {minutes} minute(s).", defaultParams: { minutes: 5 } },
+  "quick.wait_5_minutes": { code: "BASIC_WAIT_5", type: "quick_message", en: "Please wait 5 minutes.", defaultParams: { minutes: 5 } },
+  "quick.ask_game_id": { code: "BASIC_ASK_GAME_ID", type: "quick_message", en: "What is your game ID?" },
+  "quick.share_game_id": { code: "BASIC_SHARE_GAME_ID", type: "quick_message", en: "My game ID is: {game_id}" },
+  "quick.please_invite_me": { code: "BASIC_INVITE_ME", type: "quick_message", en: "Please invite me." },
+  "quick.joined_lobby": { code: "BASIC_JOINED_LOBBY", type: "quick_message", en: "I have joined the lobby." },
+  "quick.lets_start": { code: "BASIC_START_NOW", type: "quick_message", en: "Let's start." },
+  "quick.good_game": { code: "BASIC_GOOD_GAME", type: "quick_message", en: "Good game." },
+  "quick.thank_you": { code: "BASIC_THANK_YOU", type: "quick_message", en: "Thank you." },
+  "quick.see_you_next_time": { code: "BASIC_SEE_YOU_NEXT_TIME", type: "quick_message", en: "See you next time." },
+  "quick.ask_completion_eta": { code: "PROGRESS_ASK_TIME", type: "quick_message", en: "How much longer will it take to complete the order?" },
+  "flow.completion.ready_now": { code: "PROGRESS_READY_TO_COMPLETE", type: "quick_message", en: "The completion requirements have been met. The order can be completed now." },
+  "flow.completion.eta_days": { code: "PROGRESS_NEED_MORE_TIME", type: "quick_message", en: "Estimated time remaining: {days} day(s)." },
+  "flow.completion.unknown": { code: "PROGRESS_NOT_SURE", type: "quick_message", en: "I am not sure yet and cannot provide an estimate." },
+  "quick.ask_progress_status": { code: "PROGRESS_ASK_STATUS", type: "quick_message", en: "What is the current progress?" },
+  "quick.progress_going_well": { code: "PROGRESS_GOING_WELL", type: "quick_message", en: "Progress is going well." },
+  "quick.progress_issue_found": { code: "PROGRESS_ISSUE_FOUND", type: "quick_message", en: "There is an issue that may affect progress." },
+  "quick.progress_almost_done": { code: "PROGRESS_ALMOST_DONE", type: "quick_message", en: "The order is almost complete." },
+  "flow.customer.complete_now": { code: "COMPLETE_CONFIRM_NOW", type: "action_card", actionStatus: "pending", en: "I agree. Complete the order now." },
+  "flow.customer.need_confirm": { code: "COMPLETE_NEED_CHECK", type: "quick_message", en: "I need to check again before completing the order." },
+  "action.complete.vector_request": { code: "COMPLETE_VECTOR_REQUEST", type: "action_card", actionStatus: "pending", en: "Vector marked the service as ready for completion." },
+  "system.complete.done": { code: "COMPLETE_SYSTEM_DONE", type: "system", systemOnly: true, en: "Order completed successfully." },
+  "action.expedite.request": { code: "EXPEDITE_REQUEST", type: "action_card", actionStatus: "pending", en: "Gamer requested expedited service. Extra reward: {amount} credits." },
+  "action.expedite.accept": { code: "EXPEDITE_ACCEPT", type: "action_card", actionStatus: "accepted", en: "Vector accepted the expedite request." },
+  "action.expedite.decline": { code: "EXPEDITE_DECLINE", type: "action_card", actionStatus: "declined", en: "Vector declined the expedite request." },
+  "system.expedite.active": { code: "EXPEDITE_SYSTEM_ACTIVE", type: "system", systemOnly: true, en: "This order is now expedited." },
+  "action.tip.send": { code: "TIP_SEND", type: "action_card", actionStatus: "accepted", en: "Gamer sent a tip of {amount} credits to Vector." },
+  "quick.tip_thanks": { code: "TIP_THANKS", type: "quick_message", en: "Thank you for the tip." },
+  "action.refund.request": { code: "REFUND_REQUEST", type: "action_card", actionStatus: "pending", en: "Gamer requested a refund or cancellation. Reason: {reason}." },
+  "action.refund.accept": { code: "REFUND_ACCEPT", type: "action_card", actionStatus: "accepted", en: "Vector accepted the refund request." },
+  "action.refund.dispute": { code: "REFUND_DISPUTE", type: "action_card", actionStatus: "disputed", en: "Vector disputed the refund request. Admin review is required." },
+  "action.cancel.request": { code: "CANCEL_REQUEST", type: "action_card", actionStatus: "pending", en: "Gamer requested to cancel the order." },
+  "action.cancel.accept": { code: "CANCEL_ACCEPT", type: "action_card", actionStatus: "accepted", en: "Vector accepted the cancellation request." },
+  "action.cancel.dispute": { code: "CANCEL_DISPUTE", type: "action_card", actionStatus: "disputed", en: "Vector disputed the cancellation request. Admin review is required." },
+  "action.report.submit": { code: "REPORT_SUBMIT", type: "action_card", actionStatus: "pending", en: "A report has been submitted for this order. Admin review is required." },
+  "system.admin.joined": { code: "ADMIN_JOINED", type: "system", systemOnly: true, en: "An admin has joined the order." },
+  "system.admin.reviewing": { code: "ADMIN_REVIEWING", type: "system", systemOnly: true, en: "Admin is reviewing this order." },
+  "system.admin.resolved": { code: "ADMIN_RESOLVED", type: "system", systemOnly: true, en: "Admin has resolved this issue." },
+  "quick.lobby_send_invite": { code: "LOBBY_SEND_INVITE", type: "quick_message", en: "Please send the lobby invite." },
+  "quick.lobby_invite_sent": { code: "LOBBY_INVITE_SENT", type: "quick_message", en: "The invite has been sent." },
+  "quick.lobby_invite_not_received": { code: "LOBBY_INVITE_NOT_RECEIVED", type: "quick_message", en: "I did not receive the invite." },
+  "quick.lobby_resend_invite": { code: "LOBBY_RESEND_INVITE", type: "quick_message", en: "I will resend the invite." },
+  "quick.lobby_check_game_id": { code: "LOBBY_CHECK_GAME_ID", type: "quick_message", en: "Please check the game ID." },
+  "quick.connection_issue": { code: "CONNECTION_ISSUE", type: "quick_message", en: "There is a connection issue." },
+  "quick.need_help": { code: "SUPPORT_NEED_HELP", type: "quick_message", en: "I need support." },
+  "quick.contact_support": { code: "SUPPORT_CONTACT_ADMIN", type: "quick_message", en: "Please contact admin support." },
+  "system.support.notified": { code: "SUPPORT_SYSTEM_NOTIFIED", type: "system", systemOnly: true, en: "Support has been notified." },
+  "system.vector.assigned": { code: "SYS_VECTOR_ASSIGNED", type: "system", systemOnly: true, en: "A Vector has accepted this order. Chat is now available." },
+  "system.order.started": { code: "SYS_ORDER_STARTED", type: "system", systemOnly: true, en: "The order has started." },
+  "system.order.paused": { code: "SYS_ORDER_PAUSED", type: "system", systemOnly: true, en: "The order has been paused." },
+  "system.order.resumed": { code: "SYS_ORDER_RESUMED", type: "system", systemOnly: true, en: "The order has resumed." },
+  "system.order.expired": { code: "SYS_ORDER_EXPIRED", type: "system", systemOnly: true, en: "This order action has expired." },
+  "system.action.accepted": { code: "SYS_ACTION_ACCEPTED", type: "system", systemOnly: true, en: "The action has been accepted." },
+  "system.action.declined": { code: "SYS_ACTION_DECLINED", type: "system", systemOnly: true, en: "The action has been declined." }
+});
+
+const ChatQuickCodeToCatalogKey = Object.freeze(
+  Object.fromEntries(Object.entries(ChatQuickMessageCatalog).map(([key, value]) => [value.code || key, key]))
+);
+
+const ChatQuickActionStates = Object.freeze(["pending", "accepted", "declined", "expired", "disputed"]);
+
+const ChatQuickParamRules = Object.freeze({
+  "quick.wait_moment": { minutes: { type: "integer", min: 1, max: 60, defaultValue: 5 } },
+  "flow.completion.eta_days": { days: { type: "integer", min: 1, max: 30, defaultValue: 1 } },
+  "quick.share_game_id": { game_id: { type: "text", minLength: 1, maxLength: 40 } },
+  "action.expedite.request": { amount: { type: "number", min: 1, max: 99999 } },
+  "action.tip.send": { amount: { type: "number", min: 1, max: 99999 } },
+  "action.refund.request": { reason: { type: "text", minLength: 2, maxLength: 160 } }
 });
 
 function chatMetadataObject(message = {}) {
   return message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? message.metadata : {};
 }
 
-function normalizeChatMessageKey(message = {}) {
+function normalizeChatCatalogKey(message = {}) {
   const metadata = chatMetadataObject(message);
-  const key = String(
-    message.messageKey ||
-    message.message_key ||
-    metadata.messageKey ||
-    metadata.message_key ||
-    ""
-  ).trim();
-  return ChatQuickMessageTemplates[key] ? key : "";
+  const candidates = [
+    message.catalogKey,
+    message.catalog_key,
+    message.messageKey,
+    message.message_key,
+    message.key,
+    metadata.catalogKey,
+    metadata.catalog_key,
+    metadata.messageKey,
+    metadata.message_key,
+    metadata.key
+  ];
+  for (const candidate of candidates) {
+    const key = String(candidate || "").trim();
+    if (!key) continue;
+    if (Object.prototype.hasOwnProperty.call(ChatQuickMessageCatalog, key)) return key;
+    if (ChatQuickCodeToCatalogKey[key]) return ChatQuickCodeToCatalogKey[key];
+  }
+  return "";
+}
+
+function chatCanonicalMessageKey(catalogKey = "") {
+  const key = normalizeChatCatalogKey({ catalogKey });
+  return key ? (ChatQuickMessageCatalog[key]?.code || key) : "";
+}
+
+function normalizeChatMessageKey(message = {}) {
+  return chatCanonicalMessageKey(normalizeChatCatalogKey(message));
 }
 
 function chatMessageParamsFrom(message = {}) {
@@ -1299,16 +1417,79 @@ function chatMessageParamsFrom(message = {}) {
   return { ...params };
 }
 
+function chatActionStatus(message = {}, catalogKey = "") {
+  const metadata = chatMetadataObject(message);
+  const normalizedKey = normalizeChatCatalogKey({ catalogKey }) || normalizeChatCatalogKey(message);
+  const raw = String(
+    message.actionStatus ||
+    message.action_status ||
+    metadata.actionStatus ||
+    metadata.action_status ||
+    ""
+  ).trim().toLowerCase();
+  if (ChatQuickActionStates.includes(raw)) return raw;
+  const configured = normalizedKey ? ChatQuickMessageCatalog[normalizedKey]?.actionStatus || "" : "";
+  if (configured && ChatQuickActionStates.includes(configured)) return configured;
+  const key = String(chatCanonicalMessageKey(normalizedKey) || "").toUpperCase();
+  return key.includes("REQUEST") || key.includes("REPORT") ? "pending" : "";
+}
+
 function chatTextForKey(key, params = {}) {
-  const template = ChatQuickMessageTemplates[key];
+  const catalogKey = normalizeChatCatalogKey({ messageKey: key });
+  const item = catalogKey ? ChatQuickMessageCatalog[catalogKey] : null;
+  const template = item?.en || "";
   if (!template) {
     return "";
   }
-  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, name) => String(params?.[name] ?? ""));
+  const resolvedParams = { ...(item.defaultParams || {}), ...(params || {}) };
+  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, name) => String(resolvedParams?.[name] ?? ""));
 }
 
 function sanitizeChatParam(value, limit = 80) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
+}
+
+function chatParamAliasValue(params = {}, name = "") {
+  if (Object.prototype.hasOwnProperty.call(params, name)) return params[name];
+  const camel = name.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  return Object.prototype.hasOwnProperty.call(params, camel) ? params[camel] : undefined;
+}
+
+function normalizeChatParamsForKey(catalogKey = "", params = {}) {
+  const item = ChatQuickMessageCatalog[catalogKey] || {};
+  const rules = ChatQuickParamRules[catalogKey] || {};
+  const normalized = { ...(item.defaultParams || {}) };
+  for (const [name, rule] of Object.entries(rules)) {
+    let raw = chatParamAliasValue(params, name);
+    if ((raw === undefined || raw === null || raw === "") && rule.defaultValue !== undefined) {
+      raw = rule.defaultValue;
+    }
+    if (raw === undefined || raw === null || raw === "") {
+      return { ok: false, message: "请补全快捷消息参数。" };
+    }
+    if (rule.type === "integer") {
+      const value = Number(raw);
+      if (!Number.isInteger(value) || value < rule.min || value > rule.max) {
+        return { ok: false, message: `参数 ${name} 必须在 ${rule.min} 到 ${rule.max} 之间。` };
+      }
+      normalized[name] = value;
+      continue;
+    }
+    if (rule.type === "number") {
+      const value = Number(raw);
+      if (!Number.isFinite(value) || value < rule.min || value > rule.max) {
+        return { ok: false, message: `参数 ${name} 必须在 ${rule.min} 到 ${rule.max} 之间。` };
+      }
+      normalized[name] = value;
+      continue;
+    }
+    const value = sanitizeChatParam(raw, rule.maxLength || 80);
+    if (value.length < (rule.minLength || 0)) {
+      return { ok: false, message: "请补全快捷消息参数。" };
+    }
+    normalized[name] = value;
+  }
+  return { ok: true, params: normalized };
 }
 
 function normalizeClientChatPayload(payload = {}) {
@@ -1317,50 +1498,59 @@ function normalizeClientChatPayload(payload = {}) {
     return { ok: false, message: "图片上传暂未开放。" };
   }
   const requestedType = normalizeChatMessageType(payload);
-  if (requestedType !== "user_message") {
-    return { ok: false, message: "系统消息和动作卡片只能由平台生成。" };
+  if (requestedType === "system") {
+    return { ok: false, message: "系统消息只能由平台生成。" };
   }
 
   const metadata = chatMetadataObject(payload);
-  const messageKey = normalizeChatMessageKey(payload);
-  if (!messageKey) {
+  const catalogKey = normalizeChatCatalogKey(payload);
+  const catalogItem = ChatQuickMessageCatalog[catalogKey] || {};
+  if (!catalogKey) {
     return { ok: false, message: "请选择一条快捷消息。" };
   }
+  if (catalogItem.systemOnly || catalogItem.type === "system") {
+    return { ok: false, message: "系统消息只能由平台生成。" };
+  }
+  const messageKey = chatCanonicalMessageKey(catalogKey);
+  const messageType = catalogItem.type === "action_card" ? "action_card" : "quick_message";
+  const nextContentType = messageType === "action_card" ? "action_card" : "text";
+  if (!["user_message", "quick_message", "action_card"].includes(requestedType)) {
+    return { ok: false, message: "不支持的快捷消息类型。" };
+  }
   const params = chatMessageParamsFrom(payload);
-  const normalizedParams = {};
-  if (messageKey === "quick.share_game_id") {
-    normalizedParams.game_id = sanitizeChatParam(params.game_id || params.gameId, 64);
-    if (!normalizedParams.game_id) {
-      return { ok: false, message: "请填写游戏 ID。" };
-    }
-  }
-  if (messageKey === "flow.completion.eta_days") {
-    const days = Number(params.days);
-    if (!Number.isInteger(days) || days < 1 || days > 30) {
-      return { ok: false, message: "预计时间必须是 1 到 30 天。" };
-    }
-    normalizedParams.days = days;
-  }
+  const normalizedParams = normalizeChatParamsForKey(catalogKey, params);
+  if (!normalizedParams.ok) return normalizedParams;
+  const actionStatus = chatActionStatus(payload, catalogKey);
 
   return {
     ok: true,
     message: {
       id: payload.id,
-      type: "text",
-      messageType: "user_message",
-      message_type: "user_message",
-      text: chatTextForKey(messageKey, normalizedParams),
+      type: nextContentType,
+      messageType,
+      message_type: messageType,
+      text: chatTextForKey(messageKey, normalizedParams.params),
+      catalogKey,
+      catalog_key: catalogKey,
       messageKey,
       message_key: messageKey,
-      messageParams: normalizedParams,
-      message_params: normalizedParams,
+      messageParams: normalizedParams.params,
+      message_params: normalizedParams.params,
+      actionStatus,
+      action_status: actionStatus,
       createdAt: payload.createdAt,
       metadata: {
         ...metadata,
+        catalogKey,
+        catalog_key: catalogKey,
         messageKey,
         message_key: messageKey,
-        messageParams: normalizedParams,
-        message_params: normalizedParams,
+        messageParams: normalizedParams.params,
+        message_params: normalizedParams.params,
+        messageType,
+        message_type: messageType,
+        actionStatus,
+        action_status: actionStatus,
         replyTo: sanitizeChatParam(metadata.replyTo || metadata.reply_to, 80),
         reply_to: sanitizeChatParam(metadata.replyTo || metadata.reply_to, 80)
       }
@@ -1424,29 +1614,52 @@ function addChatMessage(db, orderId, message, actor = "SYSTEM") {
   const sender = message.sender || actor;
   const createdAt = message.createdAt || nowIso();
   const metadata = message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? { ...message.metadata } : {};
-  const messageKey = normalizeChatMessageKey({ ...message, metadata });
+  const catalogKey = normalizeChatCatalogKey({ ...message, metadata });
+  const messageKey = chatCanonicalMessageKey(catalogKey);
   const messageParams = chatMessageParamsFrom({ ...message, metadata });
+  const senderId = String(message.senderId || message.sender_id || metadata.senderId || metadata.sender_id || "").trim();
+  const senderRole = normalizeChatSenderRole(message.role || message.senderRole || message.sender_role || metadata.senderRole || metadata.sender_role);
+  const actionStatus = chatActionStatus({ ...message, metadata }, catalogKey);
   if (messageKey) {
+    metadata.catalogKey = catalogKey;
+    metadata.catalog_key = catalogKey;
     metadata.messageKey = messageKey;
     metadata.message_key = messageKey;
     metadata.messageParams = messageParams;
     metadata.message_params = messageParams;
   }
+  // Keep identity and action state together with the message for local and realtime paths.
+  metadata.senderId = senderId;
+  metadata.sender_id = senderId;
+  metadata.senderRole = senderRole;
+  metadata.sender_role = senderRole;
+  if (actionStatus) {
+    metadata.actionStatus = actionStatus;
+    metadata.action_status = actionStatus;
+  }
   const next = {
     id: message.id || createId("msg"),
     orderId,
     sender,
-    role: message.role || "system",
+    senderId,
+    sender_id: senderId,
+    role: senderRole,
+    senderRole,
+    sender_role: senderRole,
     type: contentType,
     messageType,
     message_type: messageType,
     text: String(chatTextForKey(messageKey, messageParams) || message.text || "").slice(0, 5000),
     imageData: message.imageData || "",
     imageUrl: message.imageUrl || "",
+    catalogKey,
+    catalog_key: catalogKey,
     messageKey,
     message_key: messageKey,
     messageParams,
     message_params: messageParams,
+    actionStatus,
+    action_status: actionStatus,
     metadata,
     readBy: [sender],
     readAt: { [sender]: createdAt },
@@ -2262,11 +2475,17 @@ async function handleAction(action, payload = {}, request = {}) {
     if (profile) {
       profile.lastOnlineAt = nowIso();
     }
+    const senderId = String((profile && (profile.id || profile.userId)) || request.user.id || request.user.username || "").trim();
+    const senderRole = normalizeChatSenderRole(request.user.role);
     const result = addChatMessage(db, payload.orderId, {
       ...normalizedPayload.message,
       id: normalizedPayload.message.id || payload.id,
       sender: request.user.username,
-      role: request.user.role
+      senderId,
+      sender_id: senderId,
+      role: senderRole,
+      senderRole,
+      sender_role: senderRole
     }, request.user.username);
     if (!result.ok) {
       return result;

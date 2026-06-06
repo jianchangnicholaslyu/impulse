@@ -71,9 +71,7 @@
     return { ...(buildEnv || {}), ...(runtimeEnv || {}) };
   })();
   const PlatformChat = {
-    entryLabel: "Vector Support",
-    title: "Chat with your Vector",
-    welcome: "Welcome to IMPULSE J. Driven by Gamers' Momentum."
+    entryLabel: "Vector Support"
   };
   const ChatImageMaxBytes = 5 * 1024 * 1024;
   const RoleDisplayNames = {
@@ -199,12 +197,12 @@
   };
 
   const DevelopmentRecords = [
-    // AI: top item = next release draft. Do not mark Uploaded or push until user explicitly says upload.
+    // AI: top item = current production release. Create the next draft above this entry before new work.
     {
       version: "v0.20.3",
-      releasedAt: "2026-05-18",
+      releasedAt: "2026-06-06",
       nameI18n: localizedPair("Native Order Chat Foundation", "平台内订单聊天基础"),
-      statusI18n: localizedPair("Local draft, not uploaded", "本地草案，未上传"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
       summaryI18n: localizedPair(
         "Replaces the third-party chat bridge with an IMPULSE J-owned order room that stores messages, protocol cards, read state, typing, and presence in platform data.",
         "用 IMPULSE J 自主管理的订单房间替换第三方聊天桥接，消息、协议卡片、已读、输入状态和在线状态均回到平台数据中。"
@@ -1923,6 +1921,7 @@ function normalizeChatMessageType(message = {}) {
   const raw = String(message.messageType || message.message_type || "").toLowerCase().replace(/-/g, "_");
   if (raw === "system" || message.type === "system" || message.role === "system") return "system";
   if (raw === "action_card" || message.type === "action_card") return "action_card";
+  if (raw === "quick_message") return "quick_message";
   return "user_message";
 }
 
@@ -1930,97 +1929,183 @@ function chatUiText(zh, en) {
   return contentLanguage() === "zh-CN" ? zh : en;
 }
 
+// Stable message keys keep old conversations readable after language or wording changes.
 const ChatQuickMessageCatalog = Object.freeze({
-  "quick.i_am_ready": {
-    zh: "我准备好了。",
-    en: "I am ready."
+  "quick.i_am_ready": { code: "BASIC_READY", type: "quick_message", zh: "我准备好了。", en: "I am ready." },
+  "quick.wait_moment": {
+    code: "BASIC_WAIT",
+    type: "quick_message",
+    zh: "请稍等 {minutes} 分钟。",
+    en: "Please wait {minutes} minute(s).",
+    defaultParams: { minutes: 5 }
   },
   "quick.wait_5_minutes": {
+    code: "BASIC_WAIT_5",
+    type: "quick_message",
     zh: "请等我 5 分钟。",
-    en: "Please wait 5 minutes."
+    en: "Please wait 5 minutes.",
+    defaultParams: { minutes: 5 }
   },
-  "quick.ask_game_id": {
-    zh: "你的游戏 ID 是什么？",
-    en: "What is your game ID?"
-  },
-  "quick.share_game_id": {
-    zh: "我的游戏 ID 是：{game_id}",
-    en: "My game ID is: {game_id}"
-  },
-  "quick.please_invite_me": {
-    zh: "请邀请我。",
-    en: "Please invite me."
-  },
-  "quick.joined_lobby": {
-    zh: "我已经进入房间。",
-    en: "I have joined the lobby."
-  },
-  "quick.lets_start": {
-    zh: "我们开始吧。",
-    en: "Let's start."
-  },
-  "quick.good_game": {
-    zh: "打得不错。",
-    en: "Good game."
-  },
-  "quick.need_help": {
-    zh: "我需要帮助。",
-    en: "I need help."
-  },
-  "quick.contact_support": {
-    zh: "请联系支持。",
-    en: "Please contact support."
-  },
-  "quick.ask_completion_eta": {
-    zh: "还需要多久才能结单？",
-    en: "How much longer until completion?"
-  },
+  "quick.ask_game_id": { code: "BASIC_ASK_GAME_ID", type: "quick_message", zh: "你的游戏 ID 是什么？", en: "What is your game ID?" },
+  "quick.share_game_id": { code: "BASIC_SHARE_GAME_ID", type: "quick_message", zh: "我的游戏 ID 是：{game_id}", en: "My game ID is: {game_id}" },
+  "quick.please_invite_me": { code: "BASIC_INVITE_ME", type: "quick_message", zh: "请邀请我。", en: "Please invite me." },
+  "quick.joined_lobby": { code: "BASIC_JOINED_LOBBY", type: "quick_message", zh: "我已经进入房间。", en: "I have joined the lobby." },
+  "quick.lets_start": { code: "BASIC_START_NOW", type: "quick_message", zh: "我们开始吧。", en: "Let's start." },
+  "quick.good_game": { code: "BASIC_GOOD_GAME", type: "quick_message", zh: "打得不错。", en: "Good game." },
+  "quick.thank_you": { code: "BASIC_THANK_YOU", type: "quick_message", zh: "谢谢。", en: "Thank you." },
+  "quick.see_you_next_time": { code: "BASIC_SEE_YOU_NEXT_TIME", type: "quick_message", zh: "下次见。", en: "See you next time." },
+
+  "quick.ask_completion_eta": { code: "PROGRESS_ASK_TIME", type: "quick_message", zh: "还需要多久才能完成订单？", en: "How much longer will it take to complete the order?" },
   "flow.completion.ready_now": {
+    code: "PROGRESS_READY_TO_COMPLETE",
+    type: "quick_message",
     zh: "已经满足结单条件，随时可以结单。",
-    en: "Completion conditions are met. We can complete the order now."
+    en: "The completion requirements have been met. The order can be completed now."
   },
   "flow.completion.eta_days": {
+    code: "PROGRESS_NEED_MORE_TIME",
+    type: "quick_message",
     zh: "预计还需 {days} 天。",
-    en: "Estimated remaining time: {days} day(s)."
+    en: "Estimated time remaining: {days} day(s)."
   },
-  "flow.completion.unknown": {
-    zh: "我不确定，暂时无法告诉你。",
-    en: "I am not sure yet and cannot give an estimate right now."
-  },
-  "flow.customer.complete_now": {
-    zh: "我同意，现在就结单吧。",
-    en: "I agree. Complete the order now."
-  },
-  "flow.customer.need_confirm": {
-    zh: "我需要再确认一下。",
-    en: "I need to confirm again."
-  }
+  "flow.completion.unknown": { code: "PROGRESS_NOT_SURE", type: "quick_message", zh: "我不确定，暂时无法告诉你。", en: "I am not sure yet and cannot provide an estimate." },
+  "quick.ask_progress_status": { code: "PROGRESS_ASK_STATUS", type: "quick_message", zh: "当前进度怎么样？", en: "What is the current progress?" },
+  "quick.progress_going_well": { code: "PROGRESS_GOING_WELL", type: "quick_message", zh: "进展顺利。", en: "Progress is going well." },
+  "quick.progress_issue_found": { code: "PROGRESS_ISSUE_FOUND", type: "quick_message", zh: "发现了可能影响进度的问题。", en: "There is an issue that may affect progress." },
+  "quick.progress_almost_done": { code: "PROGRESS_ALMOST_DONE", type: "quick_message", zh: "订单快完成了。", en: "The order is almost complete." },
+
+  "flow.customer.complete_now": { code: "COMPLETE_CONFIRM_NOW", type: "action_card", actionStatus: "pending", zh: "我同意，现在就结单吧。", en: "I agree. Complete the order now." },
+  "flow.customer.need_confirm": { code: "COMPLETE_NEED_CHECK", type: "quick_message", zh: "我需要再确认一下。", en: "I need to check again before completing the order." },
+  "action.complete.vector_request": { code: "COMPLETE_VECTOR_REQUEST", type: "action_card", actionStatus: "pending", zh: "Vector 已标记服务可结单。", en: "Vector marked the service as ready for completion." },
+  "system.complete.done": { code: "COMPLETE_SYSTEM_DONE", type: "system", systemOnly: true, zh: "订单已成功完成。", en: "Order completed successfully." },
+
+  "action.expedite.request": { code: "EXPEDITE_REQUEST", type: "action_card", actionStatus: "pending", zh: "Gamer 请求加急服务。额外奖励：{amount} 积分。", en: "Gamer requested expedited service. Extra reward: {amount} credits." },
+  "action.expedite.accept": { code: "EXPEDITE_ACCEPT", type: "action_card", actionStatus: "accepted", zh: "Vector 已接受加急请求。", en: "Vector accepted the expedite request." },
+  "action.expedite.decline": { code: "EXPEDITE_DECLINE", type: "action_card", actionStatus: "declined", zh: "Vector 已拒绝加急请求。", en: "Vector declined the expedite request." },
+  "system.expedite.active": { code: "EXPEDITE_SYSTEM_ACTIVE", type: "system", systemOnly: true, zh: "该订单已进入加急状态。", en: "This order is now expedited." },
+
+  "action.tip.send": { code: "TIP_SEND", type: "action_card", actionStatus: "accepted", zh: "Gamer 向 Vector 发送了 {amount} 积分小费。", en: "Gamer sent a tip of {amount} credits to Vector." },
+  "quick.tip_thanks": { code: "TIP_THANKS", type: "quick_message", zh: "谢谢你的支持。", en: "Thank you for the tip." },
+
+  "action.refund.request": { code: "REFUND_REQUEST", type: "action_card", actionStatus: "pending", zh: "Gamer 请求退款或取消。原因：{reason}", en: "Gamer requested a refund or cancellation. Reason: {reason}." },
+  "action.refund.accept": { code: "REFUND_ACCEPT", type: "action_card", actionStatus: "accepted", zh: "Vector 已接受退款请求。", en: "Vector accepted the refund request." },
+  "action.refund.dispute": { code: "REFUND_DISPUTE", type: "action_card", actionStatus: "disputed", zh: "Vector 对退款请求提出争议，需要管理员审核。", en: "Vector disputed the refund request. Admin review is required." },
+  "action.cancel.request": { code: "CANCEL_REQUEST", type: "action_card", actionStatus: "pending", zh: "Gamer 请求取消订单。", en: "Gamer requested to cancel the order." },
+  "action.cancel.accept": { code: "CANCEL_ACCEPT", type: "action_card", actionStatus: "accepted", zh: "Vector 已接受取消请求。", en: "Vector accepted the cancellation request." },
+  "action.cancel.dispute": { code: "CANCEL_DISPUTE", type: "action_card", actionStatus: "disputed", zh: "Vector 对取消请求提出争议，需要管理员审核。", en: "Vector disputed the cancellation request. Admin review is required." },
+
+  "action.report.submit": { code: "REPORT_SUBMIT", type: "action_card", actionStatus: "pending", zh: "该订单已提交举报，需要管理员审核。", en: "A report has been submitted for this order. Admin review is required." },
+  "system.admin.joined": { code: "ADMIN_JOINED", type: "system", systemOnly: true, zh: "管理员已加入该订单。", en: "An admin has joined the order." },
+  "system.admin.reviewing": { code: "ADMIN_REVIEWING", type: "system", systemOnly: true, zh: "管理员正在审核该订单。", en: "Admin is reviewing this order." },
+  "system.admin.resolved": { code: "ADMIN_RESOLVED", type: "system", systemOnly: true, zh: "管理员已处理该问题。", en: "Admin has resolved this issue." },
+
+  "quick.lobby_send_invite": { code: "LOBBY_SEND_INVITE", type: "quick_message", zh: "请发送房间邀请。", en: "Please send the lobby invite." },
+  "quick.lobby_invite_sent": { code: "LOBBY_INVITE_SENT", type: "quick_message", zh: "邀请已发送。", en: "The invite has been sent." },
+  "quick.lobby_invite_not_received": { code: "LOBBY_INVITE_NOT_RECEIVED", type: "quick_message", zh: "我没有收到邀请。", en: "I did not receive the invite." },
+  "quick.lobby_resend_invite": { code: "LOBBY_RESEND_INVITE", type: "quick_message", zh: "我会重新发送邀请。", en: "I will resend the invite." },
+  "quick.lobby_check_game_id": { code: "LOBBY_CHECK_GAME_ID", type: "quick_message", zh: "请检查游戏 ID。", en: "Please check the game ID." },
+  "quick.connection_issue": { code: "CONNECTION_ISSUE", type: "quick_message", zh: "连接出现问题。", en: "There is a connection issue." },
+
+  "quick.need_help": { code: "SUPPORT_NEED_HELP", type: "quick_message", zh: "我需要帮助。", en: "I need support." },
+  "quick.contact_support": { code: "SUPPORT_CONTACT_ADMIN", type: "quick_message", zh: "请联系管理员支持。", en: "Please contact admin support." },
+  "system.support.notified": { code: "SUPPORT_SYSTEM_NOTIFIED", type: "system", systemOnly: true, zh: "已通知支持团队。", en: "Support has been notified." },
+
+  "system.vector.assigned": { code: "SYS_VECTOR_ASSIGNED", type: "system", systemOnly: true, zh: "Vector 已接受该订单，聊天现在可用。", en: "A Vector has accepted this order. Chat is now available." },
+  "system.order.started": { code: "SYS_ORDER_STARTED", type: "system", systemOnly: true, zh: "订单已开始。", en: "The order has started." },
+  "system.order.paused": { code: "SYS_ORDER_PAUSED", type: "system", systemOnly: true, zh: "订单已暂停。", en: "The order has been paused." },
+  "system.order.resumed": { code: "SYS_ORDER_RESUMED", type: "system", systemOnly: true, zh: "订单已恢复。", en: "The order has resumed." },
+  "system.order.expired": { code: "SYS_ORDER_EXPIRED", type: "system", systemOnly: true, zh: "该订单动作已过期。", en: "This order action has expired." },
+  "system.action.accepted": { code: "SYS_ACTION_ACCEPTED", type: "system", systemOnly: true, zh: "该动作已接受。", en: "The action has been accepted." },
+  "system.action.declined": { code: "SYS_ACTION_DECLINED", type: "system", systemOnly: true, zh: "该动作已拒绝。", en: "The action has been declined." }
 });
 
 const ChatQuickMessageGroups = Object.freeze([
-  {
-    id: "coordination",
-    titleZh: "协作",
-    titleEn: "Coordination",
-    keys: ["quick.i_am_ready", "quick.wait_5_minutes", "quick.ask_completion_eta", "quick.need_help"]
-  },
-  {
-    id: "game",
-    titleZh: "游戏",
-    titleEn: "Game",
-    keys: ["quick.ask_game_id", "quick.share_game_id", "quick.please_invite_me", "quick.joined_lobby", "quick.lets_start", "quick.good_game", "quick.contact_support"]
-  }
+  { id: "common", titleZh: "常用", titleEn: "Common", icon: "fa-solid fa-star", keys: ["quick.i_am_ready", "quick.wait_5_minutes", "quick.please_invite_me", "quick.ask_completion_eta", "quick.need_help"] },
+  { id: "basic", titleZh: "基础沟通", titleEn: "Basic", icon: "fa-solid fa-bolt", keys: ["quick.i_am_ready", "quick.wait_moment", "quick.wait_5_minutes", "quick.please_invite_me", "quick.joined_lobby", "quick.lets_start", "quick.good_game", "quick.thank_you", "quick.see_you_next_time"] },
+  { id: "progress", titleZh: "订单进度", titleEn: "Progress", icon: "fa-solid fa-list-check", keys: ["quick.ask_completion_eta", "flow.completion.ready_now", "flow.completion.eta_days", "flow.completion.unknown", "quick.ask_progress_status", "quick.progress_going_well", "quick.progress_issue_found", "quick.progress_almost_done"] },
+  { id: "completion", titleZh: "结单", titleEn: "Completion", icon: "fa-solid fa-circle-check", keys: ["flow.customer.complete_now", "flow.customer.need_confirm", "action.complete.vector_request", "system.complete.done"] },
+  { id: "lobby", titleZh: "游戏连接", titleEn: "Lobby", icon: "fa-solid fa-gamepad", keys: ["quick.ask_game_id", "quick.share_game_id", "quick.lobby_send_invite", "quick.lobby_invite_sent", "quick.lobby_invite_not_received", "quick.lobby_resend_invite", "quick.lobby_check_game_id", "quick.connection_issue"] },
+  { id: "reward", titleZh: "加急小费", titleEn: "Rewards", icon: "fa-solid fa-hand-holding-dollar", keys: ["action.expedite.request", "action.expedite.accept", "action.expedite.decline", "system.expedite.active", "action.tip.send", "quick.tip_thanks"] },
+  { id: "refund", titleZh: "退款取消", titleEn: "Refund", icon: "fa-solid fa-rotate-left", keys: ["action.refund.request", "action.refund.accept", "action.refund.dispute", "action.cancel.request", "action.cancel.accept", "action.cancel.dispute"] },
+  { id: "report", titleZh: "举报管理", titleEn: "Report", icon: "fa-solid fa-shield-halved", keys: ["action.report.submit", "system.admin.joined", "system.admin.reviewing", "system.admin.resolved"] },
+  { id: "support", titleZh: "支持", titleEn: "Support", icon: "fa-solid fa-headset", keys: ["quick.need_help", "quick.contact_support", "system.support.notified"] },
+  { id: "system", titleZh: "系统", titleEn: "System", icon: "fa-solid fa-circle-info", keys: ["system.vector.assigned", "system.order.started", "system.order.paused", "system.order.resumed", "system.order.expired", "system.action.accepted", "system.action.declined"] }
 ]);
+
+const ChatQuickReplyOptions = Object.freeze({
+  "quick.i_am_ready": ["quick.lets_start", "quick.wait_moment"],
+  "quick.ask_completion_eta": ["flow.completion.ready_now", "flow.completion.eta_days", "flow.completion.unknown"],
+  "flow.completion.ready_now": ["flow.customer.complete_now", "flow.customer.need_confirm"],
+  "quick.ask_progress_status": ["quick.progress_going_well", "quick.progress_issue_found", "quick.progress_almost_done"],
+  "action.complete.vector_request": ["flow.customer.complete_now", "flow.customer.need_confirm"],
+  "action.expedite.request": ["action.expedite.accept", "action.expedite.decline"],
+  "action.refund.request": ["action.refund.accept", "action.refund.dispute"],
+  "action.cancel.request": ["action.cancel.accept", "action.cancel.dispute"],
+  "quick.lobby_invite_not_received": ["quick.lobby_resend_invite", "quick.lobby_check_game_id"],
+  "quick.connection_issue": ["quick.wait_moment", "quick.need_help"]
+});
+
+const ChatQuickParamRules = Object.freeze({
+  "quick.wait_moment": { minutes: { type: "integer", min: 1, max: 60, defaultValue: 5 } },
+  "flow.completion.eta_days": { days: { type: "integer", min: 1, max: 30, defaultValue: 1 } },
+  "quick.share_game_id": { game_id: { type: "text", minLength: 1, maxLength: 40 } },
+  "action.expedite.request": { amount: { type: "number", min: 1, max: 99999 } },
+  "action.tip.send": { amount: { type: "number", min: 1, max: 99999 } },
+  "action.refund.request": { reason: { type: "text", minLength: 2, maxLength: 160 } }
+});
+
+const ChatQuickActionStates = Object.freeze(["pending", "accepted", "declined", "expired", "disputed"]);
 
 function chatMetadataObject(message = {}) {
   const metadata = message.metadata;
   return metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {};
 }
 
+function chatActionStatus(message = {}, catalogKey = "") {
+  const metadata = chatMetadataObject(message);
+  const rawStatus = String(
+    message.actionStatus ||
+    message.action_status ||
+    metadata.actionStatus ||
+    metadata.action_status ||
+    (catalogKey ? ChatQuickMessageCatalog[catalogKey]?.actionStatus : "") ||
+    ""
+  ).toLowerCase().replace(/-/g, "_");
+  return ChatQuickActionStates.includes(rawStatus) ? rawStatus : "";
+}
+
+// Stable codes keep stored chat messages independent from UI category keys.
+const ChatQuickCodeToCatalogKey = Object.freeze(
+  Object.fromEntries(Object.entries(ChatQuickMessageCatalog).map(([key, value]) => [value.code || key, key]))
+);
+
+function normalizeChatQuickCatalogKey(key) {
+  const raw = String(key || "");
+  if (Object.prototype.hasOwnProperty.call(ChatQuickMessageCatalog, raw)) return raw;
+  return ChatQuickCodeToCatalogKey[raw] || "";
+}
+
+function chatQuickCanonicalKey(key) {
+  const catalogKey = normalizeChatQuickCatalogKey(key);
+  return catalogKey ? (ChatQuickMessageCatalog[catalogKey]?.code || catalogKey) : String(key || "");
+}
+
 function chatMessageKey(message = {}) {
   const metadata = chatMetadataObject(message);
-  const key = String(message.messageKey || message.message_key || message.key || metadata.messageKey || metadata.message_key || metadata.key || "");
-  return Object.prototype.hasOwnProperty.call(ChatQuickMessageCatalog, key) ? key : "";
+  const key = String(
+    message.catalogKey ||
+    message.catalog_key ||
+    message.messageKey ||
+    message.message_key ||
+    message.key ||
+    metadata.catalogKey ||
+    metadata.catalog_key ||
+    metadata.messageKey ||
+    metadata.message_key ||
+    metadata.key ||
+    ""
+  );
+  return normalizeChatQuickCatalogKey(key);
 }
 
 function chatMessageParams(message = {}) {
@@ -2038,10 +2123,12 @@ function chatMessageParams(message = {}) {
 }
 
 function formatChatQuickMessage(key, params = {}) {
-  const template = ChatQuickMessageCatalog[key];
+  const catalogKey = normalizeChatQuickCatalogKey(key);
+  const template = ChatQuickMessageCatalog[catalogKey];
   if (!template) return "";
+  const resolvedParams = { ...(template.defaultParams || {}), ...(params || {}) };
   const raw = contentLanguage() === "zh-CN" ? template.zh : template.en;
-  return raw.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, name) => String(params[name] ?? ""));
+  return raw.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, name) => String(resolvedParams[name] ?? ""));
 }
 
 function chatMessageText(message = {}) {
@@ -2134,14 +2221,41 @@ function chatHasReply(messages = [], targetId = "") {
 
 function findPendingChatFlow(messages = [], key = "", currentUsername = "") {
   const current = normalize(currentUsername);
+  const targetKey = normalizeChatQuickCatalogKey(key);
   return messages
     .slice()
     .reverse()
     .find((message) => {
-      if (!message?.id || chatMessageKey(message) !== key) return false;
+      if (!targetKey || !message?.id || chatMessageKey(message) !== targetKey) return false;
       if (current && normalize(message.sender) === current) return false;
       return !chatHasReply(messages, message.id);
     }) || null;
+}
+
+function chatReplyOptionsForKey(key) {
+  const catalogKey = normalizeChatQuickCatalogKey(key);
+  return (ChatQuickReplyOptions[catalogKey] || [])
+    .map((optionKey) => normalizeChatQuickCatalogKey(optionKey))
+    .filter(Boolean);
+}
+
+function findPendingChatRequiredReply(messages = [], currentUsername = "") {
+  const current = normalize(currentUsername);
+  const pending = messages
+    .slice()
+    .reverse()
+    .find((message) => {
+      const catalogKey = chatMessageKey(message);
+      if (!message?.id || (current && normalize(message.sender) === current)) return false;
+      return chatReplyOptionsForKey(catalogKey).length > 0 && !chatHasReply(messages, message.id);
+    });
+  if (!pending) return null;
+  const catalogKey = chatMessageKey(pending);
+  return {
+    message: pending,
+    catalogKey,
+    replyOptions: chatReplyOptionsForKey(catalogKey)
+  };
 }
 
 const PlatformRealtimeConfig = {
@@ -2172,7 +2286,9 @@ function chatMessageFromRealtimeRow(row = {}) {
     role: row.sender_role
   });
   const metadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata) ? row.metadata : {};
-  const messageKey = String(row.message_key || metadata.messageKey || metadata.message_key || "");
+  const rawMessageKey = String(row.message_key || metadata.catalogKey || metadata.catalog_key || metadata.messageKey || metadata.message_key || "");
+  const catalogKey = normalizeChatQuickCatalogKey(rawMessageKey);
+  const messageKey = catalogKey ? chatQuickCanonicalKey(catalogKey) : rawMessageKey;
   const messageParams = row.message_params && typeof row.message_params === "object" && !Array.isArray(row.message_params)
     ? row.message_params
     : (metadata.messageParams && typeof metadata.messageParams === "object" && !Array.isArray(metadata.messageParams))
@@ -2180,23 +2296,43 @@ function chatMessageFromRealtimeRow(row = {}) {
       : (metadata.message_params && typeof metadata.message_params === "object" && !Array.isArray(metadata.message_params))
         ? metadata.message_params
         : {};
+  const actionStatus = chatActionStatus({ action_status: row.action_status || row.actionStatus, metadata }, catalogKey);
+  const senderId = row.sender_id || row.senderId || "";
+  const normalizedMetadata = {
+    ...metadata,
+    ...(catalogKey ? {
+      catalogKey,
+      catalog_key: catalogKey,
+      messageKey,
+      message_key: messageKey,
+      messageParams,
+      message_params: messageParams
+    } : {}),
+    ...(actionStatus ? { actionStatus, action_status: actionStatus } : {})
+  };
   const readAt = row.read_at && typeof row.read_at === "object" && !Array.isArray(row.read_at) ? row.read_at : {};
   return {
     id: row.id || createId("msg"),
     orderId: row.order_id || "",
     sender: row.sender_username || "SYSTEM",
+    senderId,
+    sender_id: senderId,
     role: row.sender_role || "system",
     type: contentType,
     messageType,
     message_type: messageType,
+    actionStatus,
+    action_status: actionStatus,
+    catalogKey,
+    catalog_key: catalogKey,
     messageKey,
     message_key: messageKey,
     messageParams,
     message_params: messageParams,
-    text: formatChatQuickMessage(messageKey, messageParams) || String(row.body || "").slice(0, 5000),
+    text: formatChatQuickMessage(catalogKey || messageKey, messageParams) || String(row.body || "").slice(0, 5000),
     imageData: "",
     imageUrl: row.image_url || "",
-    metadata,
+    metadata: normalizedMetadata,
     readBy: Array.isArray(row.read_by) ? row.read_by : [],
     readAt,
     createdAt: row.created_at || new Date().toISOString()
@@ -2498,56 +2634,126 @@ function OrderChatPanel(context = {}) {
     });
   }
 
+  function chatParamLabel(name) {
+    const labels = {
+      minutes: { zh: "分钟数", en: "minutes" },
+      days: { zh: "天数", en: "days" },
+      game_id: { zh: "游戏 ID", en: "game ID" },
+      amount: { zh: "积分数量", en: "credit amount" },
+      reason: { zh: "原因", en: "reason" }
+    };
+    return labels[name] || { zh: name, en: name.replace(/_/g, " ") };
+  }
+
   function promptParamsForKey(key) {
-    if (key === "quick.share_game_id") {
-      const value = window.prompt(chatUiText("请输入你的游戏 ID。", "Enter your game ID."), "")?.trim();
-      if (!value) return null;
-      return { game_id: value.slice(0, 64) };
-    }
-    if (key === "flow.completion.eta_days") {
-      const value = window.prompt(chatUiText("预计还需要几天？请输入 1 到 30。", "How many days are needed? Enter 1 to 30."), "1")?.trim();
-      const days = Number(value);
-      if (!Number.isInteger(days) || days < 1 || days > 30) {
-        alert(chatUiText("请输入 1 到 30 之间的天数。", "Enter a number of days between 1 and 30."));
+    const normalizedKey = normalizeChatQuickCatalogKey(key) || key;
+    const rules = ChatQuickParamRules[normalizedKey] || {};
+    const defaults = ChatQuickMessageCatalog[normalizedKey]?.defaultParams || {};
+    const params = {};
+    for (const [name, rule] of Object.entries(rules)) {
+      const label = chatParamLabel(name);
+      const fallback = rule.defaultValue ?? defaults[name] ?? "";
+      const raw = window.prompt(
+        chatUiText(`请输入${label.zh}。`, `Enter ${label.en}.`),
+        String(fallback)
+      );
+      if (raw === null) return null;
+      const value = raw.trim();
+      if (rule.type === "integer") {
+        const numberValue = Number(value);
+        if (!Number.isInteger(numberValue) || numberValue < rule.min || numberValue > rule.max) {
+          alert(chatUiText(`请输入 ${rule.min} 到 ${rule.max} 之间的整数。`, `Enter an integer between ${rule.min} and ${rule.max}.`));
+          return null;
+        }
+        params[name] = numberValue;
+        continue;
+      }
+      if (rule.type === "number") {
+        const numberValue = Number(value);
+        if (!Number.isFinite(numberValue) || numberValue < rule.min || numberValue > rule.max) {
+          alert(chatUiText(`请输入 ${rule.min} 到 ${rule.max} 之间的数字。`, `Enter a number between ${rule.min} and ${rule.max}.`));
+          return null;
+        }
+        params[name] = numberValue;
+        continue;
+      }
+      if (value.length < (rule.minLength || 0)) {
+        alert(chatUiText("请补全该快捷消息需要的信息。", "Complete the information required by this signal."));
         return null;
       }
-      return { days: String(days) };
+      params[name] = value.slice(0, rule.maxLength || 80);
     }
-    return {};
+    return params;
   }
 
   function buildMessagePayload(key, params = {}, extraMetadata = {}) {
     const createdAt = new Date().toISOString();
-    const text = formatChatQuickMessage(key, params);
+    const catalogKey = normalizeChatQuickCatalogKey(key) || key;
+    const catalogItem = ChatQuickMessageCatalog[catalogKey] || {};
+    const messageKey = chatQuickCanonicalKey(catalogKey);
+    const messageType = catalogItem.type || "quick_message";
+    const actionStatus = catalogItem.actionStatus || null;
+    const contentType = messageType === "system" ? "system" : messageType === "action_card" ? "action_card" : "text";
+    const resolvedParams = { ...(catalogItem.defaultParams || {}), ...(params || {}) };
+    const text = formatChatQuickMessage(catalogKey, resolvedParams);
     return {
       id: createId("msg"),
       sender: currentUsername,
       role: currentRole,
-      type: "text",
-      messageType: "user_message",
-      message_type: "user_message",
-      messageKey: key,
-      message_key: key,
-      messageParams: params,
-      message_params: params,
+      senderRole: currentRole,
+      sender_role: currentRole,
+      type: contentType,
+      messageType,
+      message_type: messageType,
+      ...(actionStatus ? { actionStatus, action_status: actionStatus } : {}),
+      catalogKey,
+      catalog_key: catalogKey,
+      messageKey,
+      message_key: messageKey,
+      messageParams: resolvedParams,
+      message_params: resolvedParams,
       text,
       createdAt,
       metadata: {
         orderContext: contextLine,
-        messageKey: key,
-        message_key: key,
-        messageParams: params,
-        message_params: params,
-        ...extraMetadata
+        ...extraMetadata,
+        catalogKey,
+        catalog_key: catalogKey,
+        messageKey,
+        message_key: messageKey,
+        messageParams: resolvedParams,
+        message_params: resolvedParams,
+        messageType,
+        message_type: messageType,
+        senderRole: currentRole,
+        sender_role: currentRole,
+        ...(actionStatus ? { actionStatus, action_status: actionStatus } : {})
       }
     };
   }
 
-  async function sendStructuredMessage(key, params, extraMetadata = {}) {
-    if (readOnly || sending || !key) return;
-    const resolvedParams = params || promptParamsForKey(key);
-    if (resolvedParams === null) return;
-    sending = true;
+async function sendStructuredMessage(key, params, extraMetadata = {}) {
+  if (readOnly || sending || !key) return;
+  const catalogKey = normalizeChatQuickCatalogKey(key) || key;
+  const pendingReply = findPendingChatRequiredReply(Data.chatMessages(order.id), currentUsername);
+  if (pendingReply && !pendingReply.replyOptions.includes(catalogKey)) {
+    // Keep guided order flows deterministic by forcing the required reply first.
+    renderGuidedPanel(
+      chatUiText("请先回复当前流程选项", "Reply to the current flow option first"),
+      formatChatQuickMessage(pendingReply.catalogKey, chatMessageParams(pendingReply.message))
+        || chatUiText("请先处理对方的固定回复选项。", "Handle the pending fixed reply option first."),
+      pendingReply.replyOptions.map((optionKey) => guidedButton(optionKey, pendingReply.message))
+    );
+    const lockMessage = chatUiText("请先处理对方的固定回复选项。", "Handle the pending fixed reply option first.");
+    statusRow.textContent = lockMessage;
+    window.setTimeout(() => {
+      if (statusRow.textContent === lockMessage) statusRow.textContent = "";
+    }, 2200);
+    return;
+  }
+  const resolvedParams = params || promptParamsForKey(key);
+  if (resolvedParams === null) return;
+  sending = true;
     statusRow.textContent = chatUiText("正在发送...", "Sending...");
     const payload = buildMessagePayload(key, resolvedParams, extraMetadata);
     const optimisticId = payload.id;
@@ -2576,14 +2782,22 @@ function OrderChatPanel(context = {}) {
     }
   }
 
-  function quickButton(key, params = null, metadata = {}) {
-    return h("button", {
-      className: "chat-quick-btn",
-      type: "button",
-      disabled: sending || readOnly,
-      onClick: () => sendStructuredMessage(key, params, metadata)
-    }, chatQuickButtonLabel(key));
-  }
+function quickButton(key, params = null, metadata = {}) {
+  const normalizedKey = normalizeChatQuickCatalogKey(key) || key;
+  const item = ChatQuickMessageCatalog[normalizedKey];
+  // System-only signals stay visible for context, but users cannot forge them.
+  const systemLocked = Boolean(item?.systemOnly);
+  return h("button", {
+    className: `chat-quick-btn ${systemLocked ? "system-locked" : ""}`.trim(),
+    type: "button",
+    disabled: sending || readOnly || systemLocked,
+    title: systemLocked ? chatUiText("系统消息由平台自动生成，不能手动发送。", "System messages are generated by IMPULSE J and cannot be sent manually.") : "",
+    onClick: () => {
+      if (systemLocked) return;
+      sendStructuredMessage(key, params, metadata);
+    }
+  }, chatQuickButtonLabel(key));
+}
 
   function guidedButton(key, replyToMessage, params = null) {
     return quickButton(key, params, {
@@ -2618,34 +2832,30 @@ function OrderChatPanel(context = {}) {
       return;
     }
 
-    const pendingEtaQuestion = findPendingChatFlow(messages, "quick.ask_completion_eta", currentUsername);
-    if (isVectorUser && pendingEtaQuestion) {
+    const pendingReply = findPendingChatRequiredReply(messages, currentUsername);
+    if (pendingReply) {
       renderGuidedPanel(
-        chatUiText("Gamer 正在询问结单时间", "Gamer is asking for completion timing"),
-        chatUiText("请先回复该问题，然后再继续发送其他快捷消息。", "Reply to this question before sending other quick messages."),
-        [
-          guidedButton("flow.completion.ready_now", pendingEtaQuestion),
-          guidedButton("flow.completion.eta_days", pendingEtaQuestion),
-          guidedButton("flow.completion.unknown", pendingEtaQuestion)
-        ]
-      );
-      return;
-    }
-
-    const pendingReadyReply = findPendingChatFlow(messages, "flow.completion.ready_now", currentUsername);
-    if (!isVectorUser && pendingReadyReply) {
-      renderGuidedPanel(
-        chatUiText("Vector 表示已经满足结单条件", "Vector says the order can be completed now"),
-        chatUiText("请选择是否同意现在结单。", "Choose whether you agree to complete the order now."),
-        [
-          guidedButton("flow.customer.complete_now", pendingReadyReply),
-          guidedButton("flow.customer.need_confirm", pendingReadyReply)
-        ]
+        chatUiText("请先回复对方的流程选项", "Reply to the flow option first"),
+        formatChatQuickMessage(pendingReply.catalogKey, chatMessageParams(pendingReply.message))
+          || chatUiText("请先处理对方的固定回复选项。", "Handle the pending fixed reply option first."),
+        pendingReply.replyOptions.map((optionKey) => guidedButton(optionKey, pendingReply.message))
       );
       return;
     }
 
     const activeGroup = ChatQuickMessageGroups.find((group) => group.id === activeQuickGroupId) || ChatQuickMessageGroups[0];
+    const activeKeys = (activeGroup?.keys || []).filter((key) => normalizeChatQuickCatalogKey(key));
+    quickPanel.append(h("div", { className: "chat-quick-title" },
+      h("strong", {}, chatUiText("快捷消息区", "Quick Signals")),
+      h("span", {}, chatUiText(
+        `选择分类，下方会刷新 ${activeKeys.length} 条可发送内容。`,
+        `Choose a category to refresh ${activeKeys.length} signals below.`
+      ))
+    ));
+    quickPanel.append(h("div", { className: "chat-flow-note chat-flow-note-top" },
+      h("i", { className: "fa-solid fa-hand-pointer" }),
+      h("span", {}, chatUiText("先选分类，再点击下方短句发送。", "Pick a category, then send one signal below."))
+    ));
     quickPanel.append(h("div", { className: "chat-quick-tabs", role: "tablist" },
       ...ChatQuickMessageGroups.map((group) => h("button", {
         className: `chat-quick-tab ${group.id === activeQuickGroupId ? "active" : ""}`.trim(),
@@ -2656,11 +2866,17 @@ function OrderChatPanel(context = {}) {
           activeQuickGroupId = group.id;
           renderQuickPanel(messages);
         }
-      }, chatUiText(group.titleZh, group.titleEn)))
+      }, h("i", { className: group.icon || "fa-regular fa-message" }), h("span", {}, chatUiText(group.titleZh, group.titleEn))))
     ));
-    if (activeGroup) {
+    // Keep a rendered fallback so the picker never collapses into an empty panel.
+    if (activeKeys.length) {
       quickPanel.append(h("div", { className: "chat-quick-grid" },
-        ...activeGroup.keys.map((key) => quickButton(key))
+        ...activeKeys.map((key) => quickButton(key))
+      ));
+    } else {
+      quickPanel.append(h("div", { className: "chat-quick-empty" },
+        h("i", { className: "fa-regular fa-message" }),
+        h("span", {}, chatUiText("当前分类暂无快捷消息。", "No signals in this category yet."))
       ));
     }
     quickPanel.append(h("div", { className: "chat-flow-note" },
@@ -2672,7 +2888,7 @@ function OrderChatPanel(context = {}) {
   const room = h("div", { className: "order-chat-room quick-chat" },
     h("div", { className: "order-chat-head" },
       h("div", {},
-        h("strong", {}, vectorName ? `Vector ${vectorName}` : "Quick Messages"),
+        h("strong", {}, vectorName ? `Vector ${vectorName}` : "Vector Support"),
         h("span", { className: "notranslate", translate: "no" }, contextLine)
       )
     ),
@@ -2683,10 +2899,20 @@ function OrderChatPanel(context = {}) {
 
   // Keep quick replies outside the clipped chat room so the picker stays visible under the message area.
   const actions = h("aside", { className: "quick-chat-actions" },
+    h("div", { className: "quick-chat-actions-heading" },
+      h("div", {},
+        h("strong", {}, chatUiText("快捷消息", "Quick Signals")),
+        h("span", {}, chatUiText("选择固定消息发送，系统会自动同步给对方。", "Choose a fixed signal to send. It syncs to the other side."))
+      ),
+      h("i", { className: "fa-solid fa-bolt" })
+    ),
     quickPanel,
     typingRow,
     statusRow
   );
+
+  // Render quick replies before history hydrates so the picker never opens as an empty strip.
+  renderQuickPanel(messages);
 
   window.setTimeout(async () => {
     renderMessages();
@@ -3786,20 +4012,28 @@ function mailboxHasClaim(message) {
       const contentType = normalizeChatContentType(message.type, message);
       const messageType = normalizeChatMessageType(message);
       const createdAt = message.createdAt || new Date().toISOString();
-      const rawMetadata = message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? { ...message.metadata } : {};
-      const messageKey = chatMessageKey({ ...message, metadata: rawMetadata });
-      const messageParams = chatMessageParams({ ...message, metadata: rawMetadata });
-      const metadata = {
-        ...rawMetadata,
-        ...(messageKey ? {
-          messageKey,
-          message_key: messageKey,
-          messageParams,
-          message_params: messageParams
-        } : {})
-      };
+    const rawMetadata = message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata) ? { ...message.metadata } : {};
+    const catalogKey = chatMessageKey({ ...message, metadata: rawMetadata });
+    const messageKey = catalogKey ? chatQuickCanonicalKey(catalogKey) : "";
+    const messageParams = chatMessageParams({ ...message, metadata: rawMetadata });
+    const actionStatus = chatActionStatus({ ...message, metadata: rawMetadata }, catalogKey);
+    const senderId = message.senderId || message.sender_id || (State.currentUser ? (State.currentUser.id || State.currentUser.userId || State.currentUser.username) : "SYSTEM");
+    const metadata = {
+      ...rawMetadata,
+      ...(catalogKey ? {
+        catalogKey,
+        catalog_key: catalogKey,
+        messageKey,
+        message_key: messageKey,
+        messageParams,
+        message_params: messageParams
+      } : {}),
+      ...(actionStatus ? { actionStatus, action_status: actionStatus } : {})
+    };
       const renderedText = chatMessageText({
         ...message,
+        catalogKey,
+        catalog_key: catalogKey,
         messageKey,
         message_key: messageKey,
         messageParams,
@@ -3807,22 +4041,28 @@ function mailboxHasClaim(message) {
         metadata
       });
       const entry = {
-        id: createId("msg"),
-        orderId,
-        sender,
-        role: State.currentUser ? State.currentUser.role : "system",
-        text: "",
-        imageData: "",
-        imageUrl: "",
+      id: createId("msg"),
+      orderId,
+      sender,
+      senderId,
+      sender_id: senderId,
+      role: State.currentUser ? State.currentUser.role : "system",
+      text: "",
+      imageData: "",
+      imageUrl: "",
         metadata: {},
         readBy: sender === "SYSTEM" ? ["SYSTEM"] : [sender],
         readAt: sender === "SYSTEM" ? { SYSTEM: createdAt } : { [sender]: createdAt },
         createdAt,
-        ...message,
-        type: contentType,
-        messageType,
-        message_type: messageType,
-        messageKey,
+      ...message,
+      type: contentType,
+      messageType,
+      message_type: messageType,
+      actionStatus,
+      action_status: actionStatus,
+      catalogKey,
+      catalog_key: catalogKey,
+      messageKey,
         message_key: messageKey,
         messageParams,
         message_params: messageParams,
@@ -6266,19 +6506,31 @@ function mailboxHasClaim(message) {
       rushText ? h("p", { className: "balance-note order-locked-term notranslate", translate: "no", text: `${rushText}${order.rush?.deadlineAt ? ` / ${contentLanguage() === "zh-CN" ? "期限" : "Deadline"}: ${formatFullDate(order.rush.deadlineAt)}` : ""}` }) : null
     );
     const orderInfoPopover = h("div", { className: "chat-info-popover", hidden: true }, orderInfoCard);
-    const orderInfoButton = h("button", {
+    let orderInfoButton;
+    // Keep the order-info flyout scoped to this modal so it behaves like a top action.
+    const setOrderInfoOpen = (open) => {
+      orderInfoPopover.hidden = !open;
+      if (orderInfoButton) {
+        orderInfoButton.setAttribute("aria-expanded", String(open));
+      }
+    };
+    orderInfoButton = h("button", {
       className: "secondary-btn compact chat-info-trigger",
       type: "button",
-      onClick: () => {
-        orderInfoPopover.hidden = !orderInfoPopover.hidden;
+      onClick: (event) => {
+        event.stopPropagation();
+        setOrderInfoOpen(orderInfoPopover.hidden);
       }
     }, icon("fa-regular fa-clipboard"), h("span", { text: contentLanguage() === "zh-CN" ? "订单信息" : "Order Info" }));
+    orderInfoButton.setAttribute("aria-haspopup", "dialog");
+    orderInfoButton.setAttribute("aria-expanded", "false");
+    orderInfoPopover.addEventListener("click", (event) => event.stopPropagation());
     const participantStrip = h("div", { className: "chat-top-participants" },
       participantCard("Gamer", customerProfile),
       participantCard("Vector", staffProfile, { username: handledBy, lastOnlineAt: conversationState.staffLastActivityAt })
     );
 
-    return h("div", { className: "modal-card modal-wide chat-modal slide-up" },
+    const shell = h("div", { className: "modal-card modal-wide chat-modal slide-up" },
       h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
       h("div", { className: "chat-titlebar compact" },
         h("div", { className: "chat-title-left" },
@@ -6304,6 +6556,13 @@ function mailboxHasClaim(message) {
         )
       )
     );
+    shell.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!orderInfoPopover.hidden && target && !orderInfoPopover.contains(target) && !orderInfoButton.contains(target)) {
+        setOrderInfoOpen(false);
+      }
+    });
+    return shell;
   }
 
   const Views = {
