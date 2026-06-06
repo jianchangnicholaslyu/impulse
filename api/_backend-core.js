@@ -17,7 +17,7 @@ const VerificationCooldownMs = 60 * 1000;
 const VerificationIpWindowMs = 10 * 60 * 1000;
 const VerificationIpLimit = 5;
 const EmailPrivacyResponse = "If this email is valid, a message has been sent.";
-// AI: mail auth spec: hash-only codes, 5m TTL, 60s/email, 5/10m/IP, generic response, no prod devCode.
+// AI: mail auth spec: hash-only codes, 5m TTL, 60s/email, 5/10m/IP, generic responses, no raw-code API responses.
 const DayMs = 24 * 60 * 60 * 1000;
 const ChatRetentionMs = 7 * DayMs;
 const ArchiveRetentionMs = 30 * DayMs;
@@ -1049,10 +1049,6 @@ async function sendTrackedEmail(db, emailType, payload = {}) {
   const result = await sendProviderEmail(emailType, payload);
   recordEmailLog(db, emailType, payload.to || payload.email || payload.recipient, result.subject || payload.subject, result);
   return result;
-}
-
-function canExposeDevCode(mail) {
-  return !mail.ok && process.env.VERCEL_ENV !== "production" && process.env.NODE_ENV !== "production";
 }
 
 function log(db, action, detail, actor = "SYSTEM") {
@@ -2107,12 +2103,15 @@ async function handleAction(action, payload = {}, request = {}) {
       purpose,
       expiresInMinutes: Math.floor(VerificationMaxAgeMs / 60000)
     });
-    log(db, "验证码发送", `${privacyHash("email", email).slice(0, 12)} / ${purpose} / mail:${mail.ok ? "sent" : "fallback"}`);
-    await writeDb(db);
-    if (!mail.ok && !canExposeDevCode(mail)) {
+    log(db, "验证码发送", `${privacyHash("email", email).slice(0, 12)} / ${purpose} / mail:${mail.ok ? "sent" : "failed"}`);
+    if (!mail.ok) {
+      // AI: failed delivery must not leave a usable auth code; callers get only the service error.
+      delete db.verifications[verificationKey(purpose, email)];
+      await writeDb(db);
       return { ok: false, message: "邮件服务暂不可用，请稍后重试。", mail: { ok: false, configured: mail.configured !== false } };
     }
-    return { ok: true, message: EmailPrivacyResponse, mail, devCode: canExposeDevCode(mail) ? code : "" };
+    await writeDb(db);
+    return { ok: true, message: EmailPrivacyResponse, mail };
   }
 
   if (action === "verifyCode") {
@@ -2181,8 +2180,11 @@ async function handleAction(action, payload = {}, request = {}) {
       code,
       expiresInMinutes: Math.floor(VerificationMaxAgeMs / 60000)
     });
+    if (!mail.ok) {
+      delete db.verifications[verificationKey("password_reset", email)];
+    }
     await writeDb(db);
-    return { ok: mail.ok, message: mail.ok ? EmailPrivacyResponse : "邮件服务暂不可用，请稍后重试。", devCode: canExposeDevCode(mail) ? code : "" };
+    return { ok: mail.ok, message: mail.ok ? EmailPrivacyResponse : "邮件服务暂不可用，请稍后重试。" };
   }
 
   if (action === "loginPassword") {

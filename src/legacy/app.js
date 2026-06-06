@@ -1100,8 +1100,7 @@
     "验证码已发送": { en: "Code Sent" },
     "验证码已发送，请查看邮箱。": { en: "Verification code sent. Please check your inbox." },
     "正在发送验证码...": { en: "Sending verification code..." },
-    "邮件接口未配置或暂不可用。": { en: "Email endpoint is not configured or is temporarily unavailable." },
-    "演示验证码": { en: "Demo code" },
+    "邮件服务暂不可用，请稍后重试。": { en: "Email service is temporarily unavailable. Please try again later." },
     "已退出登录": { en: "Signed Out" },
     "当前已回到客户模式。": { en: "You are back in Gamer Mode." },
     "当前已回到 Gamer 模式。": { en: "You are back in Gamer Mode." },
@@ -3026,84 +3025,43 @@ function mailboxHasClaim(message) {
     }
   };
 
-  const Verification = {
-    codes: {},
-    key(purpose, email) {
-      return `${purpose}:${normalizeEmail(email)}`;
-    },
-    generate(purpose, email) {
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      this.codes[this.key(purpose, email)] = {
-        code,
-        expiresAt: Date.now() + 5 * 60 * 1000
-      };
-      return code;
-    },
-    verify(purpose, email, code) {
-      const record = this.codes[this.key(purpose, email)];
-      if (!record || Date.now() > record.expiresAt) {
-        return { ok: false, message: "验证码已过期，请重新发送。" };
-      }
-      if (String(code || "").trim() !== record.code) {
-        return { ok: false, message: "验证码不正确。" };
-      }
-      delete this.codes[this.key(purpose, email)];
-      return { ok: true };
-    }
-  };
-
-  const Mail = {
-    endpoint: "/api/send-email",
-    escapeHtml(value) {
-      return String(value || "").replace(/[&<>"']/g, (char) => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        "\"": "&quot;",
-        "'": "&#39;"
-      })[char]);
-    },
-    htmlFromText(text) {
-      return `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827;white-space:pre-wrap;">${this.escapeHtml(text)}</div>`;
-    },
-    async send(to, subject, text, html = "", attachments = []) {
-      if (!isEmail(to) || !subject || !text) {
-        return { ok: false, configured: false, error: "Invalid email payload." };
-      }
+  const EmailVerificationApi = {
+    // AI: auth-code mail must go through backend auth facades; never reintroduce browser-side code generation or direct-mail calls here.
+    async request(endpoint, body = {}) {
       try {
-        const response = await fetch(this.endpoint, {
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: normalizeEmail(to),
-            subject,
-            text,
-            html: html || this.htmlFromText(text),
-            attachments
-          })
+          body: JSON.stringify(body)
         });
         const result = await response.json().catch(() => ({}));
         return {
-          ok: response.ok && result.ok,
-          configured: result.configured !== false,
-          id: result.id || "",
-          error: result.error || ""
+          ...result,
+          ok: response.ok && Boolean(result.ok),
+          httpOk: response.ok,
+          httpStatus: response.status
         };
       } catch (error) {
-        return { ok: false, configured: false, error: error.message || "Email endpoint is unavailable." };
+        return {
+          ok: false,
+          offline: true,
+          message: "邮件服务暂不可用，请稍后重试。",
+          error: error.message || "Email verification endpoint is unavailable."
+        };
       }
     },
-    async sendVerificationCode(to, code) {
-      const subject = "Your IMPULSE J verification code";
-      const text = [
-        `Your IMPULSE J verification code is ${code}.`,
-        "It expires in 5 minutes.",
-        "If you did not request this code, you can ignore this email."
-      ].join("\n");
-      return this.send(to, subject, text);
+    send(email, purpose) {
+      return this.request("/api/auth/send-code", {
+        email: normalizeEmail(email),
+        purpose
+      });
     },
-    sendEnglishEmail(to, subject, body, attachments = []) {
-      return this.send(to, subject, body, "", attachments);
+    verify(email, purpose, code) {
+      return this.request("/api/auth/verify-code", {
+        email: normalizeEmail(email),
+        purpose,
+        code: String(code || "").trim()
+      });
     }
   };
 
@@ -3269,8 +3227,10 @@ function mailboxHasClaim(message) {
       await this.request("saveSnapshot", { reason, snapshot: this.snapshot() });
     },
     async sendVerification(purpose, email) {
-      const result = await this.request("sendVerification", { purpose, email });
-      return result;
+      return EmailVerificationApi.send(email, purpose);
+    },
+    async verifyEmailCode(purpose, email, code) {
+      return EmailVerificationApi.verify(email, purpose, code);
     },
     async loginPassword(identity, password) {
       const result = await this.request("loginPassword", { identity, password });
@@ -4507,12 +4467,8 @@ function mailboxHasClaim(message) {
       if (!isEmail(to)) {
         return null;
       }
-      Mail.sendEnglishEmail(to, subject, body).then((result) => {
-        if (result.ok) {
-          this.log("Email sent", `To: ${to} / Subject: ${subject} / Provider ID: ${result.id || "n/a"}`);
-        }
-      });
-      return this.log("English email", `To: ${to} / Subject: ${subject} / Body: ${body}`);
+      // AI: browser direct email is intentionally disabled; backend notification routes own real delivery.
+      return this.log("English email not sent", `To: ${to} / Subject: ${subject} / Browser direct email disabled`);
     },
     notifyUser(profile, noticeKey, context = {}) {
       if (!profile || profile.deleted) {
@@ -5322,41 +5278,7 @@ function mailboxHasClaim(message) {
       if (backendResult.ok) {
         return backendResult;
       }
-      if (!backendResult.offline) {
-        return backendResult;
-      }
-      const user = Data.findUserByEmail(normalizedEmail);
-      if (!user) {
-        return { ok: false, message: "该邮箱未注册。" };
-      }
-      const verified = Verification.verify("login", normalizedEmail, code);
-      if (!verified.ok) {
-        return verified;
-      }
-      const availability = this.ensureUserAvailable(user);
-      if (!availability.ok) {
-        return availability;
-      }
-      return this.start(user);
-    },
-    async login(email, password, code) {
-      const normalizedEmail = normalizeEmail(email);
-      if (!isEmail(normalizedEmail)) {
-        return { ok: false, message: "请输入有效邮箱。" };
-      }
-      const user = Data.findUserByEmail(normalizedEmail);
-      if (!user || user.password !== password) {
-        return { ok: false, message: "邮箱或密码不正确。" };
-      }
-      const verified = Verification.verify("login", normalizedEmail, code);
-      if (!verified.ok) {
-        return verified;
-      }
-      const availability = this.ensureUserAvailable(user);
-      if (!availability.ok) {
-        return availability;
-      }
-      return this.start(user);
+      return backendResult;
     },
     async register(username, email, password, confirmPassword, code, profileFields = {}) {
       const normalizedEmail = normalizeEmail(email);
@@ -5399,25 +5321,7 @@ function mailboxHasClaim(message) {
       if (backendResult.ok) {
         return backendResult;
       }
-      if (!backendResult.offline) {
-        return backendResult;
-      }
-      const verified = Verification.verify("register", normalizedEmail, code);
-      if (!verified.ok) {
-        return verified;
-      }
-      Data.saveUser({
-        username: username.trim(),
-        email: normalizedEmail,
-        password,
-        role: "customer",
-        countryRegion: String(profileFields.countryRegion || "").trim(),
-        birthday: profileFields.birthday,
-        gender: profileFields.gender || "unset",
-        avatarImage: profileFields.avatarImage || "",
-        avatarImageName: profileFields.avatarImageName || ""
-      });
-      return this.start(Data.findUser(username));
+      return backendResult;
     },
     logout() {
       const username = State.currentUser ? State.currentUser.username : "未知用户";
@@ -7191,41 +7095,11 @@ function mailboxHasClaim(message) {
           const backendResult = await Backend.sendVerification(purpose, email);
           sendCodeButton.disabled = false;
           if (backendResult.ok) {
-            if (backendResult.devCode) {
-              codeHint.textContent = contentLanguage() === "zh-CN"
-                ? `演示验证码：${backendResult.devCode}，5 分钟内有效。后端邮件服务未配置。`
-                : `Demo code: ${backendResult.devCode}. Valid for 5 minutes. Backend email is not configured.`;
-              UI.toast("验证码已发送", `演示验证码：${backendResult.devCode}`);
-              return;
-            }
             codeHint.textContent = localizeStaticPhrase("验证码已发送，请查看邮箱。");
             UI.toast("验证码已发送", "验证码已发送，请查看邮箱。");
             return;
           }
-          if (!backendResult.offline) {
-            message.textContent = backendResult.message || "验证码发送失败。";
-            return;
-          }
-          if (isLogin && !Data.findUserByEmail(email)) {
-            message.textContent = "该邮箱未注册。";
-            return;
-          }
-          if (!isLogin && Data.findUserByEmail(email)) {
-            message.textContent = "邮箱已被注册。";
-            return;
-          }
-          const code = Verification.generate(purpose, email);
-          const result = await Mail.sendVerificationCode(email, code);
-          Data.log("English email", `To: ${email} / Subject: Your IMPULSE J verification code / Body: Your verification code is ${code}.`);
-          if (result.ok) {
-            codeHint.textContent = localizeStaticPhrase("验证码已发送，请查看邮箱。");
-            UI.toast("验证码已发送", "验证码已发送，请查看邮箱。");
-            return;
-          }
-          codeHint.textContent = contentLanguage() === "zh-CN"
-            ? `演示验证码：${code}，5 分钟内有效。邮件接口未配置或暂不可用。`
-            : `Demo code: ${code}. Valid for 5 minutes. Email endpoint is not configured or is temporarily unavailable.`;
-          UI.toast("验证码已发送", `演示验证码：${code}`);
+          message.textContent = backendResult.message || "邮件服务暂不可用，请稍后重试。";
         };
 
         sendCodeButton.addEventListener("click", sendCode);
@@ -7725,7 +7599,7 @@ function mailboxHasClaim(message) {
         return { ok: true };
       }
       if (code) {
-        return Verification.verify("account", email, code);
+        return Backend.verifyEmailCode("account", email, code);
       }
       return { ok: false, message: "请输入账户密码，或使用邮箱验证码完成验证。" };
     },
@@ -7744,22 +7618,17 @@ function mailboxHasClaim(message) {
             message.textContent = "当前账户没有可用邮箱。";
             return;
           }
-          const code = Verification.generate("account", email);
           message.textContent = "";
           codeHint.textContent = localizeStaticPhrase("正在发送验证码...");
           sendCodeButton.disabled = true;
-          const result = await Mail.sendVerificationCode(email, code);
-          Data.log("English email", `To: ${email} / Subject: Your IMPULSE J verification code / Body: Your verification code is ${code}.`);
+          const result = await Backend.sendVerification("account", email);
           sendCodeButton.disabled = false;
           if (result.ok) {
             codeHint.textContent = localizeStaticPhrase("验证码已发送，请查看邮箱。");
             UI.toast("验证码已发送", "验证码已发送，请查看邮箱。");
             return;
           }
-          codeHint.textContent = contentLanguage() === "zh-CN"
-            ? `演示验证码：${code}，发送至原绑定邮箱 ${email}，5 分钟内有效。邮件接口未配置或暂不可用。`
-            : `Demo code: ${code}. Sent to ${email}. Valid for 5 minutes. Email endpoint is not configured or is temporarily unavailable.`;
-          UI.toast("验证码已发送", `演示验证码：${code}`);
+          message.textContent = result.message || "邮件服务暂不可用，请稍后重试。";
         }
       }, icon("fa-regular fa-envelope"), "发送验证码");
       const form = h("form", { className: "form-stack" },
