@@ -246,6 +246,21 @@ function hasSupabaseStorage() {
   return Boolean(supabaseUrl() && supabaseKey());
 }
 
+function isSupabaseOpaqueApiKey(key) {
+  return /^sb_(publishable|secret)_/i.test(String(key || ""));
+}
+
+function supabaseAuthHeaders() {
+  const key = supabaseKey();
+  const headers = { apikey: key };
+  // New Supabase sb_* keys are opaque API keys, not JWTs. Sending them as
+  // Bearer tokens makes PostgREST reject the request with an invalid JWT.
+  if (!isSupabaseOpaqueApiKey(key)) {
+    headers.Authorization = `Bearer ${key}`;
+  }
+  return headers;
+}
+
 function allowStorageFallback() {
   return process.env.DISABLE_STORAGE_FALLBACK !== "1";
 }
@@ -379,8 +394,7 @@ async function supabaseRequest(pathname, options = {}) {
   const response = await fetch(`${supabaseUrl()}${pathname}`, {
     ...options,
     headers: {
-      apikey: supabaseKey(),
-      Authorization: `Bearer ${supabaseKey()}`,
+      ...supabaseAuthHeaders(),
       ...(options.headers || {})
     }
   });
