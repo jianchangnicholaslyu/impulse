@@ -24,7 +24,8 @@ module.exports = async function handler(request, response) {
     const body = await parseRequestBody(request);
     const result = await handleAction("sendVerification", {
       email: body.email,
-      purpose: body.purpose || "login"
+      purpose: body.purpose || "login",
+      snapshot: body.snapshot
     }, { request });
     sendJson(response, result.ok ? 200 : (result.status || 400), result);
   } catch (error) {

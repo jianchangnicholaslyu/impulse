@@ -9,6 +9,8 @@ const IsVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_N
 const DataDir = process.env.IMPULSE_DATA_DIR || (IsVercel ? path.join(os.tmpdir(), "impulse-data") : path.join(process.cwd(), ".data"));
 const DataFile = path.join(DataDir, "impulse-db.json");
 const DbKey = process.env.BACKEND_DB_KEY || "impulse:db";
+const DbStorageKey = "__impulseDbStorage";
+const DbPrimaryErrorKey = "__impulsePrimaryStorageError";
 const SupabaseTablePattern = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 const EmailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SessionMaxAgeMs = 30 * 24 * 60 * 60 * 1000;
@@ -242,6 +244,46 @@ function supabaseAssetBucket() {
 
 function hasSupabaseStorage() {
   return Boolean(supabaseUrl() && supabaseKey());
+}
+
+function allowStorageFallback() {
+  return process.env.DISABLE_STORAGE_FALLBACK !== "1";
+}
+
+function fallbackStorageType() {
+  if (hasKvStorage()) {
+    return "kv";
+  }
+  return IsVercel ? "temporary-file" : "file";
+}
+
+function fileFallbackStorageType() {
+  return IsVercel ? "temporary-file" : "file";
+}
+
+function markDbStorage(db, storage, primaryError = "") {
+  if (!db || typeof db !== "object") {
+    return db;
+  }
+  Object.defineProperty(db, DbStorageKey, {
+    value: storage,
+    enumerable: false,
+    configurable: true
+  });
+  Object.defineProperty(db, DbPrimaryErrorKey, {
+    value: primaryError,
+    enumerable: false,
+    configurable: true
+  });
+  return db;
+}
+
+function dbStorage(db) {
+  return db?.[DbStorageKey] || "";
+}
+
+function dbPrimaryStorageError(db) {
+  return db?.[DbPrimaryErrorKey] || "";
 }
 
 function safeAssetSegment(value, fallback = "asset") {
@@ -642,6 +684,60 @@ function storageType() {
   return IsVercel ? "temporary-file" : "file";
 }
 
+async function readFileDb(storage, primaryError = "") {
+  try {
+    const raw = await fs.readFile(DataFile, "utf8");
+    return markDbStorage(normalizeDb(JSON.parse(raw)), storage, primaryError);
+  } catch (error) {
+    return markDbStorage(emptyDb(), storage, primaryError);
+  }
+}
+
+async function readFallbackDb(primaryError = "") {
+  const fallback = fallbackStorageType();
+  if (fallback === "kv") {
+    try {
+      const kv = await kvRequest("get", [DbKey]);
+      const db = kv?.result ? normalizeDb(JSON.parse(kv.result)) : emptyDb();
+      return markDbStorage(db, "kv", primaryError);
+    } catch (error) {
+      if (!allowStorageFallback()) {
+        throw error;
+      }
+      return readFileDb(fileFallbackStorageType(), primaryError || storageErrorCode(error));
+    }
+  }
+  return readFileDb(fallback, primaryError);
+}
+
+async function writeFileDb(db, storage, primaryError = "") {
+  const normalized = normalizeDb(db);
+  await fs.mkdir(path.dirname(DataFile), { recursive: true });
+  await fs.writeFile(DataFile, JSON.stringify(normalized, null, 2));
+  return markDbStorage(normalized, storage, primaryError);
+}
+
+async function writeFallbackDb(db, storage = fallbackStorageType(), options = {}) {
+  const allowFallback = options.allowFallback !== false;
+  const primaryError = dbPrimaryStorageError(db);
+  const normalized = normalizeDb(db);
+  if (storage === "kv" && hasKvStorage()) {
+    try {
+      const kv = await kvRequest("set", [DbKey, JSON.stringify(normalized)]);
+      if (kv) {
+        return markDbStorage(normalized, "kv", primaryError);
+      }
+    } catch (error) {
+      if (!allowFallback || !allowStorageFallback()) {
+        throw error;
+      }
+      return writeFileDb(normalized, fileFallbackStorageType(), primaryError || storageErrorCode(error));
+    }
+  }
+  const fileStorage = storage === "kv" ? fileFallbackStorageType() : storage;
+  return writeFileDb(normalized, fileStorage, primaryError);
+}
+
 // AI: API facades depend on this shape to turn storage outages into 503/offline instead of generic 500s.
 function storageErrorCode(error) {
   const message = String(error?.message || "");
@@ -669,12 +765,52 @@ function storageUnavailableResponse(error) {
   };
 }
 
-function canUseClientSnapshot() {
+function backendStorageInfo(db = null) {
+  const activeStorage = dbStorage(db) || storageType();
+  const primaryError = dbPrimaryStorageError(db);
+  return {
+    storage: activeStorage,
+    primaryStorage: storageType(),
+    degraded: Boolean(primaryError),
+    primaryError
+  };
+}
+
+function canPersistVerificationState(db) {
+  const activeStorage = dbStorage(db) || storageType();
+  return !(IsVercel && activeStorage === "temporary-file");
+}
+
+function verificationStorageUnavailableResponse(db) {
+  const primaryError = dbPrimaryStorageError(db);
+  return {
+    ok: false,
+    offline: true,
+    status: 503,
+    message: "后端存储暂不可用，请稍后重试。",
+    backend: {
+      ...backendStorageInfo(db),
+      unavailable: true,
+      error: primaryError || "storage_unavailable"
+    }
+  };
+}
+
+async function writeVerificationDb(db) {
+  // AI: auth codes/tokens must stay in the same durable store; never fall back during issue/consume writes.
+  return writeDb(db, { allowFallback: false });
+}
+
+function canUseClientSnapshot(db) {
+  const activeStorage = dbStorage(db);
+  if (activeStorage && activeStorage !== "supabase") {
+    return true;
+  }
   return !hasSupabaseStorage() && !hasKvStorage();
 }
 
 function hydrateTemporaryDb(db, snapshot, actor = "CLIENT") {
-  if (!canUseClientSnapshot() || !snapshot || typeof snapshot !== "object") {
+  if (!canUseClientSnapshot(db) || !snapshot || typeof snapshot !== "object") {
     return db;
   }
   const imported = importSnapshot(db, snapshot);
@@ -684,33 +820,36 @@ function hydrateTemporaryDb(db, snapshot, actor = "CLIENT") {
 
 async function readDb() {
   if (hasSupabaseStorage()) {
-    return readSupabaseDb();
+    try {
+      return markDbStorage(await readSupabaseDb(), "supabase");
+    } catch (error) {
+      if (!allowStorageFallback()) {
+        throw error;
+      }
+      return readFallbackDb(storageErrorCode(error));
+    }
   }
-  const kv = await kvRequest("get", [DbKey]);
-  if (kv) {
-    return kv.result ? normalizeDb(JSON.parse(kv.result)) : emptyDb();
-  }
-  try {
-    const raw = await fs.readFile(DataFile, "utf8");
-    return normalizeDb(JSON.parse(raw));
-  } catch (error) {
-    return emptyDb();
-  }
+  return readFallbackDb();
 }
 
-async function writeDb(db) {
-  const normalized = normalizeDb(db);
+async function writeDb(db, options = {}) {
+  const allowFallback = options.allowFallback !== false;
+  const targetStorage = dbStorage(db);
+  if (targetStorage && targetStorage !== "supabase") {
+    return writeFallbackDb(db, targetStorage, { allowFallback });
+  }
   if (hasSupabaseStorage()) {
-    return writeSupabaseDb(normalized);
+    try {
+      return markDbStorage(await writeSupabaseDb(db), "supabase");
+    } catch (error) {
+      if (!allowFallback || !allowStorageFallback()) {
+        throw error;
+      }
+      const fallbackDb = markDbStorage(normalizeDb(db), fallbackStorageType(), dbPrimaryStorageError(db) || storageErrorCode(error));
+      return writeFallbackDb(fallbackDb, dbStorage(fallbackDb), { allowFallback });
+    }
   }
-  const payload = JSON.stringify(normalized);
-  const kv = await kvRequest("set", [DbKey, payload]);
-  if (kv) {
-    return normalized;
-  }
-  await fs.mkdir(path.dirname(DataFile), { recursive: true });
-  await fs.writeFile(DataFile, JSON.stringify(normalized, null, 2));
-  return normalized;
+  return writeFallbackDb(db, fallbackStorageType(), { allowFallback });
 }
 
 function userEmail(user) {
@@ -744,6 +883,8 @@ function sanitizeSnapshot(db) {
 }
 
 function normalizeDb(input) {
+  const inputStorage = dbStorage(input);
+  const inputPrimaryError = dbPrimaryStorageError(input);
   const db = { ...emptyDb(), ...(input || {}) };
   db.users = Array.isArray(db.users) ? db.users.map((user) => {
     const passwordHash = user.passwordHash || (user.password ? hashPassword(user.password) : "");
@@ -774,6 +915,9 @@ function normalizeDb(input) {
   db.emailVerifications = Array.isArray(db.emailVerifications) ? db.emailVerifications.slice(0, 1000) : [];
   db.emailLogs = Array.isArray(db.emailLogs) ? db.emailLogs.slice(0, 5000) : [];
   ensureProfiles(db);
+  if (inputStorage) {
+    markDbStorage(db, inputStorage, inputPrimaryError);
+  }
   return db;
 }
 
@@ -860,6 +1004,8 @@ function mergeSystemSettings(existing = {}, incoming = {}) {
 }
 
 function importSnapshot(db, snapshot = {}) {
+  const inputStorage = dbStorage(db);
+  const inputPrimaryError = dbPrimaryStorageError(db);
   const mergedUsers = mergeArrayBy(db.users, snapshot.users, (user) => normalize(user?.username || user?.email), (existing, user) => ({
     ...existing,
     ...user,
@@ -880,7 +1026,7 @@ function importSnapshot(db, snapshot = {}) {
     adminLogs: mergeArrayBy(db.adminLogs, snapshot.adminLogs, (entry) => entry?.id),
     systemSettings: mergeSystemSettings(db.systemSettings, snapshot.systemSettings)
   });
-  return imported;
+  return inputStorage ? markDbStorage(imported, inputStorage, inputPrimaryError) : imported;
 }
 
 function findUser(db, username) {
@@ -1998,7 +2144,16 @@ async function handleAction(action, payload = {}, request = {}) {
       database: { ok: true }
     };
     try {
-      await readDb();
+      const healthDb = await readDb();
+      const activeStorage = dbStorage(healthDb) || storageType();
+      const primaryError = dbPrimaryStorageError(healthDb);
+      backend.storage = activeStorage;
+      backend.primaryStorage = storageType();
+      backend.degraded = Boolean(primaryError);
+      backend.primaryError = primaryError;
+      if (primaryError) {
+        backend.database = { ok: false, error: primaryError, fallback: activeStorage };
+      }
     } catch (error) {
       backend.database = { ok: false, error: storageErrorCode(error) };
     }
@@ -2014,7 +2169,7 @@ async function handleAction(action, payload = {}, request = {}) {
   if (!["setBackupEmail", "runRetentionCleanup"].includes(action)) {
     const retention = await applyRetentionPolicies(db);
     if (retention.changed) {
-      await writeDb(db);
+      db = await writeDb(db);
     }
   }
 
@@ -2023,17 +2178,17 @@ async function handleAction(action, payload = {}, request = {}) {
       db = importSnapshot(db, payload.snapshot);
       await applyRetentionPolicies(db);
       log(db, "后端初始化", "从前端快照导入初始数据");
-      await writeDb(db);
+      db = await writeDb(db);
     }
-    return { ok: true, snapshot: sanitizeSnapshot(db), backend: { storage: storageType() } };
+    return { ok: true, snapshot: sanitizeSnapshot(db), backend: backendStorageInfo(db) };
   }
 
   if (action === "saveSnapshot") {
     db = importSnapshot(db, payload.snapshot || {});
     await applyRetentionPolicies(db);
     log(db, "后端同步", payload.reason || "前端同步快照", request.user?.username || "CLIENT");
-    await writeDb(db);
-    return { ok: true, snapshot: sanitizeSnapshot(db) };
+    db = await writeDb(db);
+    return { ok: true, snapshot: sanitizeSnapshot(db), backend: backendStorageInfo(db) };
   }
 
   if (action === "uploadAsset") {
@@ -2082,21 +2237,26 @@ async function handleAction(action, payload = {}, request = {}) {
     if (!isEmail(email)) {
       return { ok: false, message: "请输入有效邮箱。" };
     }
+    db = hydrateTemporaryDb(db, payload.snapshot, "CLIENT");
+    if (!canPersistVerificationState(db)) {
+      return verificationStorageUnavailableResponse(db);
+    }
     const hasUser = Boolean(findUserByEmail(db, email));
     const shouldSend = purpose === "register" ? !hasUser : hasUser;
     if (!shouldSend) {
       log(db, "验证码请求已忽略", `${purpose} / ${privacyHash("email", email).slice(0, 12)}`);
-      await writeDb(db);
-      return { ok: true, message: EmailPrivacyResponse, mail: { ok: false, skipped: true, configured: emailHealth().configured } };
+      db = await writeVerificationDb(db);
+      return { ok: true, message: EmailPrivacyResponse, mail: { ok: false, skipped: true, configured: emailHealth().configured }, backend: backendStorageInfo(db) };
     }
     const limited = canRequestVerification(db, email, request);
     if (!limited.ok) {
       log(db, "验证码限流", `${purpose} / ${privacyHash("email", email).slice(0, 12)}`);
-      await writeDb(db);
-      return { ok: false, message: limited.message };
+      db = await writeVerificationDb(db);
+      return { ok: false, message: limited.message, backend: backendStorageInfo(db) };
     }
     const code = String(Math.floor(100000 + Math.random() * 900000));
     storeVerification(db, purpose, email, code, request);
+    db = await writeVerificationDb(db);
     const mail = await sendTrackedEmail(db, EmailTypes.AUTH_VERIFICATION_CODE, {
       to: email,
       code,
@@ -2107,11 +2267,15 @@ async function handleAction(action, payload = {}, request = {}) {
     if (!mail.ok) {
       // AI: failed delivery must not leave a usable auth code; callers get only the service error.
       delete db.verifications[verificationKey(purpose, email)];
-      await writeDb(db);
-      return { ok: false, message: "邮件服务暂不可用，请稍后重试。", mail: { ok: false, configured: mail.configured !== false } };
+      db = await writeVerificationDb(db);
+      return { ok: false, message: "邮件服务暂不可用，请稍后重试。", mail: { ok: false, configured: mail.configured !== false }, backend: backendStorageInfo(db) };
     }
-    await writeDb(db);
-    return { ok: true, message: EmailPrivacyResponse, mail };
+    try {
+      db = await writeVerificationDb(db);
+    } catch (error) {
+      // The code was persisted before delivery; do not fail a sent code only because email audit logging could not be updated.
+    }
+    return { ok: true, message: EmailPrivacyResponse, mail, backend: backendStorageInfo(db) };
   }
 
   if (action === "verifyCode") {
@@ -2120,12 +2284,15 @@ async function handleAction(action, payload = {}, request = {}) {
     if (!isEmail(email)) {
       return { ok: false, message: "请输入有效邮箱。" };
     }
+    if (!canPersistVerificationState(db)) {
+      return verificationStorageUnavailableResponse(db);
+    }
     const verified = verifyCode(db, purpose, email, payload.code);
     if (!verified.ok) {
       return verified;
     }
-    await writeDb(db);
-    return { ok: true };
+    db = await writeVerificationDb(db);
+    return { ok: true, backend: backendStorageInfo(db) };
   }
 
   if (action === "sendMagicLink") {
@@ -2133,19 +2300,24 @@ async function handleAction(action, payload = {}, request = {}) {
     if (!isEmail(email)) {
       return { ok: false, message: "请输入有效邮箱。" };
     }
+    if (!canPersistVerificationState(db)) {
+      return verificationStorageUnavailableResponse(db);
+    }
     const user = findUserByEmail(db, email);
     if (!user) {
       log(db, "魔法链接请求已忽略", privacyHash("email", email).slice(0, 12));
-      await writeDb(db);
+      await writeVerificationDb(db);
       return { ok: true, message: EmailPrivacyResponse };
     }
     const limited = canRequestVerification(db, email, request);
     if (!limited.ok) {
-      await writeDb(db);
+      await writeVerificationDb(db);
       return { ok: false, message: limited.message };
     }
     const token = crypto.randomBytes(24).toString("base64url");
     storeVerification(db, "magic_link", email, token, request);
+    // AI: persist the token before sending; a delivered link must always be verifiable later.
+    db = await writeVerificationDb(db);
     const host = request.request?.headers?.host ? `https://${request.request.headers.host}` : "https://impulse.ccwu.cc";
     const magicLink = `${host}/?magic_token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
     const mail = await sendTrackedEmail(db, EmailTypes.AUTH_MAGIC_LINK, {
@@ -2153,7 +2325,16 @@ async function handleAction(action, payload = {}, request = {}) {
       magicLink,
       expiresInMinutes: Math.floor(VerificationMaxAgeMs / 60000)
     });
-    await writeDb(db);
+    if (!mail.ok) {
+      delete db.verifications[verificationKey("magic_link", email)];
+      await writeVerificationDb(db);
+      return { ok: false, message: "邮件服务暂不可用，请稍后重试。" };
+    }
+    try {
+      await writeVerificationDb(db);
+    } catch (error) {
+      // Token was persisted before delivery; email audit logging is best effort after the message is sent.
+    }
     return { ok: mail.ok, message: mail.ok ? EmailPrivacyResponse : "邮件服务暂不可用，请稍后重试。" };
   }
 
@@ -2162,19 +2343,24 @@ async function handleAction(action, payload = {}, request = {}) {
     if (!isEmail(email)) {
       return { ok: false, message: "请输入有效邮箱。" };
     }
+    if (!canPersistVerificationState(db)) {
+      return verificationStorageUnavailableResponse(db);
+    }
     const user = findUserByEmail(db, email);
     if (!user) {
       log(db, "密码重置请求已忽略", privacyHash("email", email).slice(0, 12));
-      await writeDb(db);
+      await writeVerificationDb(db);
       return { ok: true, message: EmailPrivacyResponse };
     }
     const limited = canRequestVerification(db, email, request);
     if (!limited.ok) {
-      await writeDb(db);
+      await writeVerificationDb(db);
       return { ok: false, message: limited.message };
     }
     const code = String(Math.floor(100000 + Math.random() * 900000));
     storeVerification(db, "password_reset", email, code, request);
+    // AI: persist the reset code before sending; storage failure must stop email delivery.
+    db = await writeVerificationDb(db);
     const mail = await sendTrackedEmail(db, EmailTypes.PASSWORD_RESET, {
       to: email,
       code,
@@ -2182,8 +2368,14 @@ async function handleAction(action, payload = {}, request = {}) {
     });
     if (!mail.ok) {
       delete db.verifications[verificationKey("password_reset", email)];
+      await writeVerificationDb(db);
+      return { ok: false, message: "邮件服务暂不可用，请稍后重试。" };
     }
-    await writeDb(db);
+    try {
+      await writeVerificationDb(db);
+    } catch (error) {
+      // Code was persisted before delivery; email audit logging is best effort after the message is sent.
+    }
     return { ok: mail.ok, message: mail.ok ? EmailPrivacyResponse : "邮件服务暂不可用，请稍后重试。" };
   }
 
@@ -2203,13 +2395,16 @@ async function handleAction(action, payload = {}, request = {}) {
       await writeDb(db);
     } catch (error) {
       // AI: password auth already succeeded; login audit/lastOnline writes are best effort for this path.
-      session.backend = { storage: storageType(), unavailable: isStorageError(error), error: storageErrorCode(error) };
+      session.backend = { ...backendStorageInfo(db), unavailable: isStorageError(error), error: storageErrorCode(error) };
     }
     return session;
   }
 
   if (action === "loginCode") {
     const email = normalizeEmail(payload.email);
+    if (!canPersistVerificationState(db)) {
+      return verificationStorageUnavailableResponse(db);
+    }
     const user = findUserByEmail(db, email);
     if (!user) {
       return { ok: false, message: "该邮箱未注册。" };
@@ -2225,7 +2420,7 @@ async function handleAction(action, payload = {}, request = {}) {
     log(db, "用户登录", user.username, user.username);
     const session = makeSessionResponse(db, user);
     // AI: this write consumes the login code; failing closed prevents issuing a session with a reusable code.
-    await writeDb(db);
+    await writeVerificationDb(db);
     return session;
   }
 
@@ -2244,6 +2439,9 @@ async function handleAction(action, payload = {}, request = {}) {
     }
     if (password !== String(payload.confirmPassword || "")) {
       return { ok: false, message: "两次输入的密码不一致。" };
+    }
+    if (!canPersistVerificationState(db)) {
+      return verificationStorageUnavailableResponse(db);
     }
     if (findUser(db, username)) {
       return { ok: false, message: "用户名已存在。" };
@@ -2277,7 +2475,7 @@ async function handleAction(action, payload = {}, request = {}) {
     db.users.push(user);
     ensureProfiles(db);
     log(db, "用户注册", `${username} 注册为顾客`, username);
-    await writeDb(db);
+    await writeVerificationDb(db);
     return makeSessionResponse(db, user);
   }
 

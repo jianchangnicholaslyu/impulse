@@ -3053,7 +3053,8 @@ function mailboxHasClaim(message) {
     send(email, purpose) {
       return this.request("/api/auth/send-code", {
         email: normalizeEmail(email),
-        purpose
+        purpose,
+        snapshot: Backend.snapshot()
       });
     },
     verify(email, purpose, code) {
