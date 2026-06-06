@@ -211,7 +211,7 @@ function supabaseUrl() {
 }
 
 function supabaseKey() {
-  return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || "";
+  return String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || "").trim();
 }
 
 function supabaseTable() {
@@ -755,14 +755,31 @@ async function writeFallbackDb(db, storage = fallbackStorageType(), options = {}
 // AI: API facades depend on this shape to turn storage outages into 503/offline instead of generic 500s.
 function storageErrorCode(error) {
   const message = String(error?.message || "");
-  if (/fetch failed|Supabase request failed|KV .* failed/i.test(message)) {
+  const supabaseStatus = message.match(/Supabase request failed:\s*(\d{3})/i);
+  if (supabaseStatus) {
+    return `supabase_http_${supabaseStatus[1]}`;
+  }
+  if (/invalid jwt/i.test(message)) {
+    return "supabase_invalid_jwt";
+  }
+  if (/KV .* failed/i.test(message)) {
+    return "kv_unavailable";
+  }
+  if (/fetch failed/i.test(message)) {
+    return "storage_fetch_failed";
+  }
+  if (/Supabase request failed/i.test(message)) {
     return "storage_unavailable";
   }
   return "backend_unavailable";
 }
 
 function isStorageError(error) {
-  return storageErrorCode(error) === "storage_unavailable";
+  const code = storageErrorCode(error);
+  return code === "storage_unavailable"
+    || code === "storage_fetch_failed"
+    || code.startsWith("supabase_")
+    || code.startsWith("kv_");
 }
 
 function storageUnavailableResponse(error) {
