@@ -2593,8 +2593,12 @@ function OrderChatPanel(context = {}) {
   const quickPanel = h("div", { className: "chat-quick-panel" });
   const statusRow = h("div", { className: "chat-status", "aria-live": "polite" });
 
+  function currentOrderMessages() {
+    return Data.chatMessages(order.id).slice().sort((a, b) => Date.parse(a.createdAt || "") - Date.parse(b.createdAt || ""));
+  }
+
   function renderMessages() {
-    const messages = Data.chatMessages(order.id).slice().sort((a, b) => Date.parse(a.createdAt || "") - Date.parse(b.createdAt || ""));
+    const messages = currentOrderMessages();
     thread.innerHTML = "";
     if (!messages.length) {
       thread.append(h("div", { className: "chat-empty-state" },
@@ -2614,7 +2618,7 @@ function OrderChatPanel(context = {}) {
         },
           h("div", { className: "chat-message-meta" },
             h("span", {}, chatIsSystem(message) ? "IMPULSE J System" : (message.sender || (own ? State.currentUser?.username : vectorName) || "User")),
-            h("time", {}, formatDateTime(message.createdAt)),
+            h("time", {}, formatFullDate(message.createdAt)),
             own && messageType === "user_message" ? h("span", { className: "chat-read-state" }, message.readAt ? localizeStaticPhrase("Read") : localizeStaticPhrase("Sent")) : null
           ),
           text ? h("div", { className: "chat-message-body" }, text) : null,
@@ -2627,7 +2631,7 @@ function OrderChatPanel(context = {}) {
     }
     const typing = PlatformChatRuntime.typing(order.id);
     typingRow.textContent = typing.length ? `${typing.map((entry) => entry.username || "Vector").join(", ")} is typing...` : "";
-    renderQuickPanel(messages);
+    renderQuickPanel(messages.slice());
     window.requestAnimationFrame(() => {
       thread.scrollTop = thread.scrollHeight;
     });
@@ -2863,7 +2867,7 @@ function quickButton(key, params = null, metadata = {}) {
         "aria-selected": group.id === activeQuickGroupId ? "true" : "false",
         onClick: () => {
           activeQuickGroupId = group.id;
-          renderQuickPanel(messages);
+          renderQuickPanel(currentOrderMessages());
         }
       }, h("i", { className: group.icon || "fa-regular fa-message" }), h("span", {}, chatUiText(group.titleZh, group.titleEn))))
     ));
@@ -2911,7 +2915,7 @@ function quickButton(key, params = null, metadata = {}) {
   );
 
   // Render quick replies before history hydrates so the picker never opens as an empty strip.
-  renderQuickPanel(messages);
+  renderQuickPanel(currentOrderMessages());
 
   window.setTimeout(async () => {
     renderMessages();
@@ -8271,7 +8275,7 @@ function mailboxHasClaim(message) {
           }
           topbarRefreshPending = false;
           try {
-            Components.renderTopbar();
+            UI.renderTopbar();
           } catch (error) {
             console.error(error);
           }
@@ -9432,13 +9436,13 @@ function mailboxHasClaim(message) {
         Router.go("staff", { section: target.dataset.section });
       }
       if (action === "order-status") {
-        Actions.setOrderStatus(target.dataset.orderId, target.dataset.status);
+        return Actions.setOrderStatus(target.dataset.orderId, target.dataset.status);
       }
       if (action === "cancel-order") {
-        Actions.cancelOrder(target.dataset.orderId);
+        return Actions.cancelOrder(target.dataset.orderId);
       }
       if (action === "open-order-chat") {
-        Actions.openOrderChat(target.dataset.orderId);
+        return Actions.openOrderChat(target.dataset.orderId);
       }
       if (action === "export-data") {
         Actions.exportData();
