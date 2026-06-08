@@ -1789,7 +1789,7 @@ function orderStaffParticipants(order) {
 }
 
 function orderChatAvailable(order) {
-  if (!order || normalize(order.status) === "pending") {
+  if (!order) {
     return false;
   }
   return Boolean(

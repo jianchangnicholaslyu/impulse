@@ -56,6 +56,13 @@ async function expectAllChatActionsDenied(label, orderId, user) {
   await expectDenied(`${label}: typing`, "setChatTyping", { orderId, isTyping: true }, user);
 }
 
+async function expectAllChatActionsOk(label, orderId, user) {
+  await expectOk(`${label}: list`, "listChatMessages", { orderId }, user);
+  await expectOk(`${label}: send`, "addChatMessage", quickPayload(orderId), user);
+  await expectOk(`${label}: mark read`, "markChatRead", { orderId }, user);
+  await expectOk(`${label}: typing`, "setChatTyping", { orderId, isTyping: true }, user);
+}
+
 async function main() {
   await call("bootstrap", {
     snapshot: {
@@ -103,6 +110,26 @@ async function main() {
           createdAt: now
         },
         {
+          id: "order-pending-accepted-snake",
+          status: "pending",
+          customer_username: customer.username,
+          handled_by: acceptedStaff.username,
+          accepted_at: now,
+          productTitle: "Stale pending accepted snake order",
+          price: 0,
+          createdAt: now
+        },
+        {
+          id: "order-pending-accepted-camel",
+          status: "pending",
+          customerUsername: customer.username,
+          handledBy: acceptedStaff.username,
+          acceptedAt: now,
+          productTitle: "Stale pending accepted camel order",
+          price: 0,
+          createdAt: now
+        },
+        {
           id: "order-email-customer-spoof",
           status: "processing",
           customer_username: victimCustomerMail,
@@ -134,6 +161,12 @@ async function main() {
   await expectOk("matching customer can send processing order", "addChatMessage", quickPayload("order-processing-empl001", "BASIC_WAIT_5"), customer);
   await expectDenied("pending customer cannot open available chat thread", "listChatMessages", { orderId: "order-pending-unaccepted" }, customer);
   await expectDenied("pending staff cannot open available chat thread", "listChatMessages", { orderId: "order-pending-unaccepted" }, acceptedStaff);
+  await expectAllChatActionsOk("stale pending snake accepted customer", "order-pending-accepted-snake", customer);
+  await expectAllChatActionsOk("stale pending snake accepted staff", "order-pending-accepted-snake", acceptedStaff);
+  await expectAllChatActionsDenied("stale pending snake accepted rejects other staff", "order-pending-accepted-snake", otherStaff);
+  await expectAllChatActionsOk("stale pending camel accepted customer", "order-pending-accepted-camel", customer);
+  await expectAllChatActionsOk("stale pending camel accepted staff", "order-pending-accepted-camel", acceptedStaff);
+  await expectAllChatActionsDenied("stale pending camel accepted rejects other staff", "order-pending-accepted-camel", otherStaff);
   await expectAllChatActionsDenied("notification email matching customer field cannot grant access", "order-email-customer-spoof", customerMailAttacker);
   await expectAllChatActionsDenied("notification email matching staff field cannot grant access", "order-email-staff-spoof", staffMailAttacker);
 
@@ -145,6 +178,8 @@ async function main() {
       "processing handledBy=EMPL002 rejects EMPL001 list/send",
       "customer_username/customerUsername match allows customer list/send",
       "pending unaccepted order rejects available chat for customer and staff",
+      "stale pending with handled_by/accepted_at allows participants and rejects non-participants",
+      "stale pending with handledBy/acceptedAt allows participants and rejects non-participants",
       "notificationEmail spoof rejects list/send/markRead/typing"
     ]
   }, null, 2));
