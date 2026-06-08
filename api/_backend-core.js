@@ -1758,6 +1758,60 @@ function normalizeClientChatPayload(payload = {}) {
   };
 }
 
+function orderTextField(order, ...names) {
+  for (const name of names) {
+    const value = order?.[name];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+  return "";
+}
+
+function orderCustomerParticipants(order) {
+  return [
+    orderTextField(order, "customerUsername", "customer_username"),
+    orderTextField(order, "customerId", "customer_id", "userId", "user_id")
+  ].filter(Boolean);
+}
+
+function orderStaffParticipants(order) {
+  return [
+    orderTextField(order, "handledBy", "handled_by"),
+    orderTextField(order, "acceptedBy", "accepted_by"),
+    orderTextField(order, "employeeId", "employee_id"),
+    orderTextField(order, "assignedTo", "assigned_to"),
+    orderTextField(order, "assignedVectorId", "assigned_vector_id"),
+    orderTextField(order, "assignedVectorName", "assigned_vector_name"),
+    orderTextField(order, "vectorUsername", "vector_username"),
+    orderTextField(order, "staffUsername", "staff_username")
+  ].filter(Boolean);
+}
+
+function orderChatAvailable(order) {
+  if (!order || normalize(order.status) === "pending") {
+    return false;
+  }
+  return Boolean(
+    orderStaffParticipants(order).length
+    || orderTextField(order, "acceptedAt", "accepted_at")
+  );
+}
+
+function chatActorKeys(db, user) {
+  const profile = profileByUsername(db, user?.username);
+  return [
+    user?.username,
+    user?.id,
+    user?.userId,
+    user?.user_id,
+    profile?.username,
+    profile?.id,
+    profile?.userId,
+    profile?.user_id
+  ].filter(Boolean).map(normalize);
+}
+
 function chatAccess(db, orderId, user) {
   if (!user) {
     return { ok: false, message: "请先登录" };
@@ -1766,16 +1820,15 @@ function chatAccess(db, orderId, user) {
   if (!order) {
     return { ok: false, message: "订单不存在" };
   }
+  if (!orderChatAvailable(order)) {
+    return { ok: false, message: "Vector 接单后即可打开聊天框。" };
+  }
   const allowed = [
-    order.customerUsername,
-    order.handledBy,
-    order.assignedVectorId,
-    order.assigned_vector_id,
-    order.assignedVectorName,
-    order.vectorUsername,
-    order.staffUsername
+    ...orderCustomerParticipants(order),
+    ...orderStaffParticipants(order)
   ].filter(Boolean).map(normalize);
-  if (!allowed.includes(normalize(user.username)) && user.role !== "admin") {
+  const actorKeys = chatActorKeys(db, user);
+  if (!actorKeys.some((key) => allowed.includes(key)) && user.role !== "admin") {
     return { ok: false, message: "无权查看" };
   }
   return { ok: true, order };
