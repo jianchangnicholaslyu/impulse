@@ -827,9 +827,46 @@ function verificationStorageUnavailableResponse(db) {
   };
 }
 
+function durableStorageUnavailableResponse(db, error = null) {
+  const primaryError = dbPrimaryStorageError(db) || (error ? storageErrorCode(error) : "") || "storage_unavailable";
+  return {
+    ok: false,
+    offline: true,
+    status: 503,
+    message: "后端存储暂不可用，请稍后重试。",
+    backend: {
+      ...backendStorageInfo(db),
+      unavailable: true,
+      error: primaryError
+    }
+  };
+}
+
 async function writeVerificationDb(db) {
   // AI: auth codes/tokens must stay in the same durable store; never fall back during issue/consume writes.
   return writeDb(db, { allowFallback: false });
+}
+
+function requiresPrimaryDurability(storage) {
+  return storage === "supabase" || storage === "kv";
+}
+
+async function writeDurableDb(db) {
+  const primaryStorage = storageType();
+  const activeStorage = dbStorage(db) || primaryStorage;
+  if (requiresPrimaryDurability(primaryStorage) && activeStorage !== primaryStorage) {
+    return { ok: false, response: durableStorageUnavailableResponse(db) };
+  }
+  try {
+    const written = await writeDb(db, { allowFallback: false });
+    const writtenStorage = dbStorage(written) || primaryStorage;
+    if (requiresPrimaryDurability(primaryStorage) && writtenStorage !== primaryStorage) {
+      return { ok: false, response: durableStorageUnavailableResponse(written) };
+    }
+    return { ok: true, db: written };
+  } catch (error) {
+    return { ok: false, response: durableStorageUnavailableResponse(db, error) };
+  }
 }
 
 function canUseClientSnapshot(db) {
@@ -1011,6 +1048,103 @@ function mergeArrayBy(existingItems = [], incomingItems = [], keyFn, mergeFn = (
   return Array.from(merged.values());
 }
 
+const OrderEvidenceFields = [
+  "handledBy",
+  "handled_by",
+  "acceptedAt",
+  "accepted_at",
+  "acceptedBy",
+  "accepted_by",
+  "employeeId",
+  "employee_id",
+  "assignedTo",
+  "assigned_to",
+  "assignedVectorId",
+  "assigned_vector_id",
+  "assignedVectorName",
+  "assigned_vector_name",
+  "vectorUsername",
+  "vector_username",
+  "staffUsername",
+  "staff_username"
+];
+const OrderStatusRanks = {
+  pending: 1,
+  processing: 2,
+  completed: 3,
+  cancelled: 3,
+  refunded: 3,
+  closed: 4,
+  settled: 4
+};
+
+function orderStatusRank(order = {}) {
+  return OrderStatusRanks[String(order.status || "").toLowerCase()] || 0;
+}
+
+function orderEvidenceScore(order = {}) {
+  return OrderEvidenceFields.reduce((score, field) => score + (String(order[field] || "").trim() ? 1 : 0), 0);
+}
+
+function orderMutationTime(order = {}) {
+  return Math.max(
+    timestampMs(order.updatedAt),
+    timestampMs(order.updated_at),
+    timestampMs(order.acceptedAt),
+    timestampMs(order.accepted_at),
+    timestampMs(order.completedAt),
+    timestampMs(order.completed_at),
+    timestampMs(order.refundedAt),
+    timestampMs(order.refunded_at),
+    timestampMs(order.returnRefundedAt),
+    timestampMs(order.return_refunded_at),
+    timestampMs(order.settledAt),
+    timestampMs(order.settled_at),
+    timestampMs(order.createdAt),
+    timestampMs(order.created_at)
+  );
+}
+
+function orderProgressScore(order = {}) {
+  return orderStatusRank(order) * 100 + Math.min(50, orderEvidenceScore(order) * 5);
+}
+
+function preserveOrderEvidence(merged, ...sources) {
+  OrderEvidenceFields.forEach((field) => {
+    if (String(merged[field] || "").trim()) {
+      return;
+    }
+    const source = sources.find((item) => String(item?.[field] || "").trim());
+    if (source) {
+      merged[field] = source[field];
+    }
+  });
+  return merged;
+}
+
+function mergeOrder(existing = {}, incoming = {}) {
+  if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+    return incoming;
+  }
+  if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
+    return existing;
+  }
+  const existingProgress = orderProgressScore(existing);
+  const incomingProgress = orderProgressScore(incoming);
+  const existingTime = orderMutationTime(existing);
+  const incomingTime = orderMutationTime(incoming);
+  const incomingWins = incomingProgress > existingProgress
+    || (incomingProgress === existingProgress && incomingTime >= existingTime);
+  const merged = incomingWins
+    ? { ...existing, ...incoming }
+    : { ...incoming, ...existing };
+  return preserveOrderEvidence(merged, existing, incoming);
+}
+
+function mergeOrders(existingOrders = [], incomingOrders = []) {
+  return mergeArrayBy(existingOrders, incomingOrders, (order) => order?.id, mergeOrder);
+}
+
 function mergeRecordLists(existingRecord = {}, incomingRecord = {}, keyFn) {
   const result = { ...(existingRecord || {}) };
   Object.entries(incomingRecord || {}).forEach(([key, incomingItems]) => {
@@ -1049,7 +1183,7 @@ function importSnapshot(db, snapshot = {}) {
     categories: mergeArrayBy(db.categories, snapshot.categories, (category) => category?.id),
     games: mergeRecordLists(db.games, snapshot.games, (game) => game?.id),
     products: mergeRecordLists(db.products, snapshot.products, (product) => product?.id),
-    orders: mergeArrayBy(db.orders, snapshot.orders, (order) => order?.id),
+    orders: mergeOrders(db.orders, snapshot.orders),
     orderChats: mergeChatRecords(db.orderChats, snapshot.orderChats),
     chatTyping: snapshot.chatTyping && typeof snapshot.chatTyping === "object" && !Array.isArray(snapshot.chatTyping) ? snapshot.chatTyping : db.chatTyping,
     mailboxMessages: mergeChatRecords(db.mailboxMessages, snapshot.mailboxMessages),
@@ -2250,10 +2384,21 @@ async function handleAction(action, payload = {}, request = {}) {
   } catch (error) {
     return storageUnavailableResponse(error);
   }
+  const persistDurable = async () => {
+    const persisted = await writeDurableDb(db);
+    if (!persisted.ok) {
+      return persisted.response;
+    }
+    db = persisted.db;
+    return null;
+  };
   if (!["setBackupEmail", "runRetentionCleanup"].includes(action)) {
     const retention = await applyRetentionPolicies(db);
     if (retention.changed) {
-      db = await writeDb(db);
+      const unavailable = await persistDurable();
+      if (unavailable) {
+        return unavailable;
+      }
     }
   }
 
@@ -2262,7 +2407,10 @@ async function handleAction(action, payload = {}, request = {}) {
       db = importSnapshot(db, payload.snapshot);
       await applyRetentionPolicies(db);
       log(db, "后端初始化", "从前端快照导入初始数据");
-      db = await writeDb(db);
+      const unavailable = await persistDurable();
+      if (unavailable) {
+        return unavailable;
+      }
     }
     return { ok: true, snapshot: sanitizeSnapshot(db), backend: backendStorageInfo(db) };
   }
@@ -2271,7 +2419,10 @@ async function handleAction(action, payload = {}, request = {}) {
     db = importSnapshot(db, payload.snapshot || {});
     await applyRetentionPolicies(db);
     log(db, "后端同步", payload.reason || "前端同步快照", request.user?.username || "CLIENT");
-    db = await writeDb(db);
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
     return { ok: true, snapshot: sanitizeSnapshot(db), backend: backendStorageInfo(db) };
   }
 
@@ -2299,7 +2450,10 @@ async function handleAction(action, payload = {}, request = {}) {
     db.systemSettings.backupEmail = email;
     log(db, "设置备份邮箱", email, request.user.username);
     const nextRetention = await applyRetentionPolicies(db);
-    await writeDb(db);
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
     return { ok: true, retention: nextRetention, snapshot: sanitizeSnapshot(db) };
   }
 
@@ -2309,7 +2463,10 @@ async function handleAction(action, payload = {}, request = {}) {
     }
     const nextRetention = await applyRetentionPolicies(db);
     if (nextRetention.changed) {
-      await writeDb(db);
+      const unavailable = await persistDurable();
+      if (unavailable) {
+        return unavailable;
+      }
     }
     return { ok: true, retention: nextRetention, snapshot: sanitizeSnapshot(db) };
   }
@@ -2600,7 +2757,10 @@ async function handleAction(action, payload = {}, request = {}) {
     }
     user.passwordHash = hashPassword(password);
     log(db, "修改密码", request.user.username, request.user.username);
-    await writeDb(db);
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
     return { ok: true, snapshot: sanitizeSnapshot(db) };
   }
 
@@ -2625,7 +2785,10 @@ async function handleAction(action, payload = {}, request = {}) {
       profile.notificationEmail = email;
     }
     log(db, "修改绑定邮箱", `${request.user.username} -> ${email}`, request.user.username);
-    await writeDb(db);
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
     return { ok: true, email, snapshot: sanitizeSnapshot(db) };
   }
 
@@ -2660,7 +2823,10 @@ async function handleAction(action, payload = {}, request = {}) {
       }
     });
     log(db, "充值邮件生成", `${profile.username} ${amountPoints} points`, request.user.username);
-    await writeDb(db);
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
     return { ok: true, message, snapshot: sanitizeSnapshot(db) };
   }
 
@@ -2695,7 +2861,10 @@ async function handleAction(action, payload = {}, request = {}) {
         : item
     ));
     log(db, "领取充值积分", `${request.user.username} ${amountPoints} points`, request.user.username);
-    await writeDb(db);
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
     return { ok: true, points: amountPoints, snapshot: sanitizeSnapshot(db) };
   }
 
@@ -2729,7 +2898,10 @@ async function handleAction(action, payload = {}, request = {}) {
       });
     });
     log(db, "发送系统邮件", `${request.user.username} -> ${target === "user" ? payload.username : "all"}: ${subject}`, request.user.username);
-    await writeDb(db);
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
     return { ok: true, count: recipients.length, snapshot: sanitizeSnapshot(db) };
   }
 
@@ -2757,7 +2929,10 @@ async function handleAction(action, payload = {}, request = {}) {
         amount: `${Number(payload.amountPoints || 0)} points`
       });
     }
-    await writeDb(db);
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
     return { ok: true, profile: result.profile, entry: result.entry, snapshot: sanitizeSnapshot(db) };
   }
 
@@ -2771,7 +2946,10 @@ async function handleAction(action, payload = {}, request = {}) {
       return result;
     }
     await notifyOrderCreated(db, result.order);
-    await writeDb(db);
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
     return { ok: true, order: result.order, snapshot: sanitizeSnapshot(db) };
   }
 
@@ -2786,8 +2964,11 @@ async function handleAction(action, payload = {}, request = {}) {
     if (payload.status === "completed") {
       await notifyOrderCompleted(db, result.order);
     }
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
     await persistSupabaseMessages(payload.orderId, db.orderChats[payload.orderId] || []);
-    await writeDb(db);
     return { ok: true, order: result.order, snapshot: sanitizeSnapshot(db) };
   }
 
@@ -2823,12 +3004,14 @@ async function handleAction(action, payload = {}, request = {}) {
     if (!result.ok) {
       return result;
     }
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
     const realtimePersisted = await persistSupabaseMessage(payload.orderId, result.message);
     if (realtimePersisted) {
-      writeDb(db).catch(() => {});
       return { ok: true, message: result.message, realtime: true };
     }
-    await writeDb(db);
     return { ok: true, message: result.message, realtime: false, snapshot: sanitizeSnapshot(db) };
   }
 
@@ -2885,8 +3068,11 @@ async function handleAction(action, payload = {}, request = {}) {
     if (profile) {
       profile.lastOnlineAt = now;
     }
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
     await persistSupabaseMessages(payload.orderId, db.orderChats[payload.orderId] || []);
-    await writeDb(db);
     return { ok: true, snapshot: sanitizeSnapshot(db) };
   }
 
@@ -2929,7 +3115,10 @@ async function handleAction(action, payload = {}, request = {}) {
         realtime: true
       };
     }
-    await writeDb(db);
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
     return { ok: true, typing: db.chatTyping[payload.orderId] || {}, realtime: false, snapshot: sanitizeSnapshot(db) };
   }
 
