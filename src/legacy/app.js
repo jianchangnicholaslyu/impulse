@@ -7859,30 +7859,36 @@ function mailboxHasClaim(message) {
       });
     },
     openOrderChat(orderId) {
-      Data.processRushBreaches();
-      const repaired = Data.repairOrderConversationState(orderId);
-      let order = repaired.order || Data.orderById(orderId);
-      if (!order || order.type !== "order") {
-        UI.toast("订单不存在");
-        return;
-      }
-      const conversationState = repaired.state || Data.orderConversationState(order);
-      order = conversationState.order || order;
-      const handledBy = conversationState.handledBy || order.handledBy || "";
-      const currentUserKey = normalize(State.currentUser?.username);
-      const isCustomer = currentUserKey === normalize(order.customerUsername);
-      const isStaff = currentUserKey === normalize(handledBy);
-      const isAdmin = State.currentUser?.role === "admin";
-      if (!isCustomer && !isStaff && !isAdmin) {
-        UI.toast("无权查看", "只有订单 Gamer、接单 Vector 或管理员可以打开聊天。");
-        return;
-      }
+      const fail = (title, detail = "") => {
+        UI.toast(title, detail);
+        return { ok: false, message: detail || title };
+      };
+      try {
+        Data.processRushBreaches();
+        const repaired = Data.repairOrderConversationState(orderId);
+        let order = repaired.order || Data.orderById(orderId);
+        if (!order || order.type !== "order") {
+          return fail("订单不存在");
+        }
+        const conversationState = repaired.state || Data.orderConversationState(order);
+        order = conversationState.order || order;
+        const handledBy = conversationState.handledBy || order.handledBy || "";
+        const currentUserKey = normalize(State.currentUser?.username);
+        const isCustomer = currentUserKey === normalize(order.customerUsername);
+        const isStaff = currentUserKey === normalize(handledBy);
+        const isAdmin = State.currentUser?.role === "admin";
+        if (!isCustomer && !isStaff && !isAdmin) {
+          return fail("无权查看", "只有订单 Gamer、接单 Vector 或管理员可以打开聊天。");
+        }
+        if (!orderHasAcceptedVector(order, { ...conversationState, vectorName: handledBy })) {
+          return fail("聊天暂不可用", "Vector 接单后即可打开聊天框。");
+        }
 
-      const currentUsername = State.currentUser?.username || "";
-      Data.markChatRead(order.id, currentUsername);
-      const customerProfile = Data.profileByUsername(order.customerUsername);
-      const staffProfile = Data.profileByUsername(handledBy);
-      const participantCard = (label, profile, fallback = {}) => {
+        const currentUsername = State.currentUser?.username || "";
+        Data.markChatRead(order.id, currentUsername);
+        const customerProfile = Data.profileByUsername(order.customerUsername);
+        const staffProfile = Data.profileByUsername(handledBy);
+        const participantCard = (label, profile, fallback = {}) => {
         const baseProfile = profile || (fallback.username ? { username: fallback.username, lastOnlineAt: fallback.lastOnlineAt || "" } : null);
         const username = baseProfile?.username || fallback.username || "";
         const dot = h("span", { className: "presence-dot offline" });
@@ -7959,22 +7965,27 @@ function mailboxHasClaim(message) {
         }
       }
 
-      UI.openModal(OrderChatShell({
-        order,
-        tools,
-        customerProfile,
-        staffProfile,
-        participantCard,
-        conversationState,
-        currentUsername,
-        handledBy,
-        role: State.currentUser?.role || "customer"
-      }), {
-        onClose: () => {
-          window.dispatchEvent(new CustomEvent("impulse:chat-close", { detail: { orderId: order.id } }));
-          PlatformChatRuntime.stop(order.id);
-        }
-      });
+        UI.openModal(OrderChatShell({
+          order,
+          tools,
+          customerProfile,
+          staffProfile,
+          participantCard,
+          conversationState,
+          currentUsername,
+          handledBy,
+          role: State.currentUser?.role || "customer"
+        }), {
+          onClose: () => {
+            window.dispatchEvent(new CustomEvent("impulse:chat-close", { detail: { orderId: order.id } }));
+            PlatformChatRuntime.stop(order.id);
+          }
+        });
+        return { ok: true, orderId: order.id };
+      } catch (error) {
+        console.error(error);
+        return fail("聊天打开失败", "请刷新页面后重试。");
+      }
     },
     openRushForm(orderId) {
       const order = Data.orderById(orderId);
@@ -8576,7 +8587,6 @@ function mailboxHasClaim(message) {
                         type: "button",
                         disabled: !selectedMessage.orderId,
                         onClick: () => {
-                          UI.closeModal();
                           Actions.openOrderChat(selectedMessage.orderId);
                         }
                       }, icon("fa-solid fa-arrow-up-right-from-square"), h("span", { text: "前往" })) : null,
