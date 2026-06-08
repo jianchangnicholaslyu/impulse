@@ -199,6 +199,21 @@
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
     {
+      version: "v0.20.4",
+      releasedAt: "2026-06-08",
+      nameI18n: localizedPair("Quick Signals Layout Cleanup", "快捷消息布局精简"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Simplifies the order chat Quick Signals panel so category tabs and fixed-message buttons stay readable and reachable across desktop and mobile layouts.",
+        "精简订单聊天快捷消息面板，让分类栏和固定消息按钮在桌面与移动布局中保持清晰可读、可点击。"
+      ),
+      itemsI18n: [
+        localizedPair("Removed repeated helper copy from the fixed-signal panel so the category tabs become the first visible control.", "移除固定短句面板中的重复提示，让分类栏成为第一眼可见的操作控件。"),
+        localizedPair("Adjusted the Quick Signals panel rows so tabs stay fully visible while the message button grid keeps its own scroll area.", "调整快捷消息面板行高分配，分类栏完整显示，消息按钮网格继续保留独立滚动区域。"),
+        localizedPair("Kept the platform chat protocol unchanged: order chats still send approved Quick Signals only.", "保持平台聊天协议不变：订单聊天仍只发送已配置的快捷消息。")
+      ]
+    },
+    {
       version: "v0.20.3",
       releasedAt: "2026-06-06",
       nameI18n: localizedPair("Native Order Chat Foundation", "平台内订单聊天基础"),
@@ -2848,17 +2863,6 @@ function quickButton(key, params = null, metadata = {}) {
 
     const activeGroup = ChatQuickMessageGroups.find((group) => group.id === activeQuickGroupId) || ChatQuickMessageGroups[0];
     const activeKeys = (activeGroup?.keys || []).filter((key) => normalizeChatQuickCatalogKey(key));
-    quickPanel.append(h("div", { className: "chat-quick-title" },
-      h("strong", {}, chatUiText("快捷消息区", "Quick Signals")),
-      h("span", {}, chatUiText(
-        `选择分类，下方会刷新 ${activeKeys.length} 条可发送内容。`,
-        `Choose a category to refresh ${activeKeys.length} signals below.`
-      ))
-    ));
-    quickPanel.append(h("div", { className: "chat-flow-note chat-flow-note-top" },
-      h("i", { className: "fa-solid fa-hand-pointer" }),
-      h("span", {}, chatUiText("先选分类，再点击下方短句发送。", "Pick a category, then send one signal below."))
-    ));
     quickPanel.append(h("div", { className: "chat-quick-tabs", role: "tablist" },
       ...ChatQuickMessageGroups.map((group) => h("button", {
         className: `chat-quick-tab ${group.id === activeQuickGroupId ? "active" : ""}`.trim(),
@@ -2882,10 +2886,6 @@ function quickButton(key, params = null, metadata = {}) {
         h("span", {}, chatUiText("当前分类暂无快捷消息。", "No signals in this category yet."))
       ));
     }
-    quickPanel.append(h("div", { className: "chat-flow-note" },
-      h("i", { className: "fa-regular fa-image" }),
-      h("span", {}, chatUiText("图片上传暂未开放。", "Image upload is temporarily unavailable."))
-    ));
   }
 
   const room = h("div", { className: "order-chat-room quick-chat" },
@@ -2902,13 +2902,6 @@ function quickButton(key, params = null, metadata = {}) {
 
   // Keep quick replies outside the clipped chat room so the picker stays visible under the message area.
   const actions = h("aside", { className: "quick-chat-actions" },
-    h("div", { className: "quick-chat-actions-heading" },
-      h("div", {},
-        h("strong", {}, chatUiText("快捷消息", "Quick Signals")),
-        h("span", {}, chatUiText("选择固定消息发送，系统会自动同步给对方。", "Choose a fixed signal to send. It syncs to the other side."))
-      ),
-      h("i", { className: "fa-solid fa-bolt" })
-    ),
     quickPanel,
     typingRow,
     statusRow
