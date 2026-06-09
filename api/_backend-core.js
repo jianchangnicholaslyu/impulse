@@ -62,6 +62,8 @@ const MailboxCategoryLimit = 25;
 const AdminMailboxSubjectMaxLength = 15;
 const AdminMailboxBodyMaxLength = 150;
 const AdminMailboxPreviewMaxLength = 120;
+const AdminMailboxSendingDisabled = true;
+const AdminMailboxSendingDisabledMessage = "管理员邮件发送暂时维护中。";
 
 function nowIso() {
   return new Date().toISOString();
@@ -2511,6 +2513,13 @@ async function handleAction(action, payload = {}, request = {}) {
     return { ok: true, storage: backend.storage, hasEmail: email.configured, email, backend };
   }
 
+  if (action === "sendAdminMailbox" && AdminMailboxSendingDisabled) {
+    if (!request.user || request.user.role !== "admin") {
+      return { ok: false, message: "无权发送系统邮件。" };
+    }
+    return { ok: false, status: 423, message: AdminMailboxSendingDisabledMessage };
+  }
+
   let db;
   try {
     db = await readDb();
@@ -3015,6 +3024,9 @@ async function handleAction(action, payload = {}, request = {}) {
   if (action === "sendAdminMailbox") {
     if (!request.user || request.user.role !== "admin") {
       return { ok: false, message: "无权发送系统邮件。" };
+    }
+    if (AdminMailboxSendingDisabled) {
+      return { ok: false, status: 423, message: AdminMailboxSendingDisabledMessage };
     }
     db = hydrateTemporaryDb(db, payload.snapshot, request.user.username);
     ensureProfiles(db);

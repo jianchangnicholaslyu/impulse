@@ -181,6 +181,8 @@
   const AdminMailboxSubjectMaxLength = 15;
   const AdminMailboxBodyMaxLength = 150;
   const AdminMailboxPreviewMaxLength = 120;
+  const AdminMailboxSendingDisabled = true;
+  const AdminMailboxSendingDisabledMessage = "管理员邮件发送暂时维护中。";
   const MailboxRuntimeRefreshVersion = "v0.20.7";
   const MailboxExpiryDays = {
     chat: 7,
@@ -203,6 +205,21 @@
 
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
+    {
+      version: "v0.20.8",
+      releasedAt: "2026-06-09",
+      nameI18n: localizedPair("Admin Mail Sending Pause", "管理员邮件发送暂停"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Temporarily pauses admin in-app mail sending while keeping existing system mail readable.",
+        "临时暂停管理员站内邮件发送，同时保留已有系统邮件的读取能力。"
+      ),
+      itemsI18n: [
+        localizedPair("The admin send entry now shows a maintenance state instead of opening the send form.", "管理员发送入口现在显示维护状态，不再打开发送表单。"),
+        localizedPair("The backend send action now fails closed with a maintenance response and writes no mailbox messages.", "后端发送操作现在会以维护响应关闭，不写入任何站内邮件。"),
+        localizedPair("Existing admin system mail remains available through the mailbox refresh flow.", "已有管理员系统邮件仍可通过邮箱刷新流程查看。")
+      ]
+    },
     {
       version: "v0.20.7",
       releasedAt: "2026-06-09",
@@ -8540,6 +8557,10 @@ function mailboxHasClaim(message) {
         return result;
       };
       const openAdminSendMail = () => {
+        if (AdminMailboxSendingDisabled) {
+          UI.toast("发送暂时维护", AdminMailboxSendingDisabledMessage);
+          return;
+        }
         UI.openFormModal({
           title: "发送邮件",
           fields: [
@@ -8555,6 +8576,9 @@ function mailboxHasClaim(message) {
           submitLabel: "发送邮件",
           wide: true,
           onSubmit: async (values) => {
+            if (AdminMailboxSendingDisabled) {
+              return { error: AdminMailboxSendingDisabledMessage };
+            }
             const draft = {
               target: values.target === "user" ? "user" : "all",
               username: values.username,
@@ -8647,7 +8671,13 @@ function mailboxHasClaim(message) {
             h("div", {},
               h("span", { className: "release-badge" }, icon("fa-regular fa-envelope"), "邮件中心"),
               h("button", { className: "button button-ghost mailbox-sync-button", type: "button", onClick: () => refreshMailboxAndRender().catch(renderMailboxError) }, icon("fa-solid fa-rotate-right"), h("span", { text: "同步邮件" })),
-              State.currentUser?.role === "admin" ? h("button", { className: "button button-primary mailbox-admin-send", type: "button", onClick: openAdminSendMail }, icon("fa-solid fa-paper-plane"), h("span", { text: "发送邮件" })) : null
+              State.currentUser?.role === "admin" ? h("button", {
+                className: `button ${AdminMailboxSendingDisabled ? "button-ghost" : "button-primary"} mailbox-admin-send`,
+                type: "button",
+                disabled: AdminMailboxSendingDisabled,
+                title: AdminMailboxSendingDisabled ? AdminMailboxSendingDisabledMessage : "发送邮件",
+                onClick: openAdminSendMail
+              }, icon("fa-solid fa-paper-plane"), h("span", { text: AdminMailboxSendingDisabled ? "发送维护中" : "发送邮件" })) : null
             ),
             h("button", {
               className: "mailbox-counter mailbox-counter-button",
