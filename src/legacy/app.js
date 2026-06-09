@@ -202,6 +202,21 @@
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
     {
+      version: "v0.20.6",
+      releasedAt: "2026-06-09",
+      nameI18n: localizedPair("Admin Mailbox Visibility Fix", "管理员邮件可见性修复"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Ensures admin-sent in-app mail is refreshed from the backend and visible in recipients' System Mail view.",
+        "确保管理员发送的站内邮件会从后端刷新，并在收件人的系统邮件中可见。"
+      ),
+      itemsI18n: [
+        localizedPair("Mail Center now refreshes backend mailbox data before rendering instead of relying on stale local cache.", "邮件中心现在会先刷新后端邮箱数据再渲染，不再依赖过期本地缓存。"),
+        localizedPair("Admin-sent mail is shown as System Mail from the administrator and keeps newest messages first.", "管理员发送的邮件会作为系统邮件展示，发件人为管理员，并保持最新邮件优先。"),
+        localizedPair("Mailbox sync failures now show a clear retry state instead of an empty mailbox count.", "邮件同步失败时会显示清晰的重试状态，不再静默显示空邮箱计数。")
+      ]
+    },
+    {
       version: "v0.20.5",
       releasedAt: "2026-06-09",
       nameI18n: localizedPair("Admin Mail Delivery Fix", "管理员邮件投递修复"),
@@ -1953,6 +1968,24 @@
     return list.some((message) => message && typeof message === "object" && message.id === entry.id && !message.deletedAt);
   }
 
+  function mailboxIsAdminSystemMessage(message) {
+    return mailboxCategory(message?.category).id === "system" && normalize(message?.source) === "admin";
+  }
+
+  function mailboxSenderLabel(message) {
+    return mailboxIsAdminSystemMessage(message)
+      ? "管理员"
+      : String(message?.sender || "IMPULSE J System");
+  }
+
+  function mailboxSortCompare(a, b) {
+    const timeDelta = timestampMs(b.createdAt) - timestampMs(a.createdAt);
+    if (timeDelta) {
+      return timeDelta;
+    }
+    return Number(mailboxIsAdminSystemMessage(b)) - Number(mailboxIsAdminSystemMessage(a));
+  }
+
   function mailboxExpiryDate(message) {
     const stored = timestampMs(message?.expiresAt);
     if (stored) {
@@ -3277,6 +3310,15 @@ function mailboxHasClaim(message) {
       }
       return false;
     },
+    async refreshMailbox() {
+      const result = await this.request("bootstrap", {});
+      if (result.ok && result.snapshot) {
+        this.bootstrapped = true;
+        this.hydrate(result.snapshot, { preserveLocal: false });
+        return { ok: true, snapshot: result.snapshot, backend: result.backend };
+      }
+      return { ...result, ok: false };
+    },
     queueSync(reason = "frontend-change") {
       if (!this.bootstrapped || this.hydrating || !this.online) {
         return;
@@ -3655,7 +3697,8 @@ function mailboxHasClaim(message) {
       const claim = message?.claim && typeof message.claim === "object" && !Array.isArray(message.claim)
         ? { ...message.claim }
         : null;
-      return {
+      const source = String(message?.source || "system");
+      const normalized = {
         ...message,
         id: String(message?.id || `mail-${timestampMs(createdAt) || 0}-${index}`),
         category,
@@ -3663,7 +3706,7 @@ function mailboxHasClaim(message) {
         preview: String(message?.preview || body || "系统通知"),
         body,
         sender: String(message?.sender || "IMPULSE J System"),
-        source: String(message?.source || "system"),
+        source,
         sourceId: String(message?.sourceId || ""),
         orderId: String(message?.orderId || ""),
         favoritedAt: message?.favoritedAt || "",
@@ -3671,6 +3714,7 @@ function mailboxHasClaim(message) {
         claim,
         createdAt
       };
+      return mailboxIsAdminSystemMessage(normalized) ? { ...normalized, sender: "管理员" } : normalized;
     },
     pruneMailbox(username) {
       const key = normalize(username);
@@ -3741,7 +3785,7 @@ function mailboxHasClaim(message) {
         .filter((message) => !message.deletedAt)
         .map((message, index) => this.normalizeMailboxMessage(message, index))
         .slice()
-        .sort((a, b) => timestampMs(b.createdAt) - timestampMs(a.createdAt));
+        .sort(mailboxSortCompare);
     },
     unreadMailboxCount(username) {
       return this.mailbox(username).filter((message) => !message.readAt).length;
@@ -3995,7 +4039,7 @@ function mailboxHasClaim(message) {
           subject: validated.subject,
           preview: clipVisibleText(validated.body, AdminMailboxPreviewMaxLength),
           body: validated.body,
-          sender: "IMPULSE J Admin",
+          sender: "管理员",
           source: "admin",
           sourceId: createId("admin-mail"),
           expiresDays: validated.expiresDays
@@ -8387,6 +8431,34 @@ function mailboxHasClaim(message) {
         Translation.localizeStaticUi(card);
         Translation.refresh();
       };
+      const renderMailboxLoading = () => {
+        clear(card);
+        append(card, [
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("div", { className: "mailbox-empty mailbox-load-state" },
+            icon("fa-regular fa-envelope"),
+            h("strong", { text: "邮件同步中" }),
+            h("span", { text: "正在同步最新邮件。" })
+          )
+        ]);
+        Translation.localizeStaticUi(card);
+        Translation.refresh();
+      };
+      const renderMailboxSyncFailure = (result = {}) => {
+        console.error(result);
+        clear(card);
+        append(card, [
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("div", { className: "mailbox-empty mailbox-load-state" },
+            icon("fa-solid fa-triangle-exclamation"),
+            h("strong", { text: "邮件同步失败" }),
+            h("span", { text: "邮件数据暂时无法同步，请稍后重试。" }),
+            h("button", { className: "button button-primary", type: "button", onClick: () => refreshMailboxAndRender().catch(renderMailboxError) }, icon("fa-solid fa-rotate-right"), h("span", { text: "重试" }))
+          )
+        ]);
+        Translation.localizeStaticUi(card);
+        Translation.refresh();
+      };
       const claimMessage = async (message, { silent = false } = {}) => {
         if (!mailboxClaimAvailable(message)) {
           return { ok: false, message: "没有可领取的积分。" };
@@ -8460,6 +8532,17 @@ function mailboxHasClaim(message) {
         } catch (error) {
           renderMailboxError(error);
         }
+      };
+      const refreshMailboxAndRender = async () => {
+        renderMailboxLoading();
+        const result = await Backend.refreshMailbox();
+        if (!result.ok) {
+          renderMailboxSyncFailure(result);
+          return;
+        }
+        renderMailboxSafely();
+        queueTopbarRefresh();
+        flushTopbarRefresh();
       };
       const renderMailbox = () => {
         Data.pruneMailbox(username);
@@ -8657,7 +8740,7 @@ function mailboxHasClaim(message) {
                       h("p", { text: selectedMessage.favoritedAt ? "收藏邮件不会自动过期。" : `${mailboxExpiryLabel(selectedMessage)}。` })
                     ),
                     h("dl", { className: "mail-detail-meta" },
-                      h("div", {}, h("dt", { text: "发件人" }), h("dd", { className: "notranslate", translate: "no", text: selectedMessage.sender || "IMPULSE J System" })),
+                      h("div", {}, h("dt", { text: "发件人" }), h("dd", { className: "notranslate", translate: "no", text: mailboxSenderLabel(selectedMessage) })),
                       h("div", {}, h("dt", { text: "发送时间" }), h("dd", { className: "notranslate", translate: "no", text: formatFullDate(selectedMessage.createdAt) })),
                       selectedMessage.orderId ? h("div", {}, h("dt", { text: "关联订单" }), h("dd", { className: "notranslate", translate: "no", text: selectedMessage.orderId })) : null,
                       h("div", {}, h("dt", { text: "状态" }), h("dd", { text: selectedMessage.readAt ? "已读" : "未读" }))
@@ -8692,18 +8775,12 @@ function mailboxHasClaim(message) {
         Translation.refresh();
       };
 
-      clear(card);
-      append(card, [
-        h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
-        h("div", { className: "mailbox-empty mailbox-load-state" },
-          icon("fa-regular fa-envelope"),
-          h("strong", { text: "邮件加载中" }),
-          h("span", { text: "正在读取系统邮件。" })
-        )
-      ]);
+      renderMailboxLoading();
       UI.openModal(card);
       modalMounted = true;
-      window.setTimeout(renderMailboxSafely, 0);
+      window.setTimeout(() => {
+        refreshMailboxAndRender().catch(renderMailboxError);
+      }, 0);
       flushTopbarRefresh();
     },
     guestMenu(anchor) {

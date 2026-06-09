@@ -2946,7 +2946,7 @@ async function handleAction(action, payload = {}, request = {}) {
         subject: validated.subject,
         preview: clipVisibleText(validated.body, AdminMailboxPreviewMaxLength),
         body: validated.body,
-        sender: "IMPULSE J Admin",
+        sender: "管理员",
         source: "admin",
         sourceId: createId("admin-mail"),
         expiresDays: validated.expiresDays
