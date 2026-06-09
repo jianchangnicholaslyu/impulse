@@ -59,6 +59,9 @@ const MailboxExpiryDays = {
   funds: 90
 };
 const MailboxCategoryLimit = 25;
+const AdminMailboxSubjectMaxLength = 15;
+const AdminMailboxBodyMaxLength = 150;
+const AdminMailboxPreviewMaxLength = 120;
 
 function nowIso() {
   return new Date().toISOString();
@@ -1387,6 +1390,58 @@ function mailboxExpiryDays(category, customDays = null) {
     return Math.min(365, Math.max(1, Math.ceil(requested)));
   }
   return MailboxExpiryDays[mailboxCategoryId(category)] || 30;
+}
+
+function visibleTextLength(value) {
+  return Array.from(String(value || "").trim()).length;
+}
+
+function clipVisibleText(value, maxLength) {
+  return Array.from(String(value || "").trim()).slice(0, maxLength).join("");
+}
+
+function validateAdminMailboxPayload(payload = {}) {
+  const target = payload.target === "user" ? "user" : "all";
+  const username = String(payload.username || "").trim();
+  const subject = String(payload.subject || "").trim();
+  const body = String(payload.body || "").trim();
+  const rawExpiresDays = payload.expiresDays === undefined || payload.expiresDays === null || payload.expiresDays === ""
+    ? 30
+    : payload.expiresDays;
+  const expiresDays = Number(rawExpiresDays);
+  if (target === "user" && !username) {
+    return { ok: false, message: "请填写用户名。" };
+  }
+  if (!subject || !body) {
+    return { ok: false, message: "请填写邮件标题和正文。" };
+  }
+  if (visibleTextLength(subject) > AdminMailboxSubjectMaxLength) {
+    return { ok: false, message: `邮件标题最多 ${AdminMailboxSubjectMaxLength} 个字。` };
+  }
+  if (visibleTextLength(body) > AdminMailboxBodyMaxLength) {
+    return { ok: false, message: `邮件正文最多 ${AdminMailboxBodyMaxLength} 个字。` };
+  }
+  if (!Number.isFinite(expiresDays) || expiresDays < 1 || expiresDays > 365) {
+    return { ok: false, message: "过期天数需在 1 到 365 天之间。" };
+  }
+  return { ok: true, target, username, subject, body, expiresDays: Math.ceil(expiresDays) };
+}
+
+function canReceiveAdminMailbox(db, profile) {
+  if (!profile || profile.deleted || !normalize(profile.username)) {
+    return false;
+  }
+  const user = findUser(db, profile.username);
+  return normalize(user?.role || profile.role || "customer") !== "admin";
+}
+
+function mailboxEntryReadable(db, entry) {
+  if (!entry) {
+    return false;
+  }
+  const key = normalize(entry.recipientUsername);
+  const list = key && Array.isArray(db.mailboxMessages?.[key]) ? db.mailboxMessages[key] : [];
+  return list.some((message) => message && typeof message === "object" && message.id === entry.id && !message.deletedAt);
 }
 
 function mailboxExpiresAt(category, createdAt, customDays = null) {
@@ -2872,37 +2927,47 @@ async function handleAction(action, payload = {}, request = {}) {
     if (!request.user || request.user.role !== "admin") {
       return { ok: false, message: "无权发送系统邮件。" };
     }
-    const target = payload.target === "user" ? "user" : "all";
-    const subject = String(payload.subject || "").trim();
-    const body = String(payload.body || "").trim();
-    const expiresDays = mailboxExpiryDays("system", payload.expiresDays || 30);
-    if (!subject || !body) {
-      return { ok: false, message: "请填写邮件标题和正文。" };
+    db = hydrateTemporaryDb(db, payload.snapshot, request.user.username);
+    ensureProfiles(db);
+    const validated = validateAdminMailboxPayload(payload);
+    if (!validated.ok) {
+      return { ok: false, message: validated.message };
     }
-    const recipients = target === "user"
-      ? db.profiles.filter((profile) => normalize(profile.username) === normalize(payload.username) && !profile.deleted)
-      : db.profiles.filter((profile) => !profile.deleted);
+    const recipients = validated.target === "user"
+      ? db.profiles.filter((profile) => normalize(profile.username) === normalize(validated.username) && canReceiveAdminMailbox(db, profile))
+      : db.profiles.filter((profile) => canReceiveAdminMailbox(db, profile));
     if (!recipients.length) {
       return { ok: false, message: "未找到收件人。" };
     }
+    const written = [];
     recipients.forEach((profile) => {
-      addMailboxMessage(db, profile.username, {
+      const entry = addMailboxMessage(db, profile.username, {
         category: "system",
-        subject,
-        preview: body.slice(0, 120),
-        body,
+        subject: validated.subject,
+        preview: clipVisibleText(validated.body, AdminMailboxPreviewMaxLength),
+        body: validated.body,
         sender: "IMPULSE J Admin",
         source: "admin",
         sourceId: createId("admin-mail"),
-        expiresDays
+        expiresDays: validated.expiresDays
       });
+      if (mailboxEntryReadable(db, entry)) {
+        written.push(entry);
+      }
     });
-    log(db, "发送系统邮件", `${request.user.username} -> ${target === "user" ? payload.username : "all"}: ${subject}`, request.user.username);
+    if (!written.length) {
+      return { ok: false, message: "邮件写入失败，请稍后重试。" };
+    }
+    log(db, "发送系统邮件", `${request.user.username} -> ${validated.target === "user" ? validated.username : "all"}: ${validated.subject} (${written.length}/${recipients.length})`, request.user.username);
     const unavailable = await persistDurable();
     if (unavailable) {
       return unavailable;
     }
-    return { ok: true, count: recipients.length, snapshot: sanitizeSnapshot(db) };
+    const persistedCount = written.filter((entry) => mailboxEntryReadable(db, entry)).length;
+    if (!persistedCount) {
+      return { ok: false, message: "邮件写入失败，请稍后重试。" };
+    }
+    return { ok: true, count: persistedCount, recipientCount: recipients.length, snapshot: sanitizeSnapshot(db) };
   }
 
   if (action === "adjustFunds") {

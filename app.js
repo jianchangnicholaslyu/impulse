@@ -177,6 +177,9 @@
   const MailboxDayMs = 24 * 60 * 60 * 1000;
   const MailboxCategoryLimit = 25;
   const MailboxFavoriteLimit = 5;
+  const AdminMailboxSubjectMaxLength = 15;
+  const AdminMailboxBodyMaxLength = 150;
+  const AdminMailboxPreviewMaxLength = 120;
   const MailboxExpiryDays = {
     chat: 7,
     orders: 7,
@@ -198,6 +201,21 @@
 
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
+    {
+      version: "v0.20.5",
+      releasedAt: "2026-06-09",
+      nameI18n: localizedPair("Admin Mail Delivery Fix", "管理员邮件投递修复"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Repairs admin in-app mail delivery so sent counts match messages that target users can actually read.",
+        "修复管理员站内邮件投递，使发送数量与目标用户实际可读邮件一致。"
+      ),
+      itemsI18n: [
+        localizedPair("Admin mail now validates recipients and counts only messages written into readable user mailboxes.", "管理员邮件现在会校验收件人，并只统计已写入用户可读邮箱的邮件。"),
+        localizedPair("Added matching title, body, and expiry limits on the form and backend API to prevent oversized system mail.", "在表单和后端接口加入一致的标题、正文和过期时间限制，避免系统邮件过长。"),
+        localizedPair("Admin mail requests include the current snapshot when needed so temporary backend state can resolve recipients before durable writes.", "管理员邮件请求会在需要时携带当前快照，让临时后端状态在持久写入前解析收件人。")
+      ]
+    },
     {
       version: "v0.20.4",
       releasedAt: "2026-06-08",
@@ -1887,6 +1905,54 @@
     return MailboxExpiryDays[mailboxCategory(categoryId).id] || 30;
   }
 
+  function visibleTextLength(value) {
+    return Array.from(String(value || "").trim()).length;
+  }
+
+  function clipVisibleText(value, maxLength) {
+    return Array.from(String(value || "").trim()).slice(0, maxLength).join("");
+  }
+
+  function validateAdminMailboxPayload(payload = {}) {
+    const target = payload.target === "user" ? "user" : "all";
+    const username = String(payload.username || "").trim();
+    const subject = String(payload.subject || "").trim();
+    const body = String(payload.body || "").trim();
+    const rawExpiresDays = payload.expiresDays === undefined || payload.expiresDays === null || payload.expiresDays === ""
+      ? 30
+      : payload.expiresDays;
+    const expiresDays = Number(rawExpiresDays);
+    if (target === "user" && !username) {
+      return { ok: false, message: "请填写用户名。" };
+    }
+    if (!subject || !body) {
+      return { ok: false, message: "请填写邮件标题和正文。" };
+    }
+    if (visibleTextLength(subject) > AdminMailboxSubjectMaxLength) {
+      return { ok: false, message: `邮件标题最多 ${AdminMailboxSubjectMaxLength} 个字。` };
+    }
+    if (visibleTextLength(body) > AdminMailboxBodyMaxLength) {
+      return { ok: false, message: `邮件正文最多 ${AdminMailboxBodyMaxLength} 个字。` };
+    }
+    if (!Number.isFinite(expiresDays) || expiresDays < 1 || expiresDays > 365) {
+      return { ok: false, message: "过期天数需在 1 到 365 天之间。" };
+    }
+    return { ok: true, target, username, subject, body, expiresDays: Math.ceil(expiresDays) };
+  }
+
+  function canReceiveAdminMailbox(profile) {
+    return Boolean(profile && normalize(profile.username) && !profile.deleted && profile.role !== "admin");
+  }
+
+  function mailboxEntryReadable(boxes, entry) {
+    if (!entry) {
+      return false;
+    }
+    const key = normalize(entry.recipientUsername);
+    const list = key && Array.isArray(boxes?.[key]) ? boxes[key] : [];
+    return list.some((message) => message && typeof message === "object" && message.id === entry.id && !message.deletedAt);
+  }
+
   function mailboxExpiryDate(message) {
     const stored = timestampMs(message?.expiresAt);
     if (stored) {
@@ -3264,7 +3330,7 @@ function mailboxHasClaim(message) {
       return this.applyMutationResult(await this.request("claimMailboxReward", { messageId, snapshot: this.snapshot() }));
     },
     async sendAdminMailbox(payload) {
-      return this.applyMutationResult(await this.request("sendAdminMailbox", payload));
+      return this.applyMutationResult(await this.request("sendAdminMailbox", { ...(payload || {}), snapshot: this.snapshot() }));
     },
     async createOrder(payload) {
       return this.applyMutationResult(await this.request("createOrder", { order: payload, snapshot: this.snapshot() }));
@@ -3911,32 +3977,38 @@ function mailboxHasClaim(message) {
       if (State.currentUser?.role !== "admin") {
         return { ok: false, message: "无权发送系统邮件。" };
       }
-      const cleanSubject = String(subject || "").trim();
-      const cleanBody = String(body || "").trim();
-      if (!cleanSubject || !cleanBody) {
-        return { ok: false, message: "请填写邮件标题和正文。" };
+      this.ensureProfiles();
+      const validated = validateAdminMailboxPayload({ target, username, subject, body, expiresDays });
+      if (!validated.ok) {
+        return { ok: false, message: validated.message };
       }
-      const days = mailboxExpiryDays("system", expiresDays);
-      const recipients = target === "user"
-        ? this.profiles().filter((profile) => normalize(profile.username) === normalize(username) && !profile.deleted)
-        : this.profiles().filter((profile) => !profile.deleted);
+      const recipients = validated.target === "user"
+        ? this.profiles().filter((profile) => normalize(profile.username) === normalize(validated.username) && canReceiveAdminMailbox(profile))
+        : this.profiles().filter(canReceiveAdminMailbox);
       if (!recipients.length) {
         return { ok: false, message: "未找到收件人。" };
       }
+      const written = [];
       recipients.forEach((profile) => {
-        this.addMailboxMessage(profile.username, {
+        const entry = this.addMailboxMessage(profile.username, {
           category: "system",
-          subject: cleanSubject,
-          preview: cleanBody.slice(0, 120),
-          body: cleanBody,
+          subject: validated.subject,
+          preview: clipVisibleText(validated.body, AdminMailboxPreviewMaxLength),
+          body: validated.body,
           sender: "IMPULSE J Admin",
           source: "admin",
           sourceId: createId("admin-mail"),
-          expiresDays: days
+          expiresDays: validated.expiresDays
         });
+        if (mailboxEntryReadable(this.mailboxes(), entry)) {
+          written.push(entry);
+        }
       });
-      this.log("发送系统邮件", `${State.currentUser.username} -> ${target === "user" ? username : "全体用户"}：${cleanSubject}`);
-      return { ok: true, count: recipients.length };
+      if (!written.length) {
+        return { ok: false, message: "邮件写入失败，请稍后重试。" };
+      }
+      this.log("发送系统邮件", `${State.currentUser.username} -> ${validated.target === "user" ? validated.username : "全体用户"}：${validated.subject}`);
+      return { ok: true, count: written.length, recipientCount: recipients.length };
     },
     addChatMailboxNotifications(order, message) {
       chatMailboxRecipients(order, message).forEach((username) => {
@@ -5721,7 +5793,14 @@ function mailboxHasClaim(message) {
       fields.forEach((field) => {
         let input;
         if (field.type === "textarea") {
-          input = h("textarea", { name: field.name, value: field.value ?? "", placeholder: field.placeholder || "", required: field.required });
+          input = h("textarea", {
+            name: field.name,
+            value: field.value ?? "",
+            placeholder: field.placeholder || "",
+            maxlength: field.maxlength ?? field.maxLength,
+            minlength: field.minlength ?? field.minLength,
+            required: field.required
+          });
         } else if (field.type === "select") {
           input = h("select", { name: field.name, required: field.required },
             (field.options || []).map((option) => h("option", { value: option.value, selected: option.value === field.value }, option.label))
@@ -5809,6 +5888,8 @@ function mailboxHasClaim(message) {
             min: field.min,
             max: field.max,
             step: field.step,
+            maxlength: field.maxlength ?? field.maxLength,
+            minlength: field.minlength ?? field.minLength,
             placeholder: field.placeholder || "",
             required: field.required
           });
@@ -8335,26 +8416,34 @@ function mailboxHasClaim(message) {
               { value: "user", label: "指定用户" }
             ] },
             { name: "username", label: "用户名", placeholder: "仅指定用户时填写" },
-            { name: "subject", label: "邮件标题", required: true },
-            { name: "body", label: "邮件正文", type: "textarea", required: true },
+            { name: "subject", label: "邮件标题", placeholder: `最多 ${AdminMailboxSubjectMaxLength} 个字`, maxlength: AdminMailboxSubjectMaxLength, required: true },
+            { name: "body", label: "邮件正文", type: "textarea", placeholder: `最多 ${AdminMailboxBodyMaxLength} 个字`, maxlength: AdminMailboxBodyMaxLength, required: true },
             { name: "expiresDays", label: "过期天数", type: "number", value: 30, min: 1, max: 365, required: true }
           ],
           submitLabel: "发送邮件",
           wide: true,
           onSubmit: async (values) => {
-            const payload = {
+            const draft = {
               target: values.target === "user" ? "user" : "all",
               username: values.username,
               subject: values.subject,
               body: values.body,
-              expiresDays: Math.min(365, Math.max(1, Number(values.expiresDays || 30)))
+              expiresDays: values.expiresDays
             };
-            if (payload.target === "user" && !payload.username.trim()) {
-              return { error: "请填写用户名。" };
+            const validation = validateAdminMailboxPayload(draft);
+            if (!validation.ok) {
+              return { error: validation.message };
             }
-            let result = await Backend.sendAdminMailbox(payload);
-            if (result.offline) {
-              result = Data.sendAdminMailbox(payload);
+            const payload = {
+              target: validation.target,
+              username: validation.username,
+              subject: validation.subject,
+              body: validation.body,
+              expiresDays: validation.expiresDays
+            };
+            const result = await Backend.sendAdminMailbox(payload);
+            if (result.offline || result.backend?.unavailable || Number(result.status || 0) >= 500) {
+              return { error: "后端存储暂不可用，邮件未发送。请稍后重试。" };
             }
             if (!result.ok) {
               return { error: result.message || "邮件发送失败。" };
