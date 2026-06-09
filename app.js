@@ -18,7 +18,8 @@
     backendToken: "backendToken",
     language: "siteLanguage",
     staffLog: "staffLog",
-    dataVersion: "impulseDataVersion"
+    dataVersion: "impulseDataVersion",
+    mailboxRuntimeRefreshVersion: "mailboxRuntimeRefreshVersion"
   };
 
   const BuiltInUsers = [
@@ -180,6 +181,7 @@
   const AdminMailboxSubjectMaxLength = 15;
   const AdminMailboxBodyMaxLength = 150;
   const AdminMailboxPreviewMaxLength = 120;
+  const MailboxRuntimeRefreshVersion = "v0.20.7";
   const MailboxExpiryDays = {
     chat: 7,
     orders: 7,
@@ -201,6 +203,21 @@
 
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
+    {
+      version: "v0.20.7",
+      releasedAt: "2026-06-09",
+      nameI18n: localizedPair("Mailbox Runtime Refresh Fix", "邮件运行时刷新修复"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Adds an authenticated mailbox-only refresh path so recipients see admin messages without relying on local cache or full snapshots.",
+        "新增已登录用户专用邮箱刷新路径，让收件人不依赖本地缓存或全量快照也能看到管理员邮件。"
+      ),
+      itemsI18n: [
+        localizedPair("Mail Center now requests only the current user's mailbox from the backend before rendering.", "邮件中心现在会在渲染前只向后端请求当前用户的邮箱数据。"),
+        localizedPair("System Mail counts, unread counts, and newest admin messages are rendered from the dedicated mailbox response.", "系统邮件计数、未读计数和最新管理员邮件都会基于专用邮箱响应渲染。"),
+        localizedPair("Unread messages stay unread until the user chooses a message or bulk action.", "未读邮件会保持未读，直到用户主动选择邮件或执行批量操作。")
+      ]
+    },
     {
       version: "v0.20.6",
       releasedAt: "2026-06-09",
@@ -3310,14 +3327,31 @@ function mailboxHasClaim(message) {
       }
       return false;
     },
-    async refreshMailbox() {
-      const result = await this.request("bootstrap", {});
-      if (result.ok && result.snapshot) {
-        this.bootstrapped = true;
-        this.hydrate(result.snapshot, { preserveLocal: false });
-        return { ok: true, snapshot: result.snapshot, backend: result.backend };
+    async getMailbox(username = "") {
+      const result = await this.request("getMailbox", {});
+      if (result.ok) {
+        const requestedKey = normalize(username || State.currentUser?.username);
+        const key = normalize(result.key || result.username || username || State.currentUser?.username);
+        if (!key) {
+          return { ok: false, message: "邮件账户无效。" };
+        }
+        if (requestedKey && key !== requestedKey) {
+          return { ok: false, status: 401, reason: "identity_mismatch", message: "登录状态已过期，请重新登录。" };
+        }
+        const remoteBoxes = result.mailboxMessages && typeof result.mailboxMessages === "object" && !Array.isArray(result.mailboxMessages)
+          ? result.mailboxMessages
+          : {};
+        const messages = Array.isArray(remoteBoxes[key])
+          ? remoteBoxes[key]
+          : (Array.isArray(result.messages) ? result.messages : []);
+        const boxes = Data.mailboxes();
+        Data.saveMailboxes({ ...boxes, [key]: messages });
+        return { ...result, ok: true, key, messages };
       }
       return { ...result, ok: false };
+    },
+    async refreshMailbox(username = "") {
+      return this.getMailbox(username);
     },
     queueSync(reason = "frontend-change") {
       if (!this.bootstrapped || this.hydrating || !this.online) {
@@ -3684,6 +3718,23 @@ function mailboxHasClaim(message) {
     },
     saveMailboxes(mailboxes) {
       Storage.set(Keys.mailboxMessages, mailboxes && typeof mailboxes === "object" && !Array.isArray(mailboxes) ? mailboxes : {});
+    },
+    resetMailboxRuntimeCache(username) {
+      const key = normalize(username);
+      if (!key) {
+        return false;
+      }
+      const versionKey = `${Keys.mailboxRuntimeRefreshVersion}:${key}`;
+      if (localStorage.getItem(versionKey) === MailboxRuntimeRefreshVersion) {
+        return false;
+      }
+      const boxes = this.mailboxes();
+      const next = { ...boxes };
+      const hadMailbox = Object.prototype.hasOwnProperty.call(next, key);
+      delete next[key];
+      this.saveMailboxes(next);
+      localStorage.setItem(versionKey, MailboxRuntimeRefreshVersion);
+      return hadMailbox;
     },
     queueMailboxSync(reason = "mailbox-update") {
       if (typeof Backend !== "undefined" && Backend?.queueSync) {
@@ -8392,6 +8443,7 @@ function mailboxHasClaim(message) {
         return;
       }
       const username = State.currentUser.username;
+      Data.resetMailboxRuntimeCache(username);
       let activeCategory = "";
       let selectedId = "";
       let modalMounted = false;
@@ -8444,16 +8496,24 @@ function mailboxHasClaim(message) {
         Translation.localizeStaticUi(card);
         Translation.refresh();
       };
+      const mailboxAuthExpired = (result = {}) => (
+        result.reason === "identity_mismatch"
+        || Number(result.status || result.httpStatus || 0) === 401
+        || /请先登录|登录状态已过期/.test(String(result.message || ""))
+      );
       const renderMailboxSyncFailure = (result = {}) => {
         console.error(result);
+        const authExpired = mailboxAuthExpired(result);
         clear(card);
         append(card, [
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
           h("div", { className: "mailbox-empty mailbox-load-state" },
             icon("fa-solid fa-triangle-exclamation"),
-            h("strong", { text: "邮件同步失败" }),
-            h("span", { text: "邮件数据暂时无法同步，请稍后重试。" }),
-            h("button", { className: "button button-primary", type: "button", onClick: () => refreshMailboxAndRender().catch(renderMailboxError) }, icon("fa-solid fa-rotate-right"), h("span", { text: "重试" }))
+            h("strong", { text: authExpired ? "登录状态已过期" : "邮件同步失败" }),
+            h("span", { text: authExpired ? "请重新登录后同步邮件。" : "邮件数据暂时无法同步，请稍后重试。" }),
+            authExpired
+              ? h("button", { className: "button button-primary", type: "button", onClick: () => Auth.open("login") }, icon("fa-regular fa-user"), h("span", { text: "重新登录" }))
+              : h("button", { className: "button button-primary", type: "button", onClick: () => refreshMailboxAndRender().catch(renderMailboxError) }, icon("fa-solid fa-rotate-right"), h("span", { text: "重试" }))
           )
         ]);
         Translation.localizeStaticUi(card);
@@ -8535,7 +8595,7 @@ function mailboxHasClaim(message) {
       };
       const refreshMailboxAndRender = async () => {
         renderMailboxLoading();
-        const result = await Backend.refreshMailbox();
+        const result = await Backend.getMailbox(username);
         if (!result.ok) {
           renderMailboxSyncFailure(result);
           return;
@@ -8554,13 +8614,6 @@ function mailboxHasClaim(message) {
         const filteredMessages = filterMessages(activeCategory);
         if (!selectedId || !filteredMessages.some((message) => message.id === selectedId)) {
           selectedId = filteredMessages[0]?.id || "";
-        }
-        if (selectedId) {
-          const selectedBeforeRead = allMessages.find((message) => message.id === selectedId);
-          if (selectedBeforeRead && !selectedBeforeRead.readAt) {
-            Data.markMailboxRead(username, selectedId);
-            queueTopbarRefresh();
-          }
         }
         const refreshedMessages = Data.mailbox(username);
         const visibleMessages = filterMessages(activeCategory, refreshedMessages);
@@ -8593,6 +8646,7 @@ function mailboxHasClaim(message) {
           h("div", { className: "mailbox-heading" },
             h("div", {},
               h("span", { className: "release-badge" }, icon("fa-regular fa-envelope"), "邮件中心"),
+              h("button", { className: "button button-ghost mailbox-sync-button", type: "button", onClick: () => refreshMailboxAndRender().catch(renderMailboxError) }, icon("fa-solid fa-rotate-right"), h("span", { text: "同步邮件" })),
               State.currentUser?.role === "admin" ? h("button", { className: "button button-primary mailbox-admin-send", type: "button", onClick: openAdminSendMail }, icon("fa-solid fa-paper-plane"), h("span", { text: "发送邮件" })) : null
             ),
             h("button", {
@@ -8651,6 +8705,10 @@ function mailboxHasClaim(message) {
                         className: `mail-row ${message.id === selectedId ? "active" : ""} ${message.readAt ? "read" : "unread"}`,
                         type: "button",
                         onClick: () => {
+                          if (!message.readAt) {
+                            Data.markMailboxRead(username, message.id);
+                            queueTopbarRefresh();
+                          }
                           selectedId = message.id;
                           renderMailboxSafely();
                         }

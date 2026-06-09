@@ -1449,6 +1449,84 @@ function mailboxExpiresAt(category, createdAt, customDays = null) {
   return new Date(created + mailboxExpiryDays(category, customDays) * DayMs).toISOString();
 }
 
+function mailboxIsAdminSystemMessage(message) {
+  return mailboxCategoryId(message?.category) === "system" && normalize(message?.source) === "admin";
+}
+
+function normalizeMailboxMessageForApi(message, index = 0) {
+  const category = mailboxCategoryId(message?.category);
+  const createdAt = message?.createdAt || new Date(0).toISOString();
+  const body = String(message?.body || message?.preview || "");
+  const source = String(message?.source || "system").trim() || "system";
+  const normalized = {
+    ...message,
+    id: String(message?.id || `mail-${timestampMs(createdAt) || 0}-${index}`),
+    category,
+    subject: String(message?.subject || "System Notice").trim(),
+    preview: String(message?.preview || body || "System Notice").trim(),
+    body,
+    sender: String(message?.sender || "IMPULSE J System").trim(),
+    source,
+    sourceId: String(message?.sourceId || "").trim(),
+    orderId: String(message?.orderId || "").trim(),
+    favoritedAt: message?.favoritedAt || "",
+    expiresDays: message?.expiresDays || "",
+    expiresAt: message?.expiresAt || mailboxExpiresAt(category, createdAt, message?.expiresDays),
+    claim: message?.claim && typeof message.claim === "object" && !Array.isArray(message.claim) ? { ...message.claim } : null,
+    readAt: message?.readAt || "",
+    createdAt
+  };
+  return mailboxIsAdminSystemMessage(normalized) ? { ...normalized, sender: "管理员" } : normalized;
+}
+
+function mailboxMessageVisible(message, nowMs = Date.now()) {
+  return Boolean(message && typeof message === "object" && !message.deletedAt && (message.favoritedAt || timestampMs(message.expiresAt) > nowMs));
+}
+
+function mailboxSortCompare(a, b) {
+  const timeDelta = timestampMs(b.createdAt) - timestampMs(a.createdAt);
+  if (timeDelta) {
+    return timeDelta;
+  }
+  return Number(mailboxIsAdminSystemMessage(b)) - Number(mailboxIsAdminSystemMessage(a));
+}
+
+function mailboxCounts(messages = []) {
+  const categoryCounts = {};
+  const unreadCategoryCounts = {};
+  Array.from(MailboxCategories).forEach((category) => {
+    const categoryMessages = messages.filter((message) => mailboxCategoryId(message.category) === category);
+    categoryCounts[category] = categoryMessages.length;
+    unreadCategoryCounts[category] = categoryMessages.filter((message) => !message.readAt).length;
+  });
+  return {
+    count: messages.length,
+    unreadCount: messages.filter((message) => !message.readAt).length,
+    categoryCounts,
+    unreadCategoryCounts
+  };
+}
+
+function mailboxPayloadForUser(db, username) {
+  const user = findUser(db, username);
+  const resolvedUsername = user?.username || username;
+  const key = normalize(resolvedUsername);
+  const raw = key && Array.isArray(db.mailboxMessages[key]) ? db.mailboxMessages[key] : [];
+  const nowMs = Date.now();
+  const messages = raw
+    .filter((message) => message && typeof message === "object" && !Array.isArray(message))
+    .map((message, index) => normalizeMailboxMessageForApi(message, index))
+    .filter((message) => mailboxMessageVisible(message, nowMs))
+    .sort(mailboxSortCompare);
+  return {
+    username: resolvedUsername,
+    key,
+    messages,
+    mailboxMessages: { [key]: messages },
+    ...mailboxCounts(messages)
+  };
+}
+
 function pruneMailboxMessages(db, username) {
   const key = normalize(username);
   if (!key) {
@@ -2468,6 +2546,17 @@ async function handleAction(action, payload = {}, request = {}) {
       }
     }
     return { ok: true, snapshot: sanitizeSnapshot(db), backend: backendStorageInfo(db) };
+  }
+
+  if (action === "getMailbox") {
+    if (!request.user) {
+      return { ok: false, status: 401, message: "请先登录" };
+    }
+    return {
+      ok: true,
+      ...mailboxPayloadForUser(db, request.user.username),
+      backend: backendStorageInfo(db)
+    };
   }
 
   if (action === "saveSnapshot") {

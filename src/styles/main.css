@@ -2886,8 +2886,13 @@ body.admin-mode .mailbox-nav {
   min-height: 12px;
 }
 
+.mailbox-sync-button,
 .mailbox-admin-send {
   margin-top: 12px;
+}
+
+.mailbox-sync-button {
+  margin-right: 8px;
 }
 
 .mailbox-list {
