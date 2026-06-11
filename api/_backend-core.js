@@ -19,6 +19,8 @@ const VerificationCooldownMs = 60 * 1000;
 const VerificationIpWindowMs = 10 * 60 * 1000;
 const VerificationIpLimit = 5;
 const EmailPrivacyResponse = "If this email is valid, a message has been sent.";
+const BrandName = "夕夕电竞";
+const SystemSenderName = `${BrandName}系统`;
 // AI: mail auth spec: hash-only codes, 5m TTL, 60s/email, 5/10m/IP, generic responses, no raw-code API responses.
 const DayMs = 24 * 60 * 60 * 1000;
 const ChatRetentionMs = 7 * DayMs;
@@ -29,15 +31,15 @@ const BuiltInUsers = [
   { username: "EMPL001", email: "empl001@impulse.local", password: "12345678", role: "staff" }
 ];
 const EmailNoticeSubjects = {
-  rechargeSuccess: "Recharge successful",
-  orderSuccess: "Order placed successfully",
-  orderAccepted: "Your order has been accepted",
-  serviceReminder: "Service reminder",
-  progressReminder: "Progress update",
-  completionRequest: "Completion request",
-  rushReply: "Rush request update",
-  completionSuccess: "Order completed",
-  returnSuccess: "Order return completed"
+  rechargeSuccess: "充值成功",
+  orderSuccess: "下单成功",
+  orderAccepted: "接单成功",
+  serviceReminder: "服务提醒",
+  progressReminder: "进度更新",
+  completionRequest: "结单请求",
+  rushReply: "加急请求更新",
+  completionSuccess: "订单已完成",
+  returnSuccess: "退单已完成"
 };
 const MailboxNoticeCategories = {
   rechargeSuccess: "funds",
@@ -64,9 +66,28 @@ const AdminMailboxBodyMaxLength = 150;
 const AdminMailboxPreviewMaxLength = 120;
 const AdminMailboxSendingDisabled = true;
 const AdminMailboxSendingDisabledMessage = "管理员邮件发送暂时维护中。";
+const PointsSystemPaused = true;
+const PointsSystemPausedMessage = "充值和积分使用功能暂未开放。";
+const VectorSupportChatLifecycle = "paused";
+const ChatPausedActions = new Set(["addChatMessage", "listChatMessages", "markChatRead", "setChatTyping"]);
+const VectorSupportChatPausedMessage = "暂未开放";
+const SquadRoutingEmailCooldownMs = 180 * 1000;
+const SquadRoutingMaxResends = 3;
+const SquadGroupNumberPattern = /^\d+$/;
+const SquadStatuses = new Set(["online", "offline", "working"]);
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function squadNow() {
+  const testNow = !isProductionRuntime() ? process.env.IMPULSE_SQUAD_TEST_NOW : "";
+  const date = testNow ? new Date(testNow) : new Date();
+  return Number.isFinite(date.getTime()) ? date : new Date();
+}
+
+function isProductionRuntime() {
+  return process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
 }
 
 function normalize(value) {
@@ -79,6 +100,19 @@ function normalizeEmail(value) {
 
 function isEmail(value) {
   return EmailPattern.test(normalizeEmail(value));
+}
+
+function vectorSupportChatPaused() {
+  return VectorSupportChatLifecycle === "paused";
+}
+
+function vectorSupportChatPausedResponse() {
+  return {
+    ok: false,
+    status: "paused",
+    lifecycleStatus: "paused",
+    message: VectorSupportChatPausedMessage
+  };
 }
 
 function createId(prefix) {
@@ -181,6 +215,15 @@ function emptyDb() {
     games: {},
     products: {},
     orders: [],
+    squads: [],
+    squadRouting: {
+      orderingPaused: false,
+      pausedReason: "",
+      pausedAt: "",
+      lastDailyStopDate: "",
+      restoredAt: "",
+      restoredBy: ""
+    },
     orderChats: {},
     chatTyping: {},
     mailboxMessages: {},
@@ -801,6 +844,17 @@ function storageUnavailableResponse(error) {
   };
 }
 
+function pointsSystemPausedResponse(message = PointsSystemPausedMessage) {
+  return {
+    ok: false,
+    status: 423,
+    reason: "feature-paused",
+    lifecycle: "paused",
+    feature: "points",
+    message
+  };
+}
+
 function backendStorageInfo(db = null) {
   const activeStorage = dbStorage(db) || storageType();
   const primaryError = dbPrimaryStorageError(db);
@@ -857,6 +911,10 @@ function requiresPrimaryDurability(storage) {
 }
 
 async function writeDurableDb(db) {
+  if (!isProductionRuntime() && process.env.IMPULSE_SQUAD_TEST_DURABLE_FAIL_ONCE === "1") {
+    process.env.IMPULSE_SQUAD_TEST_DURABLE_FAIL_ONCE = "";
+    return { ok: false, response: durableStorageUnavailableResponse(db, new Error("Forced squad routing durable failure.")) };
+  }
   const primaryStorage = storageType();
   const activeStorage = dbStorage(db) || primaryStorage;
   if (requiresPrimaryDurability(primaryStorage) && activeStorage !== primaryStorage) {
@@ -946,12 +1004,75 @@ function sanitizeSnapshot(db) {
     games: db.games,
     products: db.products,
     orders: db.orders,
+    squads: db.squads,
+    squadRouting: db.squadRouting,
     orderChats: db.orderChats,
     chatTyping: db.chatTyping,
     mailboxMessages: db.mailboxMessages,
     ledger: db.ledger,
     adminLogs: db.adminLogs,
     systemSettings: db.systemSettings
+  };
+}
+
+function normalizeStringList(value, limit = 100) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index)
+    .slice(0, limit);
+}
+
+function booleanValue(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  const normalized = normalize(value);
+  return ["1", "true", "yes", "on", "online", "active"].includes(normalized);
+}
+
+function normalizeSquadRoutingState(value = {}) {
+  const state = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    orderingPaused: Boolean(state.orderingPaused),
+    pausedReason: String(state.pausedReason || ""),
+    pausedAt: String(state.pausedAt || ""),
+    lastDailyStopDate: String(state.lastDailyStopDate || ""),
+    restoredAt: String(state.restoredAt || ""),
+    restoredBy: String(state.restoredBy || "")
+  };
+}
+
+function normalizeSquadRecord(raw = {}) {
+  const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const members = normalizeStringList(source.members, 3);
+  while (members.length < 3) {
+    members.push("");
+  }
+  const status = SquadStatuses.has(source.status) ? source.status : "offline";
+  const currentOrderId = String(source.currentOrderId || "");
+  return {
+    id: String(source.id || createId("squad")),
+    name: String(source.name || "").trim(),
+    members,
+    captain: String(source.captain || members[0] || "").trim(),
+    groupType: source.groupType === "wechat" ? "wechat" : "qq",
+    groupNumber: String(source.groupNumber || "").trim(),
+    businessProjects: normalizeStringList(source.businessProjects || source.supportedItemIds, 200),
+    supportedItemIds: normalizeStringList(source.supportedItemIds || source.businessProjects, 200),
+    activeTime: String(source.activeTime || "").trim(),
+    activationEnabled: booleanValue(source.activationEnabled),
+    status: currentOrderId ? "working" : status,
+    currentOrderId,
+    lastAssignedAt: String(source.lastAssignedAt || ""),
+    lastStatusChangedAt: String(source.lastStatusChangedAt || ""),
+    createdAt: String(source.createdAt || nowIso()),
+    updatedAt: String(source.updatedAt || source.createdAt || nowIso()),
+    createdBy: String(source.createdBy || ""),
+    updatedBy: String(source.updatedBy || "")
   };
 }
 
@@ -975,6 +1096,8 @@ function normalizeDb(input) {
   db.games = db.games && typeof db.games === "object" && !Array.isArray(db.games) ? db.games : {};
   db.products = db.products && typeof db.products === "object" && !Array.isArray(db.products) ? db.products : {};
   db.orders = Array.isArray(db.orders) ? db.orders : [];
+  db.squads = Array.isArray(db.squads) ? db.squads.map(normalizeSquadRecord) : [];
+  db.squadRouting = normalizeSquadRoutingState(db.squadRouting);
   db.orderChats = db.orderChats && typeof db.orderChats === "object" && !Array.isArray(db.orderChats) ? db.orderChats : {};
   db.chatTyping = db.chatTyping && typeof db.chatTyping === "object" && !Array.isArray(db.chatTyping) ? db.chatTyping : {};
   db.mailboxMessages = db.mailboxMessages && typeof db.mailboxMessages === "object" && !Array.isArray(db.mailboxMessages) ? db.mailboxMessages : {};
@@ -1173,6 +1296,46 @@ function mergeSystemSettings(existing = {}, incoming = {}) {
   };
 }
 
+const ProductSquadBindingFields = ["eligibleSquadIds", "availableSquadIds", "supportedSquadIds"];
+const OrderSquadRoutingFields = [
+  "assignedSquadId",
+  "assignedSquadNameSnapshot",
+  "groupTypeSnapshot",
+  "groupNumberSnapshot",
+  "assignedAt",
+  "squadRoutingStatus",
+  "squadEmailAttempts",
+  "squadResendCount",
+  "squadLastEmailAt",
+  "squadNextEmailAt",
+  "squadEmailStatus",
+  "squadEmailFailure"
+];
+
+function stripProductSquadBinding(product = {}) {
+  const next = { ...(product || {}) };
+  ProductSquadBindingFields.forEach((field) => {
+    delete next[field];
+  });
+  return next;
+}
+
+function stripProductSquadBindings(products = {}) {
+  const result = {};
+  Object.entries(products && typeof products === "object" && !Array.isArray(products) ? products : {}).forEach(([gameId, list]) => {
+    result[gameId] = (Array.isArray(list) ? list : []).map(stripProductSquadBinding);
+  });
+  return result;
+}
+
+function stripOrderSquadRouting(order = {}) {
+  const next = { ...(order || {}) };
+  OrderSquadRoutingFields.forEach((field) => {
+    delete next[field];
+  });
+  return next;
+}
+
 function importSnapshot(db, snapshot = {}) {
   const inputStorage = dbStorage(db);
   const inputPrimaryError = dbPrimaryStorageError(db);
@@ -1187,8 +1350,10 @@ function importSnapshot(db, snapshot = {}) {
     profiles: mergeArrayBy(db.profiles, snapshot.profiles, (profile) => profile?.id || normalize(profile?.username)),
     categories: mergeArrayBy(db.categories, snapshot.categories, (category) => category?.id),
     games: mergeRecordLists(db.games, snapshot.games, (game) => game?.id),
-    products: mergeRecordLists(db.products, snapshot.products, (product) => product?.id),
-    orders: mergeOrders(db.orders, snapshot.orders),
+    products: mergeRecordLists(db.products, stripProductSquadBindings(snapshot.products), (product) => product?.id),
+    orders: mergeOrders(db.orders, Array.isArray(snapshot.orders) ? snapshot.orders.map(stripOrderSquadRouting) : []),
+    squads: db.squads,
+    squadRouting: db.squadRouting,
     orderChats: mergeChatRecords(db.orderChats, snapshot.orderChats),
     chatTyping: snapshot.chatTyping && typeof snapshot.chatTyping === "object" && !Array.isArray(snapshot.chatTyping) ? snapshot.chatTyping : db.chatTyping,
     mailboxMessages: mergeChatRecords(db.mailboxMessages, snapshot.mailboxMessages),
@@ -1467,7 +1632,7 @@ function normalizeMailboxMessageForApi(message, index = 0) {
     subject: String(message?.subject || "System Notice").trim(),
     preview: String(message?.preview || body || "System Notice").trim(),
     body,
-    sender: String(message?.sender || "IMPULSE J System").trim(),
+    sender: String(message?.sender || SystemSenderName).trim(),
     source,
     sourceId: String(message?.sourceId || "").trim(),
     orderId: String(message?.orderId || "").trim(),
@@ -1619,7 +1784,7 @@ async function sendArchivePackage(db, kind, records, dateFn) {
   }
   const range = dateRange(records, dateFn);
   const kindLabel = kind === "logs" ? "System Logs" : "Order Records";
-  const subject = `IMPULSE J ${kindLabel} Backup ${range.start} to ${range.end}`;
+  const subject = `${BrandName} ${kindLabel} Backup ${range.start} to ${range.end}`;
   const filename = `impulse-${kind === "logs" ? "system-logs" : "order-records"}-${range.start}-to-${range.end}.json`;
   const payload = {
     exportedAt: nowIso(),
@@ -1629,7 +1794,7 @@ async function sendArchivePackage(db, kind, records, dateFn) {
     records
   };
   const body = [
-    `IMPULSE J ${kindLabel} backup package.`,
+    `${BrandName} ${kindLabel} backup package.`,
     `Period: ${range.start} to ${range.end}.`,
     `Record count: ${records.length}.`,
     "The JSON archive is attached to this email. Do not share it publicly."
@@ -1815,7 +1980,7 @@ const ChatQuickMessageCatalog = Object.freeze({
   "quick.need_help": { code: "SUPPORT_NEED_HELP", type: "quick_message", en: "I need support." },
   "quick.contact_support": { code: "SUPPORT_CONTACT_ADMIN", type: "quick_message", en: "Please contact admin support." },
   "system.support.notified": { code: "SUPPORT_SYSTEM_NOTIFIED", type: "system", systemOnly: true, en: "Support has been notified." },
-  "system.vector.assigned": { code: "SYS_VECTOR_ASSIGNED", type: "system", systemOnly: true, en: "A Vector has accepted this order. Chat is now available." },
+  "system.vector.assigned": { code: "SYS_VECTOR_ASSIGNED", type: "system", systemOnly: true, en: "A Vector has accepted this order." },
   "system.order.started": { code: "SYS_ORDER_STARTED", type: "system", systemOnly: true, en: "The order has started." },
   "system.order.paused": { code: "SYS_ORDER_PAUSED", type: "system", systemOnly: true, en: "The order has been paused." },
   "system.order.resumed": { code: "SYS_ORDER_RESUMED", type: "system", systemOnly: true, en: "The order has resumed." },
@@ -2193,6 +2358,9 @@ function addChatMessage(db, orderId, message, actor = "SYSTEM") {
 }
 
 function createOrderOnBackend(db, payload, actor) {
+  if (PointsSystemPaused) {
+    return pointsSystemPausedResponse("订单和积分使用功能暂未开放。");
+  }
   const profile = profileByUsername(db, actor.username);
   if (!profile || profile.deleted || isBanned(profile)) {
     return { ok: false, reason: "profile-unavailable", message: "账户不可用" };
@@ -2255,7 +2423,7 @@ function mailboxNoticeBody(profile, noticeKey, context = {}) {
     context.orderId ? `Order ID: ${context.orderId}.` : "",
     context.itemName ? `Item: ${context.itemName}.` : "",
     context.amount ? `Amount: ${context.amount}.` : "",
-    "This notice is also stored in your IMPULSE J in-app mailbox and cannot be unsent."
+    `此通知也会保存在你的${BrandName}系统记录中，发送后无法撤回。`
   ].filter(Boolean).join(" ");
 }
 
@@ -2276,7 +2444,7 @@ function addMailboxMessage(db, username, payload = {}) {
     subject: String(payload.subject || "System Notice").trim(),
     preview: String(payload.preview || body.slice(0, 120) || "System Notice").trim(),
     body,
-    sender: String(payload.sender || "IMPULSE J System").trim(),
+    sender: String(payload.sender || SystemSenderName).trim(),
     source: String(payload.source || "system").trim(),
     sourceId: String(payload.sourceId || "").trim(),
     orderId: String(payload.orderId || "").trim(),
@@ -2307,7 +2475,7 @@ function addNoticeMailboxMessage(db, username, noticeKey, context = {}) {
     subject,
     preview: [context.itemName, context.amount, context.orderId].filter(Boolean).join(" / ") || subject,
     body: mailboxNoticeBody(profile, noticeKey, context),
-    sender: "IMPULSE J System",
+    sender: SystemSenderName,
     source: "notice",
     sourceId: noticeKey,
     orderId: context.orderId || ""
@@ -2407,6 +2575,19 @@ async function notifyOrderCompleted(db, order) {
   });
 }
 
+function orderStatusWouldWritePoints(order, status) {
+  if (!order || !status || Number(order.price || 0) <= 0) {
+    return false;
+  }
+  if (status === "completed") {
+    return order.status === "processing" && Boolean(order.handledBy) && !order.settlement;
+  }
+  if (status === "cancelled") {
+    return ["pending", "processing"].includes(order.status) && !order.refundedAt;
+  }
+  return false;
+}
+
 function updateOrderStatusOnBackend(db, orderId, status, actor) {
   const order = db.orders.find((item) => item.id === orderId);
   if (!order) {
@@ -2415,6 +2596,9 @@ function updateOrderStatusOnBackend(db, orderId, status, actor) {
   const role = actor.role || "customer";
   if (!["staff", "admin"].includes(role) && !(status === "cancelled" && order.customerUsername === actor.username && order.status === "pending")) {
     return { ok: false, message: "无权操作订单。" };
+  }
+  if (PointsSystemPaused && orderStatusWouldWritePoints(order, status)) {
+    return pointsSystemPausedResponse("订单资金结算功能暂未开放。");
   }
   const updatedAt = nowIso();
   const actorProfile = profileByUsername(db, actor.username);
@@ -2428,12 +2612,15 @@ function updateOrderStatusOnBackend(db, orderId, status, actor) {
     order.status = "processing";
     order.handledBy = order.handledBy || actor.username;
     order.acceptedAt = order.acceptedAt || updatedAt;
-    addChatMessage(db, order.id, {
-      sender: "SYSTEM",
-      role: "system",
-      type: "system",
-      text: `${order.handledBy} accepted the order. Chat is now available.`
-    });
+    // Chat is paused across the user boundary: accepting the order may proceed, but must not create new chat records or claim chat is available.
+    if (!vectorSupportChatPaused()) {
+      addChatMessage(db, order.id, {
+        sender: "SYSTEM",
+        role: "system",
+        type: "system",
+        text: `${order.handledBy} accepted the order.`
+      });
+    }
     addNoticeMailboxMessage(db, order.customerUsername, "orderAccepted", {
       orderId: order.id,
       itemName: order.productTitle,
@@ -2489,6 +2676,532 @@ function updateOrderStatusOnBackend(db, orderId, status, actor) {
   return { ok: true, order };
 }
 
+function requireAdmin(user) {
+  return user && user.role === "admin" ? { ok: true } : { ok: false, status: 403, message: "需要管理员权限。" };
+}
+
+function shanghaiAfterDailyStop(now = squadNow()) {
+  const parts = utc8Parts(now);
+  return parts.hour >= 2;
+}
+
+function ensureSquadRoutingState(db) {
+  db.squadRouting = normalizeSquadRoutingState(db.squadRouting);
+  return db.squadRouting;
+}
+
+function applySquadDailyStop(db, actor = "SYSTEM", now = squadNow()) {
+  const routing = ensureSquadRoutingState(db);
+  const dayKey = utc8DayKey(now);
+  if (!shanghaiAfterDailyStop(now) || routing.lastDailyStopDate === dayKey) {
+    return { changed: false, routing };
+  }
+  const stoppedAt = now.toISOString();
+  let offlineCount = 0;
+  db.squads = db.squads.map((squad) => {
+    if (squad.status !== "online") {
+      return squad;
+    }
+    offlineCount += 1;
+    return {
+      ...squad,
+      status: "offline",
+      lastStatusChangedAt: stoppedAt,
+      updatedAt: stoppedAt,
+      updatedBy: actor
+    };
+  });
+  db.squadRouting = {
+    ...routing,
+    orderingPaused: true,
+    pausedReason: "daily-stop-02:00",
+    pausedAt: stoppedAt,
+    lastDailyStopDate: dayKey,
+    restoredAt: "",
+    restoredBy: ""
+  };
+  log(db, "小队每日停单", `${dayKey} 02:00 后停单，${offlineCount} 个 online 小队已转 offline`, actor);
+  return { changed: true, routing: db.squadRouting, offlineCount };
+}
+
+function validateSquadInput(payload = {}, existing = null) {
+  const name = String(payload.name ?? existing?.name ?? "").trim();
+  const members = [
+    payload.member1,
+    payload.member2,
+    payload.member3
+  ].some((item) => item !== undefined)
+    ? [payload.member1, payload.member2, payload.member3].map((item) => String(item || "").trim())
+    : normalizeStringList(payload.members ?? existing?.members, 3);
+  while (members.length < 3) {
+    members.push("");
+  }
+  const groupType = payload.groupType === "wechat" ? "wechat" : "qq";
+  const groupNumber = String(payload.groupNumber ?? existing?.groupNumber ?? "").trim();
+  if (!name) {
+    return { ok: false, message: "请填写小队名称。" };
+  }
+  if (members.length !== 3 || members.some((member) => !member)) {
+    return { ok: false, message: "请填写三名小队成员，第一名为队长。" };
+  }
+  if (!SquadGroupNumberPattern.test(groupNumber)) {
+    return { ok: false, message: "群号必须为数字。" };
+  }
+  return {
+    ok: true,
+    squad: {
+      id: String(payload.id || existing?.id || createId("squad")),
+      name,
+      members,
+      captain: members[0],
+      groupType,
+      groupNumber,
+      businessProjects: normalizeStringList(payload.businessProjects ?? existing?.businessProjects, 200),
+      supportedItemIds: normalizeStringList(payload.supportedItemIds ?? existing?.supportedItemIds, 200),
+      activeTime: String(payload.activeTime ?? existing?.activeTime ?? "").trim(),
+      activationEnabled: booleanValue(payload.activationEnabled),
+      currentOrderId: String(existing?.currentOrderId || ""),
+      lastAssignedAt: String(existing?.lastAssignedAt || ""),
+      createdAt: String(existing?.createdAt || nowIso()),
+      createdBy: String(existing?.createdBy || "")
+    }
+  };
+}
+
+function squadStatusFor(squad, routing) {
+  if (squad.currentOrderId) {
+    return "working";
+  }
+  return squad.activationEnabled && !routing.orderingPaused ? "online" : "offline";
+}
+
+function saveSquadOnBackend(db, payload = {}, actor) {
+  const existing = payload.id ? db.squads.find((squad) => squad.id === payload.id) : null;
+  const validated = validateSquadInput(payload, existing);
+  if (!validated.ok) {
+    return validated;
+  }
+  const now = nowIso();
+  const routing = ensureSquadRoutingState(db);
+  const next = normalizeSquadRecord({
+    ...existing,
+    ...validated.squad,
+    status: squadStatusFor(validated.squad, routing),
+    lastStatusChangedAt: existing?.status === squadStatusFor(validated.squad, routing)
+      ? existing?.lastStatusChangedAt
+      : now,
+    updatedAt: now,
+    updatedBy: actor.username,
+    createdBy: validated.squad.createdBy || actor.username
+  });
+  db.squads = existing
+    ? db.squads.map((squad) => (squad.id === next.id ? next : squad))
+    : [next, ...db.squads];
+  log(db, existing ? "更新小队" : "新增小队", `${next.name} / ${next.groupType} ${next.groupNumber} / ${next.status}`, actor.username);
+  return { ok: true, squad: next };
+}
+
+function toggleSquadOnBackend(db, squadId, activationEnabled, actor) {
+  const squad = db.squads.find((item) => item.id === squadId);
+  if (!squad) {
+    return { ok: false, message: "小队不存在。" };
+  }
+  const now = nowIso();
+  const routing = ensureSquadRoutingState(db);
+  const enabled = booleanValue(activationEnabled);
+  const next = normalizeSquadRecord({
+    ...squad,
+    activationEnabled: enabled,
+    status: squadStatusFor({ ...squad, activationEnabled: enabled }, routing),
+    lastStatusChangedAt: now,
+    updatedAt: now,
+    updatedBy: actor.username
+  });
+  db.squads = db.squads.map((item) => (item.id === next.id ? next : item));
+  log(db, "切换小队状态", `${next.name} -> ${next.status}`, actor.username);
+  return { ok: true, squad: next };
+}
+
+function restoreSquadOrderingOnBackend(db, actor) {
+  const now = nowIso();
+  db.squadRouting = {
+    ...ensureSquadRoutingState(db),
+    orderingPaused: false,
+    pausedReason: "",
+    restoredAt: now,
+    restoredBy: actor.username
+  };
+  let onlineCount = 0;
+  db.squads = db.squads.map((squad) => {
+    if (squad.currentOrderId) {
+      return normalizeSquadRecord({ ...squad, status: "working", updatedAt: now, updatedBy: actor.username });
+    }
+    const status = squad.activationEnabled ? "online" : "offline";
+    if (status === "online") {
+      onlineCount += 1;
+    }
+    return normalizeSquadRecord({
+      ...squad,
+      status,
+      lastStatusChangedAt: now,
+      updatedAt: now,
+      updatedBy: actor.username
+    });
+  });
+  log(db, "恢复小队下单", `管理员手动恢复，${onlineCount} 个激活小队 online`, actor.username);
+  return { ok: true, routing: db.squadRouting, squads: db.squads };
+}
+
+function allProductsWithMeta(db) {
+  const items = [];
+  Object.entries(db.products || {}).forEach(([gameId, products]) => {
+    (Array.isArray(products) ? products : []).forEach((product) => {
+      items.push({ product, gameId });
+    });
+  });
+  return items;
+}
+
+function findProductInDb(db, productId) {
+  for (const [gameId, products] of Object.entries(db.products || {})) {
+    const product = (Array.isArray(products) ? products : []).find((item) => item.id === productId);
+    if (product) {
+      let game = null;
+      let category = null;
+      for (const item of db.categories || []) {
+        const foundGame = (db.games[item.id] || []).find((candidate) => candidate.id === gameId);
+        if (foundGame) {
+          game = foundGame;
+          category = item;
+          break;
+        }
+      }
+      return { product, gameId, game, category };
+    }
+  }
+  return null;
+}
+
+function productEligibleSquadIds(product = {}) {
+  return normalizeStringList(product.eligibleSquadIds || product.availableSquadIds || product.supportedSquadIds, 200);
+}
+
+function saveProductSquadsOnBackend(db, payload = {}, actor) {
+  const productId = String(payload.productId || "").trim();
+  const found = findProductInDb(db, productId);
+  if (!found) {
+    return { ok: false, status: 404, message: "商品不存在。" };
+  }
+  const requestedIds = normalizeStringList(payload.eligibleSquadIds || payload.squadIds, 200);
+  const validIds = new Set(db.squads.map((squad) => squad.id));
+  const invalidIds = requestedIds.filter((id) => !validIds.has(id));
+  if (invalidIds.length) {
+    return { ok: false, message: `小队不存在：${invalidIds.join(", ")}` };
+  }
+  const now = nowIso();
+  const nextProduct = {
+    ...found.product,
+    eligibleSquadIds: requestedIds,
+    updatedAt: now,
+    updatedBy: actor.username
+  };
+  db.products[found.gameId] = (db.products[found.gameId] || []).map((product) => (
+    product.id === productId ? nextProduct : product
+  ));
+  log(db, "绑定商品可接单小队", `${productId} -> ${requestedIds.join(", ") || "none"}`, actor.username);
+  return { ok: true, product: nextProduct, products: db.products };
+}
+
+function eligibleSquadIdsForProduct(db, product = {}) {
+  return productEligibleSquadIds(product);
+}
+
+function selectEligibleSquad(db, product = {}) {
+  const ids = new Set(eligibleSquadIdsForProduct(db, product));
+  if (!ids.size) {
+    return null;
+  }
+  return db.squads
+    .filter((squad) => ids.has(squad.id) && squad.activationEnabled && squad.status === "online" && !squad.currentOrderId)
+    .sort((a, b) => (
+      timestampMs(a.lastAssignedAt) - timestampMs(b.lastAssignedAt)
+      || timestampMs(a.createdAt) - timestampMs(b.createdAt)
+      || a.name.localeCompare(b.name)
+    ))[0] || null;
+}
+
+function routedOrderEmailPayload(db, order, squad, kind = "initial") {
+  const to = notificationEmailForUsername(db, order.customerUsername);
+  const groupLabel = squad.groupType === "wechat" ? "微信群" : "QQ群";
+  const message = [
+    `你的${BrandName}订单已由外部服务小队接单。`,
+    `订单号：${order.id}`,
+    `服务项目：${order.productTitle}`,
+    `接单小队：${squad.name}`,
+    `${groupLabel}号：${squad.groupNumber}`,
+    "请截图本邮件，并在入群后发送到群中。"
+  ].join("\n");
+  return {
+    to,
+    subject: kind === "resend" ? `${BrandName}接单小队信息已重发` : `${BrandName}接单小队已分配`,
+    message,
+    rows: [
+      { label: "订单号", value: order.id },
+      { label: "服务项目", value: order.productTitle || "" },
+      { label: "接单小队", value: squad.name },
+      { label: "群类型", value: groupLabel },
+      { label: "群号", value: squad.groupNumber },
+      { label: "入群说明", value: "请截图本邮件并发送到群中。" }
+    ]
+  };
+}
+
+function recordSquadRoutingTestEmailCall(order, squad, kind, payload, testMode) {
+  if (isProductionRuntime() || !testMode) {
+    return;
+  }
+  if (!Array.isArray(globalThis.__IMPULSE_SQUAD_TEST_EMAILS)) {
+    globalThis.__IMPULSE_SQUAD_TEST_EMAILS = [];
+  }
+  globalThis.__IMPULSE_SQUAD_TEST_EMAILS.push({
+    orderId: order?.id || "",
+    squadId: squad?.id || "",
+    kind,
+    mode: testMode,
+    recipientHash: privacyHash("email", normalizeEmail(payload?.to || "")),
+    subject: payload?.subject || "",
+    createdAt: nowIso()
+  });
+}
+
+async function sendSquadRoutingEmail(db, order, squad, kind = "initial") {
+  const payload = routedOrderEmailPayload(db, order, squad, kind);
+  const testMode = !isProductionRuntime() ? String(process.env.IMPULSE_SQUAD_EMAIL_TEST_MODE || "").toLowerCase() : "";
+  recordSquadRoutingTestEmailCall(order, squad, kind, payload, testMode);
+  if (!isEmail(payload.to)) {
+    const result = { ok: false, configured: true, provider: "internal", subject: payload.subject, error: "Customer registered email is missing." };
+    recordEmailLog(db, "squad_routing_assignment", payload.to, payload.subject, result);
+    return result;
+  }
+  if (!isProductionRuntime() && process.env.IMPULSE_SQUAD_EMAIL_THROW_IF_CALLED === "1") {
+    throw new Error("Squad routing email should not be called before durable persistence.");
+  }
+  if (testMode === "success" || testMode === "fail") {
+    const result = testMode === "success"
+      ? { ok: true, configured: true, provider: "test", id: createId("test-mail"), subject: payload.subject }
+      : { ok: false, configured: true, provider: "test", subject: payload.subject, error: "Forced squad email failure." };
+    recordEmailLog(db, "squad_routing_assignment", payload.to, payload.subject, result);
+    return result;
+  }
+  return sendTrackedEmail(db, EmailTypes.ADMIN_ALERT, payload);
+}
+
+function appendSquadEmailAttempt(order, result, kind, actor) {
+  const nowDate = squadNow();
+  const now = nowDate.toISOString();
+  const attempt = {
+    id: createId("squad-mail"),
+    kind,
+    status: result.ok ? "sent" : "failed",
+    provider: result.provider || "",
+    providerMessageId: result.id || "",
+    error: result.error || "",
+    requestedBy: actor,
+    createdAt: now
+  };
+  order.squadEmailAttempts = [attempt, ...(Array.isArray(order.squadEmailAttempts) ? order.squadEmailAttempts : [])].slice(0, 20);
+  order.squadEmailStatus = result.ok ? "sent" : "failed";
+  order.squadEmailFailure = result.ok ? "" : (result.error || "Email failed.");
+  if (result.ok) {
+    order.squadLastEmailAt = now;
+    order.squadNextEmailAt = new Date(nowDate.getTime() + SquadRoutingEmailCooldownMs).toISOString();
+  }
+  return attempt;
+}
+
+function releaseSquadForOrder(db, order, actor, status = "online") {
+  const squad = db.squads.find((item) => item.id === order.assignedSquadId);
+  if (!squad) {
+    return null;
+  }
+  const now = nowIso();
+  const next = normalizeSquadRecord({
+    ...squad,
+    currentOrderId: "",
+    status,
+    activationEnabled: status === "online" ? true : squad.activationEnabled,
+    lastStatusChangedAt: now,
+    updatedAt: now,
+    updatedBy: actor
+  });
+  db.squads = db.squads.map((item) => (item.id === next.id ? next : item));
+  return next;
+}
+
+function cancelRoutedOrder(db, order, actor, reason) {
+  const now = nowIso();
+  order.status = "cancelled";
+  order.cancelledAt = order.cancelledAt || now;
+  order.completedAt = order.completedAt || now;
+  order.squadRoutingStatus = "cancelled";
+  order.cancelReason = reason;
+  order.updatedAt = now;
+  const squad = releaseSquadForOrder(db, order, actor, "online");
+  log(db, "小队订单取消", `${order.id} ${reason}${squad ? ` / ${squad.name} 回到 online` : ""}`, actor);
+  return { ok: true, order, squad };
+}
+
+function routedOrderResponse(db, order = null, extra = {}) {
+  return { ok: true, order, squads: db.squads, squadRouting: db.squadRouting, snapshot: sanitizeSnapshot(db), ...extra };
+}
+
+function createRoutedOrderOnBackend(db, payload, actor) {
+  const profile = profileByUsername(db, actor.username);
+  if (!profile || profile.deleted || isBanned(profile)) {
+    return { ok: false, reason: "profile-unavailable", message: "账户不可用" };
+  }
+  const found = findProductInDb(db, payload.productId);
+  if (!found) {
+    return { ok: false, reason: "product-missing", message: "商品不存在。" };
+  }
+  const routing = ensureSquadRoutingState(db);
+  if (routing.orderingPaused) {
+    return { ok: false, reason: "ordering-paused", message: "小队下单已暂停，请等待管理员恢复。" };
+  }
+  const squad = selectEligibleSquad(db, found.product);
+  if (!squad) {
+    return { ok: false, reason: "no-online-squad", message: "暂无空闲小队" };
+  }
+  const assignedAt = nowIso();
+  const order = {
+    id: createId("order"),
+    type: payload.type === "reservation" ? "reservation" : "order",
+    status: "processing",
+    createdAt: assignedAt,
+    updatedAt: assignedAt,
+    completedAt: "",
+    handledBy: "",
+    acceptedAt: assignedAt,
+    autoCancelMinutes: 0,
+    autoCancelAt: "",
+    refundedAt: "",
+    refundReason: "",
+    returnRefundedAt: "",
+    returnRefundAmount: 0,
+    rush: null,
+    reports: [],
+    settledAt: "",
+    settlement: null,
+    categoryId: found.category?.id || "",
+    categoryTitle: found.category?.title || "",
+    categoryTitleI18n: found.category?.titleI18n || {},
+    gameId: found.game?.id || found.gameId || "",
+    gameTitle: found.game?.title || "",
+    gameTitleI18n: found.game?.titleI18n || {},
+    productId: found.product.id,
+    productTitle: found.product.title || "",
+    productTitleI18n: found.product.titleI18n || {},
+    price: Number(found.product.price || 0),
+    customerUsername: actor.username,
+    contact: "",
+    appointmentAt: payload.appointmentAt || "",
+    note: String(payload.note || "").trim(),
+    assignedSquadId: squad.id,
+    assignedSquadNameSnapshot: squad.name,
+    groupTypeSnapshot: squad.groupType,
+    groupNumberSnapshot: squad.groupNumber,
+    assignedAt,
+    squadRoutingStatus: "assigned",
+    squadEmailAttempts: [],
+    squadResendCount: 0,
+    squadLastEmailAt: "",
+    squadNextEmailAt: "",
+    squadEmailStatus: "pending",
+    squadEmailFailure: ""
+  };
+  db.orders = [order, ...db.orders];
+  const previousSquad = clone(squad);
+  const workingSquad = normalizeSquadRecord({
+    ...squad,
+    status: "working",
+    currentOrderId: order.id,
+    lastAssignedAt: assignedAt,
+    lastStatusChangedAt: assignedAt,
+    updatedAt: assignedAt,
+    updatedBy: "SYSTEM"
+  });
+  db.squads = db.squads.map((item) => (item.id === squad.id ? workingSquad : item));
+  log(db, "小队订单待发送邮件", `${order.id} -> ${workingSquad.name} (${workingSquad.groupType} ${workingSquad.groupNumber})`, actor.username);
+  return { ok: true, order, squad: workingSquad, previousSquad };
+}
+
+async function resendSquadRoutingEmailOnBackend(db, orderId, actor) {
+  const order = db.orders.find((item) => item.id === orderId);
+  if (!order || order.customerUsername !== actor.username || !order.assignedSquadId) {
+    return { ok: false, status: 404, message: "订单不存在。" };
+  }
+  if (["completed", "cancelled"].includes(order.status)) {
+    return { ok: false, message: "该订单已关闭。" };
+  }
+  const resendCount = Number(order.squadResendCount || 0);
+  if (resendCount >= SquadRoutingMaxResends) {
+    const cancelled = cancelRoutedOrder(db, order, actor.username, "小队邮件重发次数超过限制");
+    return { ...cancelled, forceLogout: true, message: "系统繁忙请重新登录" };
+  }
+  const lastSent = timestampMs(order.squadLastEmailAt);
+  const nextAllowed = lastSent + SquadRoutingEmailCooldownMs;
+  if (lastSent && squadNow().getTime() < nextAllowed) {
+    return {
+      ok: false,
+      status: 429,
+      reason: "cooldown",
+      message: "请稍后再试。",
+      nextAllowedAt: new Date(nextAllowed).toISOString()
+    };
+  }
+  const squad = db.squads.find((item) => item.id === order.assignedSquadId);
+  if (!squad) {
+    return { ok: false, message: "小队不存在。" };
+  }
+  order.squadResendCount = resendCount + 1;
+  const mail = await sendSquadRoutingEmail(db, order, {
+    ...squad,
+    name: order.assignedSquadNameSnapshot || squad.name,
+    groupType: order.groupTypeSnapshot || squad.groupType,
+    groupNumber: order.groupNumberSnapshot || squad.groupNumber
+  }, "resend");
+  appendSquadEmailAttempt(order, mail, "resend", actor.username);
+  order.updatedAt = nowIso();
+  log(db, mail.ok ? "重发小队邮件" : "重发小队邮件失败", `${order.id} 第 ${order.squadResendCount} 次 / ${mail.error || "sent"}`, actor.username);
+  if (!mail.ok) {
+    return { ok: false, message: "邮件发送失败，请稍后重试。", order };
+  }
+  return { ok: true, order };
+}
+
+function completeRoutedOrderOnBackend(db, orderId, actor) {
+  const order = db.orders.find((item) => item.id === orderId);
+  if (!order || order.customerUsername !== actor.username || !order.assignedSquadId) {
+    return { ok: false, status: 404, message: "订单不存在。" };
+  }
+  if (order.status === "completed") {
+    return { ok: true, order };
+  }
+  if (order.status === "cancelled") {
+    return { ok: false, message: "该订单已取消。" };
+  }
+  const now = nowIso();
+  order.status = "completed";
+  order.completedAt = order.completedAt || now;
+  order.settledAt = "";
+  order.settlement = order.settlement || null;
+  order.squadRoutingStatus = "completed";
+  order.updatedAt = now;
+  const squad = releaseSquadForOrder(db, order, actor.username, "online");
+  log(db, "小队订单结单", `${order.id}${squad ? ` / ${squad.name} 回到 online` : ""}`, actor.username);
+  return { ok: true, order, squad };
+}
+
 async function handleAction(action, payload = {}, request = {}) {
   if (action === "health") {
     const email = emailHealth();
@@ -2518,6 +3231,10 @@ async function handleAction(action, payload = {}, request = {}) {
       return { ok: false, message: "无权发送系统邮件。" };
     }
     return { ok: false, status: 423, message: AdminMailboxSendingDisabledMessage };
+  }
+
+  if (ChatPausedActions.has(action) && vectorSupportChatPaused()) {
+    return vectorSupportChatPausedResponse();
   }
 
   let db;
@@ -2622,6 +3339,191 @@ async function handleAction(action, payload = {}, request = {}) {
       }
     }
     return { ok: true, retention: nextRetention, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "listSquads") {
+    const admin = requireAdmin(request.user);
+    if (!admin.ok) {
+      return admin;
+    }
+    const daily = applySquadDailyStop(db, request.user.username);
+    if (daily.changed) {
+      const unavailable = await persistDurable();
+      if (unavailable) {
+        return unavailable;
+      }
+    }
+    return { ok: true, squads: db.squads, squadRouting: db.squadRouting, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "saveSquad") {
+    const admin = requireAdmin(request.user);
+    if (!admin.ok) {
+      return admin;
+    }
+    applySquadDailyStop(db, request.user.username);
+    const result = saveSquadOnBackend(db, payload.squad || payload, request.user);
+    if (!result.ok) {
+      return result;
+    }
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
+    return { ok: true, squad: result.squad, squads: db.squads, squadRouting: db.squadRouting, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "toggleSquad") {
+    const admin = requireAdmin(request.user);
+    if (!admin.ok) {
+      return admin;
+    }
+    applySquadDailyStop(db, request.user.username);
+    const result = toggleSquadOnBackend(db, payload.squadId || payload.id, payload.activationEnabled, request.user);
+    if (!result.ok) {
+      return result;
+    }
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
+    return { ok: true, squad: result.squad, squads: db.squads, squadRouting: db.squadRouting, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "restoreSquadOrdering") {
+    const admin = requireAdmin(request.user);
+    if (!admin.ok) {
+      return admin;
+    }
+    applySquadDailyStop(db, request.user.username);
+    const result = restoreSquadOrderingOnBackend(db, request.user);
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
+    return { ...result, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "saveProductSquads") {
+    const admin = requireAdmin(request.user);
+    if (!admin.ok) {
+      return admin;
+    }
+    const result = saveProductSquadsOnBackend(db, payload || {}, request.user);
+    if (!result.ok) {
+      return result;
+    }
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
+    return { ok: true, product: result.product, products: db.products, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "createRoutedOrder") {
+    if (!request.user) {
+      return { ok: false, message: "请先登录" };
+    }
+    const daily = applySquadDailyStop(db, request.user.username);
+    if (daily.changed) {
+      const unavailable = await persistDurable();
+      if (unavailable) {
+        return unavailable;
+      }
+    }
+    const result = createRoutedOrderOnBackend(db, payload.order || payload, request.user);
+    if (!result.ok) {
+      return result;
+    }
+    const orderId = result.order.id;
+    const squadId = result.squad.id;
+    const previousSquad = result.previousSquad;
+    let unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
+    const order = db.orders.find((item) => item.id === orderId);
+    const squad = db.squads.find((item) => item.id === squadId);
+    if (!order || !squad) {
+      log(db, "小队订单持久化异常", `${orderId} / ${squadId}`, request.user.username);
+      unavailable = await persistDurable();
+      if (unavailable) {
+        return unavailable;
+      }
+      return { ok: false, status: 500, reason: "routing-persist-mismatch", message: "系统繁忙，请稍后重试。" };
+    }
+    let mail;
+    try {
+      mail = await sendSquadRoutingEmail(db, order, squad, "initial");
+    } catch (error) {
+      mail = {
+        ok: false,
+        configured: true,
+        provider: "internal",
+        error: error?.message || "Email failed."
+      };
+    }
+    appendSquadEmailAttempt(order, mail, "initial", request.user.username);
+    order.updatedAt = nowIso();
+    if (!mail.ok) {
+      db.orders = db.orders.filter((item) => item.id !== orderId);
+      db.squads = db.squads.map((item) => (item.id === previousSquad.id ? normalizeSquadRecord(previousSquad) : item));
+      log(db, "小队邮件失败回滚", `${orderId} / ${squad.name} / ${mail.error || "email failed"}`, request.user.username);
+      unavailable = await persistDurable();
+      if (unavailable) {
+        return unavailable;
+      }
+      return {
+        ok: false,
+        reason: "email-failed",
+        message: "系统繁忙，请稍后重试。",
+        email: { ok: false, error: mail.error || "" },
+        snapshot: sanitizeSnapshot(db)
+      };
+    }
+    log(db, "小队订单分配", `${order.id} -> ${squad.name} (${squad.groupType} ${squad.groupNumber})`, request.user.username);
+    unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
+    return routedOrderResponse(db, db.orders.find((item) => item.id === orderId), {
+      squad: db.squads.find((item) => item.id === squadId)
+    });
+  }
+
+  if (action === "resendSquadRoutingEmail") {
+    if (!request.user) {
+      return { ok: false, message: "请先登录" };
+    }
+    const result = await resendSquadRoutingEmailOnBackend(db, payload.orderId, request.user);
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
+    if (!result.ok) {
+      return { ...result, snapshot: sanitizeSnapshot(db) };
+    }
+    return routedOrderResponse(db, result.order, {
+      squad: result.squad,
+      forceLogout: result.forceLogout,
+      message: result.message
+    });
+  }
+
+  if (action === "completeRoutedOrder") {
+    if (!request.user) {
+      return { ok: false, message: "请先登录" };
+    }
+    applySquadDailyStop(db, request.user.username);
+    const result = completeRoutedOrderOnBackend(db, payload.orderId, request.user);
+    if (!result.ok) {
+      return result;
+    }
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
+    return routedOrderResponse(db, result.order, { squad: result.squad });
   }
 
   if (action === "sendVerification") {
@@ -2949,6 +3851,9 @@ async function handleAction(action, payload = {}, request = {}) {
     if (!request.user) {
       return { ok: false, message: "请先登录" };
     }
+    if (PointsSystemPaused) {
+      return pointsSystemPausedResponse();
+    }
     db = hydrateTemporaryDb(db, payload.snapshot, request.user.username);
     const profile = db.profiles.find((item) => item.id === payload.profileId);
     if (!profile || normalize(profile.username) !== normalize(request.user.username)) {
@@ -2964,7 +3869,7 @@ async function handleAction(action, payload = {}, request = {}) {
       subject: "Recharge points ready",
       preview: `${itemName} / ${amountPoints} points`,
       body: `Hello ${profile.username}, your recharge is complete. Claim ${amountPoints} points from this in-app mail. Amount paid: ${Number(payload.amountMoney || 0)} USD.`,
-      sender: "IMPULSE J System",
+      sender: SystemSenderName,
       source: "recharge",
       sourceId: createId("recharge"),
       claim: {
@@ -2986,6 +3891,9 @@ async function handleAction(action, payload = {}, request = {}) {
   if (action === "claimMailboxReward") {
     if (!request.user) {
       return { ok: false, message: "请先登录" };
+    }
+    if (PointsSystemPaused) {
+      return pointsSystemPausedResponse("积分领取功能暂未开放。");
     }
     db = hydrateTemporaryDb(db, payload.snapshot, request.user.username);
     const key = normalize(request.user.username);
@@ -3075,6 +3983,9 @@ async function handleAction(action, payload = {}, request = {}) {
     if (!request.user) {
       return { ok: false, message: "请先登录" };
     }
+    if (PointsSystemPaused) {
+      return pointsSystemPausedResponse("资金调整功能暂未开放。");
+    }
     db = hydrateTemporaryDb(db, payload.snapshot, request.user.username);
     const profileId = payload.profileId;
     const profile = db.profiles.find((item) => item.id === profileId);
@@ -3106,6 +4017,9 @@ async function handleAction(action, payload = {}, request = {}) {
     if (!request.user) {
       return { ok: false, message: "请先登录" };
     }
+    if (PointsSystemPaused) {
+      return pointsSystemPausedResponse("订单和积分使用功能暂未开放。");
+    }
     db = hydrateTemporaryDb(db, payload.snapshot, request.user.username);
     const result = createOrderOnBackend(db, payload.order || payload, request.user);
     if (!result.ok) {
@@ -3134,7 +4048,9 @@ async function handleAction(action, payload = {}, request = {}) {
     if (unavailable) {
       return unavailable;
     }
-    await persistSupabaseMessages(payload.orderId, db.orderChats[payload.orderId] || []);
+    if (!vectorSupportChatPaused()) {
+      await persistSupabaseMessages(payload.orderId, db.orderChats[payload.orderId] || []);
+    }
     return { ok: true, order: result.order, snapshot: sanitizeSnapshot(db) };
   }
 

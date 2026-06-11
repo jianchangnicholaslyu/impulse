@@ -9,6 +9,8 @@
     orders: "orders",
     orderChats: "orderChats",
     mailboxMessages: "mailboxMessages",
+    squads: "squads",
+    squadRouting: "squadRouting",
     profiles: "userProfiles",
     ledger: "ledger",
     adminLogs: "adminLogs",
@@ -30,6 +32,7 @@
   const AdminSections = [
     { id: "users", title: "用户", password: "yonghu", icon: "fa-solid fa-users", description: "Gamer / Vector 账户、资金、封禁与注销管理。" },
     { id: "orders", title: "订单", password: "dingdan", icon: "fa-solid fa-receipt", description: "统一检索充值单、消费单与兑现单。" },
+    { id: "squads", title: "可用小队", password: "xiaodui", icon: "fa-solid fa-people-group", description: "维护接单小队、群号、状态与每日停单恢复。" },
     { id: "ledger", title: "账本", password: "zhangben", icon: "fa-solid fa-chart-line", description: "实时资金流水与统计参考。" },
     { id: "logs", title: "日志", password: "rizhi", icon: "fa-solid fa-clipboard-list", description: "记录后台与关键业务操作。" }
   ];
@@ -61,18 +64,27 @@
   const ChatRetentionMs = 7 * 24 * 60 * 60 * 1000;
   const DisplayImageMaxBytes = 2 * 1024 * 1024;
   const UserIdPattern = /^\d{18}$/;
-  const DefaultLanguage = "en";
-  const LocalLanguageCodes = ["en", "zh-CN"];
-  const LocalContentLanguageCodes = ["en", "zh-CN"];
-  const BrandName = "IMPULSE J";
-  const BrandTagline = "Driven by Gamers' Momentum";
+  const DefaultLanguage = "zh-CN";
+  const LocalLanguageCodes = ["zh-CN"];
+  const LocalContentLanguageCodes = ["zh-CN"];
+  const BrandName = "夕夕电竞";
+  const BrandTagline = "轻度版";
+  const FullEditionName = "满血版";
+  const LightEditionName = "轻度版";
+  const LightEditionStartVersion = "v0.20.9";
+  const LanguageModeEnabled = false;
+  const LanguageModeLifecycleStatus = "paused";
+  const LanguageModePausedMessage = "当前仅保留中文版。";
+  const SystemSenderName = `${BrandName}系统`;
+  const LegacySystemSenderName = "IMPULSE J System";
   const PublicEnv = (() => {
     const buildEnv = typeof __IMPULSE_PUBLIC_ENV__ !== "undefined" ? __IMPULSE_PUBLIC_ENV__ : {};
     const runtimeEnv = window.IMPULSE_PUBLIC_ENV || {};
     return { ...(buildEnv || {}), ...(runtimeEnv || {}) };
   })();
   const PlatformChat = {
-    entryLabel: "Vector Support"
+    entryLabel: "Vector Support",
+    lifecycle: "paused"
   };
   const ChatImageMaxBytes = 5 * 1024 * 1024;
   const RoleDisplayNames = {
@@ -80,7 +92,7 @@
     staff: "Vector",
     admin: "Admin"
   };
-  const ControllingLanguageNotice = "English is the controlling language for all legal, payment, refund, dispute, withdrawal, and official communication terms. Any translation is provided for convenience only and does not modify the English terms.";
+  const ControllingLanguageNotice = "当前仅保留中文版；旧多语言与机器翻译模式已封存。";
   const ProtectedTranslationSelector = ".notranslate, [translate='no'], .policy-document, .official-communication, .financial-value, .status-value, .order-locked-term, [data-no-machine-translate='true']";
   const LegalInfoPages = ["terms", "privacy", "refund", "payment", "points", "dispute", "withdrawal"];
   const LegalInfoContent = {
@@ -157,15 +169,15 @@
     { value: "private", label: "保密" }
   ];
   const EmailNoticeTypes = [
-    { key: "rechargeSuccess", label: "充值成功", subject: "Recharge successful" },
-    { key: "orderSuccess", label: "下单成功", subject: "Order placed successfully" },
-    { key: "orderAccepted", label: "接单成功", subject: "Your order has been accepted" },
-    { key: "serviceReminder", label: "服务提醒", subject: "Service reminder" },
-    { key: "progressReminder", label: "进度提醒", subject: "Progress update" },
-    { key: "completionRequest", label: "结单请求", subject: "Completion request" },
-    { key: "rushReply", label: "加急回复", subject: "Rush request update" },
-    { key: "completionSuccess", label: "结单成功", subject: "Order completed" },
-    { key: "returnSuccess", label: "退单成功", subject: "Order return completed" }
+    { key: "rechargeSuccess", label: "充值成功", subject: "充值成功" },
+    { key: "orderSuccess", label: "下单成功", subject: "下单成功" },
+    { key: "orderAccepted", label: "接单成功", subject: "接单成功" },
+    { key: "serviceReminder", label: "服务提醒", subject: "服务提醒" },
+    { key: "progressReminder", label: "进度提醒", subject: "进度更新" },
+    { key: "completionRequest", label: "结单请求", subject: "结单请求" },
+    { key: "rushReply", label: "加急回复", subject: "加急请求更新" },
+    { key: "completionSuccess", label: "结单成功", subject: "订单已完成" },
+    { key: "returnSuccess", label: "退单成功", subject: "退单已完成" }
   ];
   const MailboxCategories = [
     { id: "system", label: "系统邮件", icon: "fa-regular fa-envelope" },
@@ -183,6 +195,12 @@
   const AdminMailboxPreviewMaxLength = 120;
   const AdminMailboxSendingDisabled = true;
   const AdminMailboxSendingDisabledMessage = "管理员邮件发送暂时维护中。";
+  const MailCenterPaused = true;
+  const MailCenterLifecycleStatus = "paused";
+  const MailCenterPausedMessage = "暂未开放";
+  const PointsSystemPaused = true;
+  const PointsSystemLifecycleStatus = "paused";
+  const PointsSystemPausedMessage = "充值和积分使用功能暂未开放。";
   const MailboxRuntimeRefreshVersion = "v0.20.7";
   const MailboxExpiryDays = {
     chat: 7,
@@ -205,6 +223,97 @@
 
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
+    {
+      version: "v0.20.14",
+      releasedAt: "2026-06-11",
+      nameI18n: localizedPair("Chinese Light Edition Branding", "中文轻度版品牌切换"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Locks the interface to Simplified Chinese, renames the visible brand to 夕夕电竞, and defines pre-large-update builds as 满血版 while the current large-update branch becomes 轻度版.",
+        "将界面锁定为简体中文，将可见品牌切换为夕夕电竞，并定义大更新前版本为满血版、大更新后版本为轻度版。"
+      ),
+      itemsI18n: [
+        localizedPair("Language mode is paused and the selector is removed from account menus; existing saved language preferences are forced back to Simplified Chinese.", "语言模式进入 paused，账户菜单不再显示语言选择；既有本地语言偏好会被强制回到简体中文。"),
+        localizedPair("Visible title, loader, wordmark, official sender defaults, and current transactional Squad Routing email copy now use 夕夕电竞 branding.", "页面标题、加载态、文字标识、官方发件默认值和当前群聊分流事务邮件文案改用夕夕电竞品牌。"),
+        localizedPair("Current version surfaces now display the 轻度版 edition label, while historical pre-large-update releases are defined as 满血版.", "当前版本展示加入轻度版形态标签，同时将大更新前历史版本定义为满血版。")
+      ]
+    },
+    {
+      version: "v0.20.13",
+      releasedAt: "2026-06-10",
+      nameI18n: localizedPair("Squad Routing System", "群聊分流系统"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Adds the local draft Squad Routing flow with Admin squad management, product-to-squad binding, point-free customer assignment, resend controls, and customer completion UI.",
+        "新增群聊分流本地草案：Admin 小队管理、商品可接单小队绑定、顾客无积分分配下单、邮件重发控制和顾客结单 UI。"
+      ),
+      itemsI18n: [
+        localizedPair("Admin can list, create, edit, activate, deactivate, refresh, and manually restore available squad ordering from the management console.", "Admin 可在管理控制台查看、新增、编辑、启停、刷新可用小队，并手动恢复小队下单。"),
+        localizedPair("Product editing now includes a backend-durable eligible squad picker, with frontend squad state hydrated only as a display cache.", "商品编辑现在包含后端持久化的可接单小队选择器，前端小队状态只作为展示缓存 hydrate。"),
+        localizedPair("Customer checkout now uses the Squad Routing backend path without point deduction, ledger writes, paused Mail Center, or the legacy points order creator.", "顾客下单现在走群聊分流后端路径，不扣积分、不写账本、不依赖封存邮件中心，也不调用旧积分订单创建。"),
+        localizedPair("Assigned squad orders expose backend resend and completion controls; resend limits can force logout, and completion returns the squad online.", "已分配小队订单提供后端重发与结单入口；重发限制可触发强制退出，结单后小队回到 online。")
+      ]
+    },
+    {
+      version: "v0.20.12",
+      releasedAt: "2026-06-10",
+      nameI18n: localizedPair("Points System Pause", "积分系统封存"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Pauses recharge, point spending, and balance-changing actions while preserving existing balances, ledgers, and historical records.",
+        "封存充值、积分消费和余额变动入口，同时保留既有余额、账本和历史记录。"
+      ),
+      itemsI18n: [
+        localizedPair("Recharge and insufficient-balance flows now show a temporarily unavailable state instead of opening point top-up options.", "充值入口和余额不足流程现在显示暂未开放状态，不再打开积分充值选项。"),
+        localizedPair("Order creation, reward claiming, manual funds adjustment, and point-changing backend actions fail closed while paused.", "封存期间，下单、奖励领取、手动资金调整和会改变积分的后端操作都会关闭式失败。"),
+        localizedPair("Existing profile balances, ledgers, historical mailbox rewards, and order records remain preserved for future reopening.", "既有账户余额、账本、历史奖励邮件和订单记录都会保留，便于未来重新启用。")
+      ]
+    },
+    {
+      version: "v0.20.11",
+      releasedAt: "2026-06-10",
+      nameI18n: localizedPair("Mail Center Pause", "邮件中心封存"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Pauses the internal Mail Center entry while preserving existing mailbox data and backend reads.",
+        "封存内部邮件中心入口，同时保留既有邮箱数据和后端读取能力。"
+      ),
+      itemsI18n: [
+        localizedPair("Mail Center entry points now show a paused notice instead of opening the mailbox window.", "邮件中心入口现在显示封存提示，不再打开原邮箱窗口。"),
+        localizedPair("Existing mailbox data, getMailbox, and system notice structures remain available for future reopening.", "既有邮箱数据、getMailbox 和系统通知结构仍保留，便于未来重新启用。"),
+        localizedPair("Admin in-app mail sending remains paused and fail closed.", "管理员站内邮件发送继续暂停并保持关闭式失败。")
+      ]
+    },
+    {
+      version: "v0.20.10",
+      releasedAt: "2026-06-10",
+      nameI18n: localizedPair("Vector Support Chat Pause", "Vector Support 聊天封存"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Pauses the order chat window while preserving the existing chat code, records, and future reopening path.",
+        "暂时封存订单聊天窗口，同时保留现有聊天代码、历史记录和未来重新启用路径。"
+      ),
+      itemsI18n: [
+        localizedPair("Order chat entry points now show a clear temporarily unavailable state instead of opening the chat room.", "订单聊天入口现在显示清晰的暂未开放状态，不再打开聊天房间。"),
+        localizedPair("Backend chat actions fail closed while the Vector Support chat box is paused, preventing bypass writes or presence changes.", "Vector Support 聊天框封存期间，后端聊天操作会关闭响应，避免绕过入口写入消息或更新在线状态。"),
+        localizedPair("Existing chat records, Quick Signals catalog, and workflow-event direction remain preserved for a future controlled reopening.", "现有聊天记录、快捷消息目录和工作流事件方向都会保留，便于未来受控解封。")
+      ]
+    },
+    {
+      version: "v0.20.9",
+      releasedAt: "2026-06-10",
+      nameI18n: localizedPair("Login Entry Prompt", "登录入口提示优化"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Opens the sign-in dialog automatically on the home page for signed-out visitors while keeping browsing and existing sessions uninterrupted.",
+        "未登录访客进入首页时自动打开登录窗口，同时保持页面浏览和已有会话不受影响。"
+      ),
+      itemsI18n: [
+        localizedPair("Signed-out visitors now see the sign-in dialog after the home page finishes rendering.", "未登录访客会在首页完成渲染后看到登录窗口。"),
+        localizedPair("Closing the dialog suppresses the automatic prompt for the current page lifecycle.", "关闭登录窗口后，当前页面生命周期内不会反复自动弹出。"),
+        localizedPair("Existing Customer, Vector, and Admin sessions continue into the app without an automatic prompt.", "已有 Gamer、Vector 和管理员会话会直接进入应用，不会自动弹窗。")
+      ]
+    },
     {
       version: "v0.20.8",
       releasedAt: "2026-06-09",
@@ -731,15 +840,28 @@
   ];
 
   const CurrentRelease = DevelopmentRecords[0];
+  function versionTuple(version) {
+    const match = String(version || "").match(/^v?(\d+)\.(\d+)\.(\d+)/);
+    return match ? match.slice(1).map((part) => Number(part)) : [0, 0, 0];
+  }
+
+  function compareVersions(a, b) {
+    const left = versionTuple(a);
+    const right = versionTuple(b);
+    for (let index = 0; index < 3; index += 1) {
+      if (left[index] !== right[index]) {
+        return left[index] - right[index];
+      }
+    }
+    return 0;
+  }
+
+  function releaseEditionLabel(release = CurrentRelease) {
+    return compareVersions(release?.version, LightEditionStartVersion) >= 0 ? LightEditionName : FullEditionName;
+  }
 
   const Languages = [
-    { code: "en", label: "英语", nativeName: "English", names: { "zh-CN": "英语", "zh-TW": "英語", en: "English", fr: "Anglais", ja: "英語", ko: "영어", es: "Inglés" } },
-    { code: "zh-CN", label: "简体中文", nativeName: "简体中文", names: { "zh-CN": "简体中文", "zh-TW": "簡體中文", en: "Simplified Chinese", fr: "Chinois simplifié", ja: "簡体字中国語", ko: "중국어 간체", es: "Chino simplificado" } },
-    { code: "zh-TW", label: "繁体中文", nativeName: "繁體中文", names: { "zh-CN": "繁体中文", "zh-TW": "繁體中文", en: "Traditional Chinese", fr: "Chinois traditionnel", ja: "繁体字中国語", ko: "중국어 번체", es: "Chino tradicional" } },
-    { code: "fr", label: "法语", nativeName: "Français", names: { "zh-CN": "法语", "zh-TW": "法語", en: "French", fr: "Français", ja: "フランス語", ko: "프랑스어", es: "Francés" } },
-    { code: "ja", label: "日语", nativeName: "日本語", names: { "zh-CN": "日语", "zh-TW": "日語", en: "Japanese", fr: "Japonais", ja: "日本語", ko: "일본어", es: "Japonés" } },
-    { code: "ko", label: "韩语", nativeName: "한국어", names: { "zh-CN": "韩语", "zh-TW": "韓語", en: "Korean", fr: "Coréen", ja: "韓国語", ko: "한국어", es: "Coreano" } },
-    { code: "es", label: "西班牙语", nativeName: "Español", names: { "zh-CN": "西班牙语", "zh-TW": "西班牙語", en: "Spanish", fr: "Espagnol", ja: "スペイン語", ko: "스페인어", es: "Español" } }
+    { code: "zh-CN", label: "简体中文", nativeName: "简体中文", names: { "zh-CN": "简体中文" } }
   ];
 
   const UiDictionary = {
@@ -1577,6 +1699,62 @@
 
   const Dom = {};
 
+  function splitSquadList(value) {
+    return String(value || "")
+      .split(/[\n,，、]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .filter((item, index, list) => list.indexOf(item) === index);
+  }
+
+  function squadStatusLabel(status) {
+    return {
+      online: "online",
+      offline: "offline",
+      working: "working"
+    }[status] || "offline";
+  }
+
+  function squadGroupTypeLabel(type) {
+    return type === "wechat" ? "微信群" : "QQ群";
+  }
+
+  function squadMembersLabel(squad = {}) {
+    return (Array.isArray(squad.members) ? squad.members : [])
+      .map((member, index) => `${index === 0 ? "队长 " : ""}${member}`)
+      .filter((item) => item.trim())
+      .join(" / ") || "未设置";
+  }
+
+  function squadProjectsLabel(squad = {}) {
+    const items = (Array.isArray(squad.businessProjects) ? squad.businessProjects : [])
+      .filter(Boolean)
+      .filter((item, index, list) => list.indexOf(item) === index);
+    if (!items.length) {
+      return "未绑定";
+    }
+    return items.map((item) => {
+      const found = Data.findProduct(item);
+      return found ? localizedContent(found.product, "title") : item;
+    }).join(" / ");
+  }
+
+  function productEligibleSquadIds(product = {}) {
+    return splitSquadList([
+      ...(Array.isArray(product.eligibleSquadIds) ? product.eligibleSquadIds : []),
+      ...(Array.isArray(product.availableSquadIds) ? product.availableSquadIds : []),
+      ...(Array.isArray(product.supportedSquadIds) ? product.supportedSquadIds : [])
+    ].join(","));
+  }
+
+  function squadSelectionSummary(ids = []) {
+    const selected = splitSquadList(ids.join(","));
+    if (!selected.length) {
+      return "未选择小队";
+    }
+    return selected.map((id) => Data.squadById(id)?.name || id).join(" / ");
+  }
+
   function $(selector) {
     return document.querySelector(selector);
   }
@@ -1681,6 +1859,17 @@
 
   function normalize(value) {
     return String(value || "").trim().toLowerCase();
+  }
+
+  function pointsSystemPausedResult(message = PointsSystemPausedMessage) {
+    return {
+      ok: false,
+      status: 423,
+      reason: "feature-paused",
+      lifecycle: PointsSystemLifecycleStatus,
+      feature: "points",
+      message
+    };
   }
 
   function normalizeEmail(value) {
@@ -2009,7 +2198,7 @@
   function mailboxSenderLabel(message) {
     return mailboxIsAdminSystemMessage(message)
       ? "管理员"
-      : String(message?.sender || "IMPULSE J System");
+      : String(message?.sender || SystemSenderName);
   }
 
   function mailboxSortCompare(a, b) {
@@ -2074,6 +2263,17 @@ function normalizeChatMessageType(message = {}) {
 
 function chatUiText(zh, en) {
   return contentLanguage() === "zh-CN" ? zh : en;
+}
+
+function vectorSupportChatIsPaused() {
+  return PlatformChat.lifecycle === "paused";
+}
+
+function vectorSupportChatPausedDetail() {
+  return chatUiText(
+    "Vector Support Chat 暂未开放，历史记录已保留，后续会重新启用。",
+    "Vector Support Chat is temporarily unavailable. History is preserved for future reopening."
+  );
 }
 
 // Stable message keys keep old conversations readable after language or wording changes.
@@ -2157,7 +2357,7 @@ const ChatQuickMessageCatalog = Object.freeze({
   "quick.contact_support": { code: "SUPPORT_CONTACT_ADMIN", type: "quick_message", zh: "请联系管理员支持。", en: "Please contact admin support." },
   "system.support.notified": { code: "SUPPORT_SYSTEM_NOTIFIED", type: "system", systemOnly: true, zh: "已通知支持团队。", en: "Support has been notified." },
 
-  "system.vector.assigned": { code: "SYS_VECTOR_ASSIGNED", type: "system", systemOnly: true, zh: "Vector 已接受该订单，聊天现在可用。", en: "A Vector has accepted this order. Chat is now available." },
+  "system.vector.assigned": { code: "SYS_VECTOR_ASSIGNED", type: "system", systemOnly: true, zh: "Vector 已接受该订单。", en: "A Vector has accepted this order." },
   "system.order.started": { code: "SYS_ORDER_STARTED", type: "system", systemOnly: true, zh: "订单已开始。", en: "The order has started." },
   "system.order.paused": { code: "SYS_ORDER_PAUSED", type: "system", systemOnly: true, zh: "订单已暂停。", en: "The order has been paused." },
   "system.order.resumed": { code: "SYS_ORDER_RESUMED", type: "system", systemOnly: true, zh: "订单已恢复。", en: "The order has resumed." },
@@ -2765,7 +2965,7 @@ function OrderChatPanel(context = {}) {
           className: `chat-message ${own ? "own" : ""} ${messageType === "system" ? "system" : ""} ${messageType === "action_card" ? "action-card" : ""}`.trim()
         },
           h("div", { className: "chat-message-meta" },
-            h("span", {}, chatIsSystem(message) ? "IMPULSE J System" : (message.sender || (own ? State.currentUser?.username : vectorName) || "User")),
+            h("span", {}, chatIsSystem(message) ? SystemSenderName : (message.sender || (own ? State.currentUser?.username : vectorName) || "User")),
             h("time", {}, formatFullDate(message.createdAt)),
             own && messageType === "user_message" ? h("span", { className: "chat-read-state" }, message.readAt ? localizeStaticPhrase("Read") : localizeStaticPhrase("Sent")) : null
           ),
@@ -2942,7 +3142,7 @@ function quickButton(key, params = null, metadata = {}) {
     className: `chat-quick-btn ${systemLocked ? "system-locked" : ""}`.trim(),
     type: "button",
     disabled: sending || readOnly || systemLocked,
-    title: systemLocked ? chatUiText("系统消息由平台自动生成，不能手动发送。", "System messages are generated by IMPULSE J and cannot be sent manually.") : "",
+    title: systemLocked ? chatUiText("系统消息由平台自动生成，不能手动发送。", `${BrandName}系统消息不能手动发送。`) : "",
     onClick: () => {
       if (systemLocked) return;
       sendStructuredMessage(key, params, metadata);
@@ -3068,7 +3268,7 @@ function mailboxHasClaim(message) {
   }
 
   function mailboxClaimAvailable(message) {
-    return mailboxHasClaim(message) && !message.claim.claimedAt;
+    return !PointsSystemPaused && mailboxHasClaim(message) && !message.claim.claimedAt;
   }
 
   function mailboxNoticeBody(profile, notice, context = {}) {
@@ -3077,7 +3277,7 @@ function mailboxHasClaim(message) {
       context.orderId ? `Order ID: ${context.orderId}.` : "",
       context.itemName ? `Item: ${context.itemName}.` : "",
       context.amount ? `Amount: ${context.amount}.` : "",
-      "This notice is also stored in your IMPULSE J in-app mailbox and cannot be unsent."
+      `此通知也会保存在你的${BrandName}系统记录中，发送后无法撤回。`
     ].filter(Boolean).join(" ");
   }
 
@@ -3258,6 +3458,10 @@ function mailboxHasClaim(message) {
     },
     mergeSnapshot(remoteSnapshot) {
       const local = this.snapshot();
+      const remoteSquads = Array.isArray(remoteSnapshot.squads) ? remoteSnapshot.squads : Storage.get(Keys.squads, []);
+      const remoteRouting = remoteSnapshot.squadRouting && typeof remoteSnapshot.squadRouting === "object" && !Array.isArray(remoteSnapshot.squadRouting)
+        ? remoteSnapshot.squadRouting
+        : Storage.get(Keys.squadRouting, {});
       return {
         users: this.mergeArrayBy(local.users, remoteSnapshot.users, (item) => normalize(item?.username || item?.email)),
         profiles: this.mergeArrayBy(local.profiles, remoteSnapshot.profiles, (item) => item?.id || normalize(item?.username)),
@@ -3265,6 +3469,8 @@ function mailboxHasClaim(message) {
         games: this.mergeRecordLists(local.games, remoteSnapshot.games),
         products: this.mergeRecordLists(local.products, remoteSnapshot.products),
         orders: this.mergeArrayBy(local.orders, remoteSnapshot.orders, (item) => item?.id),
+        squads: remoteSquads,
+        squadRouting: remoteRouting,
         orderChats: this.mergeChats(local.orderChats, remoteSnapshot.orderChats),
         mailboxMessages: this.mergeChats(local.mailboxMessages, remoteSnapshot.mailboxMessages),
         ledger: this.mergeArrayBy(local.ledger, remoteSnapshot.ledger, (item) => item?.id),
@@ -3293,6 +3499,8 @@ function mailboxHasClaim(message) {
         if (nextSnapshot.games && typeof nextSnapshot.games === "object") Storage.set(Keys.games, nextSnapshot.games);
         if (nextSnapshot.products && typeof nextSnapshot.products === "object") Storage.set(Keys.products, nextSnapshot.products);
         if (Array.isArray(nextSnapshot.orders)) Storage.set(Keys.orders, nextSnapshot.orders);
+        if (Array.isArray(nextSnapshot.squads)) Storage.set(Keys.squads, nextSnapshot.squads);
+        if (nextSnapshot.squadRouting && typeof nextSnapshot.squadRouting === "object" && !Array.isArray(nextSnapshot.squadRouting)) Storage.set(Keys.squadRouting, nextSnapshot.squadRouting);
         if (nextSnapshot.orderChats && typeof nextSnapshot.orderChats === "object") Storage.set(Keys.orderChats, nextSnapshot.orderChats);
         if (nextSnapshot.mailboxMessages && typeof nextSnapshot.mailboxMessages === "object") Storage.set(Keys.mailboxMessages, nextSnapshot.mailboxMessages);
         if (Array.isArray(nextSnapshot.ledger)) Storage.set(Keys.ledger, nextSnapshot.ledger);
@@ -3379,9 +3587,13 @@ function mailboxHasClaim(message) {
     },
     async syncNow(reason = "frontend-change") {
       if (this.hydrating || !this.online) {
-        return;
+        return { ok: false, offline: true, message: "后端暂不可用。" };
       }
-      await this.request("saveSnapshot", { reason, snapshot: this.snapshot() });
+      const result = await this.request("saveSnapshot", { reason, snapshot: this.snapshot() });
+      if (result?.ok && result.snapshot) {
+        this.hydrate(result.snapshot, { preserveLocal: this.shouldPreserveLocal() });
+      }
+      return result;
     },
     async sendVerification(purpose, email) {
       return EmailVerificationApi.send(email, purpose);
@@ -3408,9 +3620,15 @@ function mailboxHasClaim(message) {
       return result;
     },
     async adjustFunds(profileId, amountPoints, reason, meta = {}) {
+      if (PointsSystemPaused) {
+        return pointsSystemPausedResult("资金调整功能暂未开放。");
+      }
       return this.applyMutationResult(await this.request("adjustFunds", { profileId, amountPoints, reason, meta, snapshot: this.snapshot() }));
     },
     async createRechargeClaim(profileId, amountPoints, amountMoney, itemName) {
+      if (PointsSystemPaused) {
+        return pointsSystemPausedResult();
+      }
       return this.applyMutationResult(await this.request("createRechargeClaim", {
         profileId,
         amountPoints,
@@ -3420,12 +3638,42 @@ function mailboxHasClaim(message) {
       }));
     },
     async claimMailboxReward(messageId) {
+      if (PointsSystemPaused) {
+        return pointsSystemPausedResult("积分领取功能暂未开放。");
+      }
       return this.applyMutationResult(await this.request("claimMailboxReward", { messageId, snapshot: this.snapshot() }));
     },
     async sendAdminMailbox(payload) {
       return this.applyMutationResult(await this.request("sendAdminMailbox", { ...(payload || {}), snapshot: this.snapshot() }));
     },
+    async listSquads() {
+      return this.applyMutationResult(await this.request("listSquads", {}));
+    },
+    async saveSquad(squad) {
+      return this.applyMutationResult(await this.request("saveSquad", { squad }));
+    },
+    async toggleSquad(squadId, activationEnabled) {
+      return this.applyMutationResult(await this.request("toggleSquad", { squadId, activationEnabled }));
+    },
+    async restoreSquadOrdering() {
+      return this.applyMutationResult(await this.request("restoreSquadOrdering", {}));
+    },
+    async saveProductSquads(productId, eligibleSquadIds = []) {
+      return this.applyMutationResult(await this.request("saveProductSquads", { productId, eligibleSquadIds }));
+    },
+    async createRoutedOrder(payload) {
+      return this.applyMutationResult(await this.request("createRoutedOrder", { order: payload }));
+    },
+    async resendSquadRoutingEmail(orderId) {
+      return this.applyMutationResult(await this.request("resendSquadRoutingEmail", { orderId }));
+    },
+    async completeRoutedOrder(orderId) {
+      return this.applyMutationResult(await this.request("completeRoutedOrder", { orderId }));
+    },
     async createOrder(payload) {
+      if (PointsSystemPaused) {
+        return pointsSystemPausedResult("订单和积分使用功能暂未开放。");
+      }
       return this.applyMutationResult(await this.request("createOrder", { order: payload, snapshot: this.snapshot() }));
     },
     async updateOrderStatus(orderId, status) {
@@ -3657,6 +3905,12 @@ function mailboxHasClaim(message) {
       if (!Storage.get(Keys.systemSettings, null) || typeof Storage.get(Keys.systemSettings, null) !== "object" || Array.isArray(Storage.get(Keys.systemSettings, null))) {
         Storage.set(Keys.systemSettings, { backupEmail: "", backupHistory: [] });
       }
+      if (!Array.isArray(Storage.get(Keys.squads, null))) {
+        Storage.set(Keys.squads, []);
+      }
+      if (!Storage.get(Keys.squadRouting, null) || typeof Storage.get(Keys.squadRouting, null) !== "object" || Array.isArray(Storage.get(Keys.squadRouting, null))) {
+        Storage.set(Keys.squadRouting, {});
+      }
 
       const categories = Storage.get(Keys.categories, null);
       if (!Array.isArray(categories) || categories.length === 0) {
@@ -3773,7 +4027,7 @@ function mailboxHasClaim(message) {
         subject: String(message?.subject || "系统通知"),
         preview: String(message?.preview || body || "系统通知"),
         body,
-        sender: String(message?.sender || "IMPULSE J System"),
+        sender: String(message?.sender || SystemSenderName),
         source,
         sourceId: String(message?.sourceId || ""),
         orderId: String(message?.orderId || ""),
@@ -3878,7 +4132,7 @@ function mailboxHasClaim(message) {
         subject: String(payload.subject || "系统通知").trim(),
         preview: String(payload.preview || body.slice(0, 120) || "系统通知").trim(),
         body,
-        sender: String(payload.sender || "IMPULSE J System").trim(),
+        sender: String(payload.sender || SystemSenderName).trim(),
         source: String(payload.source || "system").trim(),
         sourceId: String(payload.sourceId || "").trim(),
         orderId: String(payload.orderId || "").trim(),
@@ -4025,6 +4279,9 @@ function mailboxHasClaim(message) {
       return result;
     },
     createRechargeClaim(profileId, amountPoints, amountMoney = 0, itemName = "Recharge") {
+      if (PointsSystemPaused) {
+        return pointsSystemPausedResult();
+      }
       const profile = this.profileById(profileId);
       if (!profile) {
         return { ok: false, message: "未找到当前账户。" };
@@ -4038,7 +4295,7 @@ function mailboxHasClaim(message) {
         subject: "充值积分待领取",
         preview: `${itemName} / ${points} points`,
         body: `Hello ${profile.username}, your recharge is complete. Claim ${points} points from this in-app mail. Amount paid: ${Number(amountMoney || 0)} USD.`,
-        sender: "IMPULSE J System",
+        sender: SystemSenderName,
         source: "recharge",
         sourceId: createId("recharge"),
         claim: {
@@ -4052,6 +4309,9 @@ function mailboxHasClaim(message) {
       return { ok: true, message: entry };
     },
     claimMailboxReward(username, messageId) {
+      if (PointsSystemPaused) {
+        return pointsSystemPausedResult("积分领取功能暂未开放。");
+      }
       const key = normalize(username);
       if (!key || !messageId) {
         return { ok: false, message: "邮件不存在" };
@@ -4272,7 +4532,7 @@ function mailboxHasClaim(message) {
       }
 
       const currentUsername = State.currentUser?.username || "";
-      const systemSenderKeys = new Set(["system", normalize("SYSTEM"), normalize("IMPULSE J System"), normalize("IMPULSE J Admin")]);
+      const systemSenderKeys = new Set(["system", normalize("SYSTEM"), normalize(SystemSenderName), normalize(LegacySystemSenderName), normalize("IMPULSE J Admin")]);
       const cleanSenderName = (value) => {
         const candidate = String(value || "").trim();
         const key = normalize(candidate);
@@ -4640,8 +4900,8 @@ function mailboxHasClaim(message) {
       if (profile && (!profile.notificationEmail || normalizeEmail(profile.notificationEmail) === previousEmail)) {
         this.saveProfile({ ...profile, notificationEmail: normalizedEmail });
       }
-      this.recordEnglishEmail(previousEmail, "IMPULSE J email binding changed", "Your IMPULSE J account email address has been changed. If this was not you, please contact support immediately.");
-      this.recordEnglishEmail(normalizedEmail, "IMPULSE J email binding confirmed", "Your IMPULSE J account is now bound to this email address.");
+      this.recordEnglishEmail(previousEmail, `${BrandName}绑定邮箱已变更`, `你的${BrandName}账户绑定邮箱已变更。如非本人操作，请立即联系平台。`);
+      this.recordEnglishEmail(normalizedEmail, `${BrandName}绑定邮箱已确认`, `你的${BrandName}账户已绑定此邮箱。`);
       this.log("修改绑定邮箱", `${currentUsername} ${previousEmail} -> ${normalizedEmail}`);
       return { ok: true, previousEmail, email: normalizedEmail };
     },
@@ -4650,7 +4910,7 @@ function mailboxHasClaim(message) {
         return null;
       }
       // AI: browser direct email is intentionally disabled; backend notification routes own real delivery.
-      return this.log("English email not sent", `To: ${to} / Subject: ${subject} / Browser direct email disabled`);
+      return this.log("邮件未发送", `To: ${to} / Subject: ${subject} / Browser direct email disabled`);
     },
     notifyUser(profile, noticeKey, context = {}) {
       if (!profile || profile.deleted) {
@@ -4666,7 +4926,7 @@ function mailboxHasClaim(message) {
         subject: notice.subject,
         preview: [context.itemName, context.amount, context.orderId].filter(Boolean).join(" / ") || notice.subject,
         body,
-        sender: "IMPULSE J System",
+        sender: SystemSenderName,
         source: "notice",
         sourceId: noticeKey,
         orderId: context.orderId || ""
@@ -4691,6 +4951,9 @@ function mailboxHasClaim(message) {
       }
     },
     adjustFunds(profileId, amountPoints, reason, meta = {}) {
+      if (PointsSystemPaused) {
+        return pointsSystemPausedResult("资金调整功能暂未开放。");
+      }
       const profile = this.profileById(profileId);
       if (!profile) {
         return { ok: false, reason: "profile-missing" };
@@ -4741,6 +5004,23 @@ function mailboxHasClaim(message) {
     },
     orders() {
       return Storage.get(Keys.orders, []);
+    },
+    squads() {
+      return Storage.get(Keys.squads, []).filter((item) => item && typeof item === "object" && !Array.isArray(item));
+    },
+    squadById(squadId) {
+      return this.squads().find((squad) => squad.id === squadId);
+    },
+    squadRouting() {
+      const routing = Storage.get(Keys.squadRouting, {});
+      return {
+        orderingPaused: Boolean(routing.orderingPaused),
+        pausedReason: String(routing.pausedReason || ""),
+        pausedAt: String(routing.pausedAt || ""),
+        lastDailyStopDate: String(routing.lastDailyStopDate || ""),
+        restoredAt: String(routing.restoredAt || ""),
+        restoredBy: String(routing.restoredBy || "")
+      };
     },
     orderById(orderId) {
       return this.orders().find((order) => order.id === orderId);
@@ -4880,6 +5160,9 @@ function mailboxHasClaim(message) {
       this.saveProducts(products);
     },
     createOrder(payload) {
+      if (PointsSystemPaused) {
+        return pointsSystemPausedResult("订单和积分使用功能暂未开放。");
+      }
       const profile = this.profileByUsername(payload.customerUsername);
       const price = Math.max(0, Number(payload.price || 0));
       if (!profile || profile.deleted || isBanned(profile)) {
@@ -4950,6 +5233,9 @@ function mailboxHasClaim(message) {
       this.log("更新订单", `${orderId} ${patch.status ? `状态变更为 ${StatusLabels[patch.status] || patch.status}` : "参数变更"}`);
     },
     refundOrder(order, reason = "订单退款") {
+      if (PointsSystemPaused) {
+        return pointsSystemPausedResult("订单退款和积分返还功能暂未开放。");
+      }
       const current = typeof order === "string" ? this.orderById(order) : order;
       if (!current || current.refundedAt) {
         return { ok: false, reason: "not-refundable" };
@@ -5014,6 +5300,9 @@ function mailboxHasClaim(message) {
       return dueOrders.length > 0;
     },
     requestRush(orderId, days) {
+      if (PointsSystemPaused) {
+        return pointsSystemPausedResult("加急积分功能暂未开放。");
+      }
       const order = this.orderById(orderId);
       const customer = order ? this.profileByUsername(order.customerUsername) : null;
       const deadlineDays = Math.min(30, Math.max(1, Math.ceil(Number(days) || 1)));
@@ -5057,6 +5346,9 @@ function mailboxHasClaim(message) {
       return { ok: true, fee, deadlineAt };
     },
     respondRush(orderId, accepted) {
+      if (PointsSystemPaused) {
+        return pointsSystemPausedResult("加急积分功能暂未开放。");
+      }
       const order = this.orderById(orderId);
       if (!order || order.rush?.status !== "pending") {
         return { ok: false, reason: "unavailable" };
@@ -5143,6 +5435,9 @@ function mailboxHasClaim(message) {
       return { ok: true };
     },
     returnOrder(orderId) {
+      if (PointsSystemPaused) {
+        return pointsSystemPausedResult("退单退款功能暂未开放。");
+      }
       const order = this.orderById(orderId);
       if (!canReturnOrder(order)) {
         return { ok: false, reason: "window-closed" };
@@ -5186,6 +5481,9 @@ function mailboxHasClaim(message) {
       return { ok: true, refundAmount };
     },
     tipOrder(orderId, amount) {
+      if (PointsSystemPaused) {
+        return pointsSystemPausedResult("小费积分功能暂未开放。");
+      }
       const order = this.orderById(orderId);
       const tip = Math.max(0, Number(amount || 0));
       const customer = order ? this.profileByUsername(order.customerUsername) : null;
@@ -5246,6 +5544,9 @@ function mailboxHasClaim(message) {
       return { ok: true, report };
     },
     settleOrder(orderId) {
+      if (PointsSystemPaused) {
+        return pointsSystemPausedResult("订单资金结算功能暂未开放。");
+      }
       const order = this.orderById(orderId);
       if (!order || order.settledAt || order.status !== "completed" || !order.handledBy) {
         return { ok: false, reason: "unavailable" };
@@ -5517,6 +5818,7 @@ function mailboxHasClaim(message) {
       State.mode = "customer";
       Storage.remove(Keys.currentUser);
       Storage.remove(Keys.currentMode);
+      HomeLoginPrompt.reset();
       Router.go("home");
       UI.toast("已退出登录", "当前已回到 Gamer 模式。");
     }
@@ -5535,6 +5837,13 @@ function mailboxHasClaim(message) {
       return languageName(this.selected());
     },
     init() {
+      localStorage.setItem(Keys.language, DefaultLanguage);
+      this.clearCookie();
+      this.ready = true;
+      this.initialized = true;
+      if (!LanguageModeEnabled) {
+        return;
+      }
       if (!document.getElementById(this.elementId)) {
         document.body.appendChild(h("div", { id: this.elementId, className: "translate-engine", "aria-hidden": "true" }));
       }
@@ -5558,6 +5867,9 @@ function mailboxHasClaim(message) {
       }
     },
     loadScript() {
+      if (!LanguageModeEnabled) {
+        return false;
+      }
       if (this.loading || document.getElementById(this.scriptId)) {
         return;
       }
@@ -5574,28 +5886,10 @@ function mailboxHasClaim(message) {
     },
     choose(code) {
       const language = Languages.find((item) => item.code === code) || Languages[0];
-      localStorage.setItem(Keys.language, language.code);
+      localStorage.setItem(Keys.language, DefaultLanguage);
+      this.clearCookie();
       App.render();
-
-      if (isLocalLanguage(language.code)) {
-        this.clearCookie();
-        UI.toast("语言已切换", languageName(language.code));
-        window.setTimeout(() => window.location.reload(), 350);
-        return;
-      }
-
-      this.setCookie(language.code);
-      if (!this.ready) {
-        this.loadScript();
-        UI.toast("语言已保存", `Google Translate 加载后会尝试切换到${languageName(language.code)}。`);
-        return;
-      }
-
-      if (this.apply(language.code)) {
-        UI.toast("语言已切换", languageName(language.code));
-      } else {
-        UI.toast("正在准备翻译", "稍后会自动尝试切换。");
-      }
+      UI.toast("语言模式已封存", LanguageModePausedMessage || language.nativeName);
     },
     localizeStaticUi(root = document.body) {
       const translateTextNode = (node) => {
@@ -5652,6 +5946,9 @@ function mailboxHasClaim(message) {
       });
     },
     applySaved() {
+      if (!LanguageModeEnabled) {
+        return;
+      }
       const language = this.selected();
       if (isLocalLanguage(language)) {
         return;
@@ -5659,6 +5956,9 @@ function mailboxHasClaim(message) {
       this.apply(language);
     },
     apply(code) {
+      if (!LanguageModeEnabled) {
+        return false;
+      }
       this.setCookie(code);
       const combo = document.querySelector(".goog-te-combo");
       if (!combo) {
@@ -5684,6 +5984,9 @@ function mailboxHasClaim(message) {
       }
     },
     refresh() {
+      if (!LanguageModeEnabled) {
+        return;
+      }
       if (this.ready && !isLocalLanguage(this.selected())) {
         window.setTimeout(() => this.applySaved(), 250);
       }
@@ -5917,6 +6220,60 @@ function mailboxHasClaim(message) {
           input = h("select", { name: field.name, required: field.required },
             (field.options || []).map((option) => h("option", { value: option.value, selected: option.value === field.value }, option.label))
           );
+        } else if (field.type === "checkbox") {
+          input = h("input", {
+            name: field.name,
+            type: "checkbox",
+            value: field.checkboxValue || "on",
+            checked: field.checked ?? field.value,
+            required: field.required
+          });
+        } else if (field.type === "squad-selector") {
+          const selected = new Set(splitSquadList(Array.isArray(field.value) ? field.value.join(",") : field.value));
+          const hiddenInput = h("input", { name: field.name, type: "hidden", value: Array.from(selected).join(",") });
+          const summary = h("span", { className: "notranslate", translate: "no", text: squadSelectionSummary(Array.from(selected)) });
+          const panel = h("div", { className: "settings-list", hidden: true });
+          const updateSummary = () => {
+            hiddenInput.value = Array.from(selected).join(",");
+            summary.textContent = squadSelectionSummary(Array.from(selected));
+          };
+          const renderSquads = () => {
+            clear(panel);
+            const squads = Data.squads();
+            panel.append(
+              squads.length
+                ? squads.map((squad) => h("label", { className: "notice-toggle" },
+                    h("input", {
+                      type: "checkbox",
+                      checked: selected.has(squad.id),
+                      onChange: (event) => {
+                        if (event.target.checked) {
+                          selected.add(squad.id);
+                        } else {
+                          selected.delete(squad.id);
+                        }
+                        updateSummary();
+                      }
+                    }),
+                    h("span", { className: "notranslate", translate: "no", text: `${squad.name || squad.id} / ${squadStatusLabel(squad.status)} / ${squadGroupTypeLabel(squad.groupType)} ${squad.groupNumber || ""}` })
+                  ))
+                : h("small", { text: "暂无小队，请先在可用小队分区新增。" })
+            );
+            Translation.localizeStaticUi(panel);
+          };
+          renderSquads();
+          input = h("div", { className: "admin-stack" },
+            hiddenInput,
+            h("button", {
+              className: "button button-ghost",
+              type: "button",
+              onClick: () => {
+                panel.hidden = !panel.hidden;
+              }
+            }, icon("fa-solid fa-people-group"), "可接单小队"),
+            summary,
+            panel
+          );
         } else if (field.type === "image") {
           const hiddenInput = h("input", { name: field.name, type: "hidden", value: field.value ?? "" });
           const preview = h("div", { className: "content-image-preview" });
@@ -6007,7 +6364,7 @@ function mailboxHasClaim(message) {
           });
         }
         form.appendChild(
-          field.type === "image"
+          field.type === "image" || field.type === "squad-selector"
             ? h("div", { className: "field" }, h("span", { text: field.label }), input)
             : h("label", { className: "field" }, field.label, input)
         );
@@ -6225,7 +6582,7 @@ function mailboxHasClaim(message) {
           kicker: BrandName,
           title: titles[route.params.page] || "站点信息",
           description: isPolicy
-            ? "English controls this policy page and any related official terms."
+            ? "当前仅保留中文版；旧多语言模式已封存。"
             : `${BrandName} - ${BrandTagline}`,
           stats: isPolicy
             ? [["Categories", metrics.categories], ["Game Sections", metrics.games], ["Products", metrics.products]]
@@ -6543,6 +6900,10 @@ function mailboxHasClaim(message) {
       }
       if (canCancel) {
         actions.push(h("button", { className: "button button-ghost button-small", type: "button", dataset: { action: "cancel-order", orderId: rowOrder.id } }, "取消订单"));
+      }
+      if (mode === "customer" && rowOrder.assignedSquadId && rowOrder.status === "processing") {
+        actions.push(h("button", { className: "button button-ghost button-small", type: "button", dataset: { action: "resend-squad-email", orderId: rowOrder.id } }, icon("fa-regular fa-envelope"), "重新发送小队邮件"));
+        actions.push(h("button", { className: "button button-primary button-small", type: "button", dataset: { action: "complete-routed-order", orderId: rowOrder.id } }, icon("fa-solid fa-check"), "结单"));
       }
 
       return h("article", { className: "order-row" },
@@ -6921,10 +7282,62 @@ function mailboxHasClaim(message) {
       if (section === "orders") {
         return this.adminOrders();
       }
+      if (section === "squads") {
+        return this.adminSquads();
+      }
       if (section === "ledger") {
         return this.adminLedger();
       }
       return this.adminLogs();
+    },
+    adminSquads() {
+      const squads = Data.squads();
+      const routing = Data.squadRouting();
+      const counts = {
+        online: squads.filter((squad) => squad.status === "online").length,
+        working: squads.filter((squad) => squad.status === "working").length,
+        offline: squads.filter((squad) => squad.status === "offline").length
+      };
+      const rowActions = (squad) => h("span", { className: "row-actions" },
+        h("button", { className: "button button-ghost button-small", type: "button", dataset: { action: "edit-admin-squad", squadId: squad.id } }, icon("fa-regular fa-pen-to-square"), "编辑"),
+        h("button", {
+          className: "button button-ghost button-small",
+          type: "button",
+          dataset: { action: "toggle-admin-squad", squadId: squad.id, activationEnabled: squad.activationEnabled ? "false" : "true" }
+        }, icon(squad.activationEnabled ? "fa-solid fa-toggle-on" : "fa-solid fa-toggle-off"), squad.activationEnabled ? "停用" : "启用")
+      );
+
+      return h("section", { className: "panel" },
+        h("div", { className: "detail-heading" },
+          h("div", {},
+            h("h2", { text: "可用小队" }),
+            h("p", { className: "status-value", text: routing.orderingPaused ? "下单暂停" : "下单开放" })
+          ),
+          h("div", { className: "row-actions" },
+            h("button", {
+              className: `button ${routing.orderingPaused ? "button-primary" : "button-ghost"}`,
+              type: "button",
+              dataset: { action: "restore-squad-ordering" }
+            }, icon("fa-solid fa-power-off"), "恢复下单"),
+            h("button", { className: "button button-ghost", type: "button", dataset: { action: "refresh-squads" } }, icon("fa-solid fa-rotate-right"), "刷新"),
+            h("button", { className: "button button-primary", type: "button", dataset: { action: "open-admin-squad-form" } }, icon("fa-solid fa-plus"), "新增小队")
+          )
+        ),
+        h("div", { className: "metric-strip" },
+          h("div", { className: "metric" }, h("strong", { text: counts.online }), h("span", { text: "online" })),
+          h("div", { className: "metric" }, h("strong", { text: counts.working }), h("span", { text: "working" })),
+          h("div", { className: "metric" }, h("strong", { text: counts.offline }), h("span", { text: "offline" }))
+        ),
+        this.simpleTable(["小队名称", "状态", "小队成员", "小队群号", "小队经营项目", "小队活跃时间", "操作"], squads.map((squad) => [
+          protectedText(squad.name || "未命名", "notranslate"),
+          protectedText(squadStatusLabel(squad.status), "status-value"),
+          protectedText(squadMembersLabel(squad), "notranslate"),
+          protectedText(`${squadGroupTypeLabel(squad.groupType)} ${squad.groupNumber || "未设置"}`, "notranslate"),
+          protectedText(squadProjectsLabel(squad), "notranslate"),
+          squad.activeTime || "未设置",
+          rowActions(squad)
+        ]))
+      );
     },
     adminUsers() {
       const { role, userId, tab } = State.route.params;
@@ -7245,7 +7658,7 @@ function mailboxHasClaim(message) {
         );
       }
       const map = {
-        about: ["关于 IMPULSE J", `${BrandName} is driven by gamers' momentum and focuses on a cleaner game-service commerce experience.`],
+        about: [`关于${BrandName}`, `${BrandName}当前以${LightEditionName}运行，优先保留交易主干、商品浏览和小队分流能力。`],
         help: ["帮助中心", "普通 Gamer 可浏览、注册、下单和预约；Vector 账号可处理订单；管理员账号可维护内容与数据。"]
       };
       const [title, body] = map[page] || map.about;
@@ -7254,7 +7667,7 @@ function mailboxHasClaim(message) {
   };
 
   const Auth = {
-    open(initialMode = "login") {
+    open(initialMode = "login", options = {}) {
       let mode = initialMode;
       let loginMethod = "password";
       const render = () => {
@@ -7414,7 +7827,7 @@ function mailboxHasClaim(message) {
 
         const card = h("div", { className: "modal-card auth-card slide-up" },
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
-          h("h2", { text: isLogin ? "登录 IMPULSE J" : "注册 IMPULSE J" }),
+          h("h2", { text: isLogin ? `登录 ${BrandName}` : `注册 ${BrandName}` }),
           h("p", { className: "auth-subtitle", text: isLogin ? "可以使用账户密码登录，也可以切换为邮箱验证码登录。" : "注册时填写账户资料；带 * 的项目为必填，注册后不可修改。" }),
           h("div", { className: "tabs" },
             h("button", { className: `tab ${isLogin ? "active" : ""}`, type: "button", onClick: () => { mode = "login"; render(); } }, "登录"),
@@ -7422,13 +7835,54 @@ function mailboxHasClaim(message) {
           ),
           form
         );
-        UI.openModal(card);
+        UI.openModal(card, { onClose: options.onClose });
       };
       render();
     }
   };
 
+  const HomeLoginPrompt = {
+    dismissed: false,
+    scheduled: false,
+    reset() {
+      this.dismissed = false;
+      this.scheduled = false;
+    },
+    shouldOpen() {
+      return !State.currentUser
+        && State.route.name === "home"
+        && !this.dismissed
+        && !Dom.modalRoot?.childElementCount;
+    },
+    schedule() {
+      if (this.scheduled || !this.shouldOpen()) {
+        return;
+      }
+      this.scheduled = true;
+      window.requestAnimationFrame(() => {
+        this.scheduled = false;
+        if (!this.shouldOpen()) {
+          return;
+        }
+        Auth.open("login", {
+          onClose: () => {
+            this.dismissed = true;
+          }
+        });
+      });
+    }
+  };
+
   const Actions = {
+    showPointsPaused(title = "暂未开放") {
+      UI.openModal(
+        h("div", { className: "modal-card slide-up" },
+          h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+          h("h2", { text: title }),
+          h("p", { text: PointsSystemPausedMessage })
+        )
+      );
+    },
     openProductDetail(productId) {
       const found = Data.findProduct(productId);
       if (!found) {
@@ -7472,15 +7926,8 @@ function mailboxHasClaim(message) {
         UI.toast("账户不可用", "当前账户暂时不能提交订单。");
         return;
       }
-      if ((Number(profile.funds) || 0) < price) {
-        const shortage = formatPrice(price - Number(profile.funds || 0));
-        UI.toast("余额不足", contentLanguage() === "zh-CN" ? `还需 ${shortage}，请先充值。` : `Need ${shortage} more. Please recharge first.`);
-        this.openRecharge(profile, price - Number(profile.funds || 0));
-        return;
-      }
       const fields = [
         type === "reservation" ? { name: "appointmentAt", label: "预约时间", type: "datetime-local", required: true } : null,
-        { name: "autoCancelMinutes", label: "无人接单自动退单时间（分钟）", type: "number", value: "60", min: "1", step: "1", required: true },
         { name: "note", label: "备注", type: "textarea", placeholder: "角色信息、段位、期望目标或其他要求" }
       ].filter(Boolean);
 
@@ -7489,16 +7936,10 @@ function mailboxHasClaim(message) {
         submitLabel: type === "reservation" ? "提交预约" : "提交订单",
         fields,
         onSubmit: async (values) => {
-          const minutes = Math.ceil(Number(values.autoCancelMinutes));
-          if (!Number.isFinite(minutes) || minutes < 1) {
-            return { error: "自动退单时间至少为 1 分钟。" };
-          }
           const latestProfile = Data.profileByUsername(State.currentUser.username);
-          if (!latestProfile || (Number(latestProfile.funds) || 0) < price) {
-            window.setTimeout(() => this.openRecharge(latestProfile, price - Number(latestProfile?.funds || 0)), 0);
-            return { error: "余额不足，请先充值。" };
+          if (!latestProfile || latestProfile.deleted || isBanned(latestProfile)) {
+            return { error: "账户不可用。" };
           }
-          const autoCancelMinutes = Math.min(minutes, 10080);
           const orderPayload = {
             type,
             categoryId: category.id,
@@ -7514,22 +7955,13 @@ function mailboxHasClaim(message) {
             customerUsername: State.currentUser.username,
             contact: "",
             appointmentAt: values.appointmentAt || "",
-            note: values.note || "",
-            autoCancelMinutes,
-            autoCancelAt: new Date(Date.now() + autoCancelMinutes * 60000).toISOString()
+            note: values.note || ""
           };
-          let result = await Backend.createOrder(orderPayload);
-          if (result.offline) {
-            result = Data.createOrder(orderPayload);
-          }
+          const result = await Backend.createRoutedOrder(orderPayload);
           if (!result.ok) {
-            if (result.reason === "insufficient") {
-              window.setTimeout(() => this.openRecharge(latestProfile, price - Number(result.balance || 0)), 0);
-              return { error: result.message || "余额不足，请先充值。" };
-            }
             return { error: result.message || "订单创建失败，请稍后重试。" };
           }
-          UI.toast("提交成功", type === "reservation" ? "预约已进入待处理。" : "订单已进入待处理。");
+          UI.toast("订单已分配", "小队群号已发送至注册邮箱，请查看邮件并按说明进群。");
           Router.go("account");
           return null;
         },
@@ -7537,6 +7969,10 @@ function mailboxHasClaim(message) {
       });
     },
     openRecharge(profile = null, needed = 0) {
+      if (PointsSystemPaused) {
+        this.showPointsPaused("暂未开放");
+        return;
+      }
       const currentProfile = profile || (State.currentUser ? Data.profileByUsername(State.currentUser.username) : null);
       if (!currentProfile) {
         UI.toast("请先登录", "登录后才可以充值积分。");
@@ -7954,7 +8390,7 @@ function mailboxHasClaim(message) {
               if (!result.ok) {
                 return { error: result.message };
               }
-              UI.toast("绑定邮箱已修改", "已向原邮箱和新邮箱发送英文通知。");
+              UI.toast("绑定邮箱已修改", "已向原邮箱和新邮箱发送中文通知。");
               window.setTimeout(() => this.openEmailBindingSettings(), 0);
               return null;
             }
@@ -7972,7 +8408,7 @@ function mailboxHasClaim(message) {
       const emailInput = h("input", { name: "notificationEmail", type: "email", value: profile.notificationEmail || userEmail(user), placeholder: "name@example.com", required: true });
       const message = h("p", { className: "form-message" });
       const form = h("form", { className: "form-stack" },
-        h("p", { text: "通知邮箱默认为绑定邮箱，可单独修改。所有邮件通知均以英语发送。" }),
+        h("p", { text: "通知邮箱默认为绑定邮箱，可单独修改。所有邮件通知均以中文发送。" }),
         h("label", { className: "field" }, "通知邮箱", emailInput),
         h("div", { className: "notice-list" },
           EmailNoticeTypes.map((notice) => h("label", { className: "notice-toggle" },
@@ -8001,7 +8437,7 @@ function mailboxHasClaim(message) {
         Data.saveProfile({ ...profile, notificationEmail, emailNotices });
         Data.log("更新联系设置", profile.username);
         UI.closeModal();
-        UI.toast("联系设置已保存", "邮件通知语言固定为英语。");
+        UI.toast("联系设置已保存", "邮件通知语言固定为中文。");
         App.render();
         loader?.doneSoon();
       });
@@ -8049,6 +8485,9 @@ function mailboxHasClaim(message) {
         UI.toast(title, detail);
         return { ok: false, message: detail || title };
       };
+      if (vectorSupportChatIsPaused()) {
+        return fail("暂未开放", vectorSupportChatPausedDetail());
+      }
       try {
         Data.processRushBreaches();
         const repaired = Data.repairOrderConversationState(orderId);
@@ -8174,6 +8613,10 @@ function mailboxHasClaim(message) {
       }
     },
     openRushForm(orderId) {
+      if (PointsSystemPaused) {
+        this.showPointsPaused("暂未开放");
+        return;
+      }
       const order = Data.orderById(orderId);
       const fee = Math.ceil(Number(order?.price || 0) * RushFeeRate);
       UI.openFormModal({
@@ -8190,8 +8633,7 @@ function mailboxHasClaim(message) {
           const result = Data.requestRush(orderId, values.days);
           if (!result.ok) {
             if (result.reason === "insufficient") {
-              window.setTimeout(() => this.openRecharge(null, fee), 0);
-              return { error: "余额不足，请先充值。" };
+              return { error: PointsSystemPaused ? PointsSystemPausedMessage : "余额不足，请先充值。" };
             }
             return { error: "当前订单不能申请加急。" };
           }
@@ -8202,6 +8644,10 @@ function mailboxHasClaim(message) {
       });
     },
     openReturnForm(orderId) {
+      if (PointsSystemPaused) {
+        this.showPointsPaused("暂未开放");
+        return;
+      }
       UI.openFormModal({
         title: "申请退单",
         fields: [
@@ -8253,6 +8699,10 @@ function mailboxHasClaim(message) {
       });
     },
     openTipForm(orderId) {
+      if (PointsSystemPaused) {
+        this.showPointsPaused("暂未开放");
+        return;
+      }
       UI.openFormModal({
         title: "支付小费",
         fields: [
@@ -8271,8 +8721,7 @@ function mailboxHasClaim(message) {
           const result = Data.tipOrder(orderId, amount);
           if (!result.ok) {
             if (result.reason === "insufficient") {
-              window.setTimeout(() => this.openRecharge(null, amount), 0);
-              return { error: "余额不足，请先充值。" };
+              return { error: PointsSystemPaused ? PointsSystemPausedMessage : "余额不足，请先充值。" };
             }
             return { error: "当前订单不能支付小费。" };
           }
@@ -8317,7 +8766,7 @@ function mailboxHasClaim(message) {
             h("div", { className: "menu-summary-icon" }, icon("fa-regular fa-user")),
             h("div", {},
               h("strong", { text: localizeStaticPhrase("访客") }),
-              h("span", {}, localizeStaticPhrase("当前版本"), " ", h("span", { className: "notranslate", translate: "no", text: CurrentRelease.version }))
+              h("span", {}, releaseEditionLabel(CurrentRelease), " · ", localizeStaticPhrase("当前版本"), " ", h("span", { className: "notranslate", translate: "no", text: CurrentRelease.version }))
             )
           )
         };
@@ -8329,7 +8778,7 @@ function mailboxHasClaim(message) {
           profileAvatarNode(profile, profile.username, "profile-avatar profile-avatar-small menu-avatar"),
           h("div", {},
             h("strong", { className: "notranslate", translate: "no", text: profile.username }),
-            h("span", {}, modeLabel, " · ", h("span", { className: "notranslate", translate: "no", text: CurrentRelease.version }))
+            h("span", {}, modeLabel, " · ", releaseEditionLabel(CurrentRelease), " · ", h("span", { className: "notranslate", translate: "no", text: CurrentRelease.version }))
           )
         )
       };
@@ -8379,6 +8828,7 @@ function mailboxHasClaim(message) {
           ),
           h("div", { className: "release-meta-grid" },
             this.releaseMeta(localizeStaticPhrase("版本号"), release.version, true),
+            this.releaseMeta(localizeStaticPhrase("版本形态"), releaseEditionLabel(release), true),
             this.releaseMeta(localizeStaticPhrase("发布时间"), release.releasedAt, true)
           ),
           isAdmin ? h("div", { className: "modal-actions" },
@@ -8399,6 +8849,7 @@ function mailboxHasClaim(message) {
           ),
           h("div", { className: "release-meta-grid" },
             this.releaseMeta(localizeStaticPhrase("版本号"), release.version, true),
+            this.releaseMeta(localizeStaticPhrase("版本形态"), releaseEditionLabel(release), true),
             this.releaseMeta(localizeStaticPhrase("版本名称"), localizedI18n(release.nameI18n)),
             this.releaseMeta(localizeStaticPhrase("发布时间"), release.releasedAt, true),
             this.releaseMeta(localizeStaticPhrase("上传状态"), localizedI18n(release.statusI18n))
@@ -8446,7 +8897,6 @@ function mailboxHasClaim(message) {
         { type: "separator" },
         { label: "我的订单", icon: "fa-solid fa-receipt", action: () => Router.go("account") },
         State.currentUser?.role !== "admin" ? { label: "充值积分", icon: "fa-solid fa-coins", action: () => this.openRecharge() } : null,
-        { label: "语言选择", icon: "fa-solid fa-language", action: () => this.openLanguageSelector() },
         { label: "当前版本", icon: "fa-solid fa-code-branch", action: () => this.openCurrentVersion() },
         State.currentUser?.role === "admin" ? { label: "开发日志", icon: "fa-solid fa-clock-rotate-left", action: () => this.openDevelopmentLog() } : null,
         { type: "separator" },
@@ -8455,6 +8905,20 @@ function mailboxHasClaim(message) {
       UI.showMenuFromElement(anchor, items);
     },
     openMailbox() {
+      if (MailCenterPaused) {
+        UI.openModal(
+          h("div", { className: "modal-card slide-up", dataset: { lifecycle: MailCenterLifecycleStatus } },
+            h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
+            h("h2", { text: "邮件中心" }),
+            h("div", { className: "mailbox-empty mailbox-load-state" },
+              icon("fa-regular fa-envelope"),
+              h("strong", { text: MailCenterPausedMessage }),
+              h("span", { text: "内部邮件系统暂时封存。" })
+            )
+          )
+        );
+        return;
+      }
       if (!State.currentUser) {
         Auth.open("login");
         return;
@@ -8537,6 +9001,12 @@ function mailboxHasClaim(message) {
         Translation.refresh();
       };
       const claimMessage = async (message, { silent = false } = {}) => {
+        if (PointsSystemPaused) {
+          if (!silent) {
+            UI.toast("暂未开放", PointsSystemPausedMessage);
+          }
+          return pointsSystemPausedResult("积分领取功能暂未开放。");
+        }
         if (!mailboxClaimAvailable(message)) {
           return { ok: false, message: "没有可领取的积分。" };
         }
@@ -8875,33 +9345,20 @@ function mailboxHasClaim(message) {
       UI.showMenuFromElement(anchor, [
         this.accountMenuSummary(),
         { type: "separator" },
-        { label: "语言选择", icon: "fa-solid fa-language", action: () => this.openLanguageSelector() },
         { label: "当前版本", icon: "fa-solid fa-code-branch", action: () => this.openCurrentVersion() },
         { type: "separator" },
         { label: "登录", icon: "fa-regular fa-user", action: () => Auth.open("login") }
       ]);
     },
     openLanguageSelector() {
-      const current = Translation.selected();
       UI.openModal(
-        h("div", { className: "modal-card slide-up" },
+        h("div", { className: "modal-card slide-up", dataset: { lifecycle: LanguageModeLifecycleStatus } },
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
-          h("h2", { text: "语言选择" }),
-          h("p", { className: "language-control-note notranslate", translate: "no", text: ControllingLanguageNotice }),
-          h("p", { className: "language-helper-note", text: "普通界面会继续支持多语言；法律、资金规则、争议结论、提现说明和官方邮件始终以英文为准。" }),
-          h("div", { className: "language-grid" },
-            Languages.map((language) => h("button", {
-              className: `language-option ${language.code === current ? "active" : ""}`,
-              type: "button",
-              onClick: () => {
-                UI.closeModal();
-                Translation.choose(language.code);
-              }
-            },
-              h("span", { className: "notranslate", translate: "no", text: language.nativeName }),
-              h("small", { className: "notranslate", translate: "no", text: languageName(language.code, current) }),
-              language.code === current ? icon("fa-solid fa-check") : null
-            ))
+          h("h2", { text: "语言模式" }),
+          h("div", { className: "mailbox-empty mailbox-load-state" },
+            icon("fa-solid fa-language"),
+            h("strong", { text: "暂未开放" }),
+            h("span", { text: LanguageModePausedMessage })
           )
         )
       );
@@ -8913,9 +9370,18 @@ function mailboxHasClaim(message) {
         App.render();
         return;
       }
+      if (PointsSystemPaused && ((status === "completed" && Number(order.price || 0) > 0) || (status === "cancelled" && Number(order.price || 0) > 0 && !order.refundedAt))) {
+        this.showPointsPaused("暂未开放");
+        App.render();
+        return;
+      }
       if (status === "processing" && isAutoCancelDue(order)) {
-        Data.refundOrder(order, "超时无人接单自动退单");
-        UI.toast("订单已退单", "该订单因超时无人接单已自动退款。");
+        if (PointsSystemPaused && Number(order.price || 0) > 0) {
+          this.showPointsPaused("暂未开放");
+        } else {
+          Data.refundOrder(order, "超时无人接单自动退单");
+          UI.toast("订单已退单", "该订单因超时无人接单已自动退款。");
+        }
         App.render();
         return;
       }
@@ -8962,12 +9428,15 @@ function mailboxHasClaim(message) {
       Data.updateOrder(orderId, { status, updatedAt: new Date().toISOString() });
       if (status === "processing") {
         const accepted = Data.orderById(orderId);
-        Data.addChatMessage(orderId, {
-          sender: "SYSTEM",
-          role: "system",
-          type: "system",
-          text: `${accepted?.handledBy || "Vector"} 已接单，聊天功能已开启。`
-        });
+        // Chat is paused across the user boundary: accepting the order may proceed, but must not create new chat records or claim chat is available.
+        if (!vectorSupportChatIsPaused()) {
+          Data.addChatMessage(orderId, {
+            sender: "SYSTEM",
+            role: "system",
+            type: "system",
+            text: `${accepted?.handledBy || "Vector"} 已接单。`
+          });
+        }
         Data.notifyUser(Data.profileByUsername(accepted?.customerUsername), "orderAccepted", {
           orderId: accepted?.id,
           itemName: accepted?.productTitle,
@@ -8981,8 +9450,12 @@ function mailboxHasClaim(message) {
       App.render();
     },
     cancelOrder(orderId) {
+      const order = Data.orderById(orderId);
+      if (PointsSystemPaused && Number(order?.price || 0) > 0 && !order?.refundedAt) {
+        this.showPointsPaused("暂未开放");
+        return;
+      }
       UI.openConfirm("取消订单？", "取消后订单状态会变为已取消，并返还已扣除积分。", () => {
-        const order = Data.orderById(orderId);
         if (order && !order.refundedAt && Number(order.price || 0) > 0) {
           Data.refundOrder(order, "用户取消订单退款");
         } else {
@@ -9024,6 +9497,102 @@ function mailboxHasClaim(message) {
         UI.toast("日志已清空");
         App.render();
       });
+    },
+    async refreshSquads(options = {}) {
+      const result = await Backend.listSquads();
+      if (!result.ok) {
+        UI.toast("小队同步失败", result.message || "请稍后重试。");
+        return result;
+      }
+      if (!options.silent) {
+        UI.toast("小队已同步");
+      }
+      App.render();
+      return result;
+    },
+    openSquadForm(squadId = "") {
+      const squad = Data.squadById(squadId) || {};
+      UI.openFormModal({
+        title: squad.id ? "编辑小队" : "新增小队",
+        fields: [
+          { name: "name", label: "小队名称", value: squad.name || "", required: true },
+          { name: "member1", label: "队长", value: squad.members?.[0] || "", required: true },
+          { name: "member2", label: "成员二", value: squad.members?.[1] || "", required: true },
+          { name: "member3", label: "成员三", value: squad.members?.[2] || "", required: true },
+          { name: "groupType", label: "群类型", type: "select", value: squad.groupType || "qq", options: [{ value: "qq", label: "QQ群" }, { value: "wechat", label: "微信群" }] },
+          { name: "groupNumber", label: "群号", value: squad.groupNumber || "", placeholder: "数字群号", required: true },
+          { name: "businessProjects", label: "经营项目", value: (squad.businessProjects || []).join("，"), placeholder: "项目名，用逗号分隔" },
+          { name: "activeTime", label: "活跃时间", value: squad.activeTime || "", placeholder: "10:00-24:00" },
+          { name: "activationEnabled", label: "激活开关", type: "checkbox", checked: squad.id ? Boolean(squad.activationEnabled) : true }
+        ],
+        submitLabel: "保存小队",
+        onSubmit: async (values) => {
+          const groupNumber = String(values.groupNumber || "").trim();
+          if (!/^\d+$/.test(groupNumber)) {
+            return { error: "群号必须为数字。" };
+          }
+          const payload = {
+            ...(squad.id ? { id: squad.id } : {}),
+            name: String(values.name || "").trim(),
+            members: [values.member1, values.member2, values.member3].map((item) => String(item || "").trim()),
+            groupType: values.groupType === "wechat" ? "wechat" : "qq",
+            groupNumber,
+            businessProjects: splitSquadList(values.businessProjects),
+            activeTime: String(values.activeTime || "").trim(),
+            activationEnabled: values.activationEnabled === "on"
+          };
+          const result = await Backend.saveSquad(payload);
+          if (!result.ok) {
+            return { error: result.message || "小队保存失败，请稍后重试。" };
+          }
+          UI.toast("小队已保存", result.squad?.name || payload.name);
+          App.render();
+          return null;
+        },
+        wide: true
+      });
+    },
+    async toggleSquad(squadId, activationEnabled) {
+      const result = await Backend.toggleSquad(squadId, String(activationEnabled) === "true");
+      if (!result.ok) {
+        UI.toast("小队状态未更新", result.message || "请稍后重试。");
+        return;
+      }
+      UI.toast("小队状态已更新", `${result.squad?.name || squadId} -> ${squadStatusLabel(result.squad?.status)}`);
+      App.render();
+    },
+    async restoreSquadOrdering() {
+      const result = await Backend.restoreSquadOrdering();
+      if (!result.ok) {
+        UI.toast("恢复下单失败", result.message || "请稍后重试。");
+        return;
+      }
+      UI.toast("下单已恢复");
+      App.render();
+    },
+    async resendSquadEmail(orderId) {
+      const result = await Backend.resendSquadRoutingEmail(orderId);
+      if (result.forceLogout) {
+        UI.openConfirm("系统繁忙请重新登录", "系统繁忙请重新登录", () => Session.logout());
+        App.render();
+        return;
+      }
+      if (!result.ok) {
+        UI.toast("重新发送失败", result.message || "请稍后重试。");
+        App.render();
+        return;
+      }
+      UI.toast("小队邮件已重新发送", "请查看注册邮箱。");
+      App.render();
+    },
+    async completeRoutedOrder(orderId) {
+      const result = await Backend.completeRoutedOrder(orderId);
+      if (!result.ok) {
+        UI.toast("结单失败", result.message || "请稍后重试。");
+        return;
+      }
+      UI.toast("结单完成", "小队已回到 online。");
+      App.render();
     },
     openBackupEmailSettings() {
       const current = Data.systemSettings().backupEmail;
@@ -9092,6 +9661,9 @@ function mailboxHasClaim(message) {
           State.adminUnlocked[section] = true;
           Data.log("打开管理分区", meta.title);
           Router.go("admin", { section });
+          if (section === "squads") {
+            this.refreshSquads({ silent: true });
+          }
         }
       });
     },
@@ -9124,6 +9696,10 @@ function mailboxHasClaim(message) {
       Data.log("资金核对", `${profile.username} 差额 ${diff}`);
     },
     saveManualFunds(target) {
+      if (PointsSystemPaused) {
+        this.showPointsPaused("暂未开放");
+        return;
+      }
       const profile = Data.profileById(target.dataset.userId);
       const panel = target.closest(".panel");
       const input = panel ? panel.querySelector("[data-action='manual-funds-input']") : null;
@@ -9385,6 +9961,7 @@ function mailboxHasClaim(message) {
         const description = contentValues(item, "description");
         const duration = contentValues(item, "duration");
         const badge = contentValues(item, "badge");
+        const eligibleSquadIds = productEligibleSquadIds(item);
         UI.openFormModal({
           title: id ? "编辑商品" : "新增商品",
           fields: [
@@ -9398,10 +9975,12 @@ function mailboxHasClaim(message) {
             { name: "durationZh", label: "中文服务时长", value: duration["zh-CN"] || "" },
             { name: "badgeEn", label: "英文标签", value: badge.en || "" },
             { name: "badgeZh", label: "中文标签", value: badge["zh-CN"] || "" },
+            { name: "eligibleSquadIds", label: "可接单小队", type: "squad-selector", value: eligibleSquadIds },
             { name: "icon", label: "图标 class", value: item.icon || "fa-solid fa-gamepad" }
           ],
-          onSubmit: (values) => {
-            Data.upsertProduct(gameId, {
+          onSubmit: async (values) => {
+            const selectedSquadIds = splitSquadList(values.eligibleSquadIds);
+            const nextProduct = {
               ...item,
               title: values.titleZh.trim(),
               description: values.descriptionZh.trim(),
@@ -9414,9 +9993,22 @@ function mailboxHasClaim(message) {
               badge: values.badgeZh.trim(),
               badgeI18n: localizedPair(values.badgeEn, values.badgeZh),
               icon: values.icon.trim()
-            });
+            };
+            delete nextProduct.eligibleSquadIds;
+            delete nextProduct.availableSquadIds;
+            delete nextProduct.supportedSquadIds;
+            Data.upsertProduct(gameId, nextProduct);
+            const synced = await Backend.syncNow("product-save");
+            if (!synced.ok) {
+              return { error: synced.message || "商品同步后端失败，小队绑定未保存。" };
+            }
+            const bound = await Backend.saveProductSquads(nextProduct.id, selectedSquadIds);
+            if (!bound.ok) {
+              return { error: bound.message || "可接单小队保存失败。" };
+            }
             UI.toast("商品已保存");
             App.render();
+            return null;
           },
           wide: true
         });
@@ -9671,6 +10263,18 @@ function mailboxHasClaim(message) {
       if (action === "run-retention-cleanup") {
         Actions.runRetentionCleanup();
       }
+      if (action === "refresh-squads") {
+        return Actions.refreshSquads();
+      }
+      if (action === "open-admin-squad-form" || action === "edit-admin-squad") {
+        Actions.openSquadForm(target.dataset.squadId);
+      }
+      if (action === "toggle-admin-squad") {
+        return Actions.toggleSquad(target.dataset.squadId, target.dataset.activationEnabled);
+      }
+      if (action === "restore-squad-ordering") {
+        return Actions.restoreSquadOrdering();
+      }
       if (action === "admin-add-content") {
         Actions.editItem(target.dataset.manageType);
       }
@@ -9697,6 +10301,12 @@ function mailboxHasClaim(message) {
       }
       if (action === "cancel-order") {
         return Actions.cancelOrder(target.dataset.orderId);
+      }
+      if (action === "resend-squad-email") {
+        return Actions.resendSquadEmail(target.dataset.orderId);
+      }
+      if (action === "complete-routed-order") {
+        return Actions.completeRoutedOrder(target.dataset.orderId);
       }
       if (action === "open-order-chat") {
         return Actions.openOrderChat(target.dataset.orderId);
@@ -9731,6 +10341,7 @@ function mailboxHasClaim(message) {
       Translation.localizeStaticUi(document.body);
       Translation.refresh();
       UI.hideMenu();
+      HomeLoginPrompt.schedule();
     }
   };
 
