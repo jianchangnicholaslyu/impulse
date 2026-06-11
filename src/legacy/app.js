@@ -224,6 +224,21 @@
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
     {
+      version: "v0.20.18",
+      releasedAt: "2026-06-11",
+      nameI18n: localizedPair("Homepage Promo Image", "首页宣传图上线"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Adds the supplied 夕夕电竞 banner image to the homepage promo slot while keeping the catalog totals below it.",
+        "将用户提供的夕夕电竞横幅图放入首页宣传位，并保留分类、分区和商品统计在宣传位下方独立展示。"
+      ),
+      itemsI18n: [
+        localizedPair("The homepage promo slot now renders the supplied banner image as a static production asset.", "首页宣传位现在展示用户提供的横幅图片，并作为生产静态资源加载。"),
+        localizedPair("The category, game section, and product totals remain outside the promo image area.", "分类、分区和商品统计继续独立展示在宣传图下方。"),
+        localizedPair("Catalog data, checkout behavior, and paused feature gates are unchanged.", "目录数据、下单行为和 paused 功能门禁均未变更。")
+      ]
+    },
+    {
       version: "v0.20.17",
       releasedAt: "2026-06-11",
       nameI18n: localizedPair("Homepage Promo Slot Layout", "首页宣传位布局调整"),
@@ -6678,6 +6693,11 @@ function mailboxHasClaim(message) {
         delete Dom.heroPanel.dataset.noMachineTranslate;
       }
       if (homePromoSlot) {
+        Dom.heroPanel.appendChild(h("img", {
+          className: "home-promo-image",
+          src: "/assets/home-promo-xixi-esports.jpg",
+          alt: "夕夕电竞宣传图"
+        }));
         return;
       }
       Dom.heroPanel.append(
