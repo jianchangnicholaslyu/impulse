@@ -224,6 +224,21 @@
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
     {
+      version: "v0.20.17",
+      releasedAt: "2026-06-11",
+      nameI18n: localizedPair("Homepage Promo Slot Layout", "首页宣传位布局调整"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Turns the homepage hero into an empty future promo photo slot and moves the catalog totals into a separate row below it.",
+        "将首页 hero 区域调整为空的未来宣传照片承载区，并把目录统计独立移动到该区域下方。"
+      ),
+      itemsI18n: [
+        localizedPair("Homepage hero copy is removed from the promo slot so the area can later hold campaign imagery.", "首页宣传位内的文字已移除，后续可用于悬挂宣传照片。"),
+        localizedPair("The category, game section, and product totals now render as a standalone stats row below the promo slot.", "分类、分区和商品统计现在作为独立统计行展示在宣传位下方。"),
+        localizedPair("Catalog data and paused feature lifecycle rules are unchanged.", "目录数据逻辑与 paused 功能生命周期规则均未变更。")
+      ]
+    },
+    {
       version: "v0.20.16",
       releasedAt: "2026-06-11",
       nameI18n: localizedPair("Catalog Snapshot Authority Fix", "目录快照权威源修复"),
@@ -6650,15 +6665,20 @@ function mailboxHasClaim(message) {
     renderHero() {
       const meta = this.pageMeta();
       const protectedInfo = State.route.name === "info" && LegalInfoPages.includes(State.route.params.page);
+      const homePromoSlot = State.route.name === "home";
       clear(Dom.heroPanel);
       Dom.heroPanel.classList.toggle("notranslate", protectedInfo);
       Dom.heroPanel.classList.toggle("policy-hero", protectedInfo);
+      Dom.heroPanel.classList.toggle("promo-slot", homePromoSlot);
       if (protectedInfo) {
         Dom.heroPanel.setAttribute("translate", "no");
         Dom.heroPanel.dataset.noMachineTranslate = "true";
       } else {
         Dom.heroPanel.removeAttribute("translate");
         delete Dom.heroPanel.dataset.noMachineTranslate;
+      }
+      if (homePromoSlot) {
+        return;
       }
       Dom.heroPanel.append(
         h("div", {},
@@ -7121,7 +7141,14 @@ function mailboxHasClaim(message) {
           dataset: { categoryId: category.id, manageType: "category", manageId: category.id }
         }))
       ) : Components.empty("暂无分类。");
-      return State.mode === "admin" ? h("div", { className: "admin-stack" }, adminEditToolbar(), content) : content;
+      const metrics = Data.metrics();
+      const stats = h("div", { className: "hero-stats home-stats" },
+        [["分类", metrics.categories], ["分区", metrics.games], ["商品", metrics.products]]
+          .map(([label, value]) => h("div", { className: "stat" }, h("strong", { text: value }), h("span", { text: label })))
+      );
+      return State.mode === "admin"
+        ? h("div", { className: "admin-stack home-catalog" }, stats, adminEditToolbar(), content)
+        : h("div", { className: "home-catalog" }, stats, content);
     },
     category(categoryId) {
       const category = Data.category(categoryId);

@@ -502,6 +502,10 @@ p {
   backdrop-filter: blur(18px);
 }
 
+.hero-panel.promo-slot {
+  min-height: clamp(220px, 30vw, 360px);
+}
+
 .hero-kicker {
   margin: 0 0 8px;
   color: var(--accent);
@@ -547,6 +551,15 @@ p {
 .stat span {
   color: var(--muted);
   font-size: 0.84rem;
+}
+
+.home-catalog {
+  display: grid;
+  gap: 18px;
+}
+
+.home-stats {
+  min-width: 0;
 }
 
 .breadcrumb {
