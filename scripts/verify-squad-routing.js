@@ -255,6 +255,26 @@ function snapshotSeed() {
   assert.equal((result.snapshot.games["cat-new"] || []).some((game) => game.id === "game-new"), true, "customer sees saved game section");
   assert.equal((result.snapshot.products["game-new"] || []).some((product) => product.id === "prod-new"), true, "customer sees saved product");
 
+  result = await action("bootstrap", {
+    snapshot: {
+      categories: [{
+        id: "cat-stale",
+        title: "旧本地分类"
+      }],
+      games: {
+        "cat-stale": [{ id: "game-stale", title: "旧本地分区" }]
+      },
+      products: {
+        "game-stale": [{ id: "prod-stale", title: "旧本地商品", price: 1 }]
+      }
+    }
+  }, customer);
+  assert.equal(result.ok, true, "stale customer catalog bootstrap is accepted without catalog import");
+  db = await readDb();
+  assert.equal(db.categories.some((category) => category.id === "cat-stale"), false, "stale customer category cannot be imported into durable catalog");
+  assert.equal(Boolean(db.games["cat-stale"]), false, "stale customer game section cannot be imported into durable catalog");
+  assert.equal(Boolean(db.products["game-stale"]), false, "stale customer product cannot be imported into durable catalog");
+
   result = await action("deleteCatalogItem", { type: "game", categoryId: "cat", id: "game" }, customer);
   assert.equal(result.ok, false, "customer cannot delete catalog items");
   assert.equal(result.status, 403);
@@ -264,6 +284,15 @@ function snapshotSeed() {
   db = await readDb();
   assert.equal((db.games.cat || []).some((game) => game.id === "game"), false, "deleted game section is removed from durable games");
   assert.equal(Boolean(db.products.game), false, "deleted game section removes child products");
+
+  result = await action("saveSnapshot", {
+    reason: "stale-admin-refresh",
+    snapshot: snapshotSeed()
+  }, admin);
+  assert.equal(result.ok, true, "stale admin saveSnapshot is accepted without catalog restore");
+  db = await readDb();
+  assert.equal((db.games.cat || []).some((game) => game.id === "game"), false, "stale admin snapshot cannot restore deleted game section");
+  assert.equal(Boolean(db.products.game), false, "stale admin snapshot cannot restore deleted child products");
 
   console.log("Squad routing backend fixture passed");
 })().catch((error) => {

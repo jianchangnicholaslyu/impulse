@@ -224,6 +224,21 @@
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
     {
+      version: "v0.20.16",
+      releasedAt: "2026-06-11",
+      nameI18n: localizedPair("Catalog Snapshot Authority Fix", "目录快照权威源修复"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Keeps Admin catalog changes authoritative by preventing stale browser snapshots from restoring old categories, game sections, or products after refresh.",
+        "阻止浏览器旧快照在刷新后恢复旧分类、游戏分区或商品，确保管理员目录修改以服务端为权威。"
+      ),
+      itemsI18n: [
+        localizedPair("Client bootstrap and snapshot sync no longer import catalog categories, game sections, or products once the server has authoritative data.", "当服务端已有权威数据后，客户端启动和快照同步不再导入分类、游戏分区或商品。"),
+        localizedPair("Admin catalog saves and deletes remain the only supported durable write path for catalog changes.", "管理员目录保存和删除继续作为目录变更唯一受支持的持久写入路径。"),
+        localizedPair("Regression coverage now verifies stale customer and Admin snapshots cannot restore deleted or outdated catalog content.", "回归覆盖现在验证用户和管理员的旧快照都不能恢复已删除或过时的目录内容。")
+      ]
+    },
+    {
       version: "v0.20.15",
       releasedAt: "2026-06-11",
       nameI18n: localizedPair("Admin Catalog Persistence Fix", "管理目录持久化修复"),
@@ -3474,6 +3489,13 @@ function mailboxHasClaim(message) {
     },
     mergeSnapshot(remoteSnapshot) {
       const local = this.snapshot();
+      const remoteCategories = Array.isArray(remoteSnapshot.categories) ? remoteSnapshot.categories : local.categories;
+      const remoteGames = remoteSnapshot.games && typeof remoteSnapshot.games === "object" && !Array.isArray(remoteSnapshot.games)
+        ? remoteSnapshot.games
+        : local.games;
+      const remoteProducts = remoteSnapshot.products && typeof remoteSnapshot.products === "object" && !Array.isArray(remoteSnapshot.products)
+        ? remoteSnapshot.products
+        : local.products;
       const remoteSquads = Array.isArray(remoteSnapshot.squads) ? remoteSnapshot.squads : Storage.get(Keys.squads, []);
       const remoteRouting = remoteSnapshot.squadRouting && typeof remoteSnapshot.squadRouting === "object" && !Array.isArray(remoteSnapshot.squadRouting)
         ? remoteSnapshot.squadRouting
@@ -3481,9 +3503,9 @@ function mailboxHasClaim(message) {
       return {
         users: this.mergeArrayBy(local.users, remoteSnapshot.users, (item) => normalize(item?.username || item?.email)),
         profiles: this.mergeArrayBy(local.profiles, remoteSnapshot.profiles, (item) => item?.id || normalize(item?.username)),
-        categories: this.mergeArrayBy(local.categories, remoteSnapshot.categories, (item) => item?.id),
-        games: this.mergeRecordLists(local.games, remoteSnapshot.games),
-        products: this.mergeRecordLists(local.products, remoteSnapshot.products),
+        categories: remoteCategories,
+        games: remoteGames,
+        products: remoteProducts,
         orders: this.mergeArrayBy(local.orders, remoteSnapshot.orders, (item) => item?.id),
         squads: remoteSquads,
         squadRouting: remoteRouting,

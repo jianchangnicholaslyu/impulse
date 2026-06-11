@@ -1336,9 +1336,30 @@ function stripOrderSquadRouting(order = {}) {
   return next;
 }
 
+function shouldImportCatalogSnapshot(db = {}, snapshot = {}) {
+  // Client catalog seed is allowed only for an empty, history-free store; after that, Admin catalog actions are authoritative.
+  const hasServerCatalog = Boolean(
+    (Array.isArray(db.categories) && db.categories.length)
+      || Object.keys(db.games || {}).length
+      || Object.keys(db.products || {}).length
+  );
+  const hasServerHistory = Boolean(
+    (Array.isArray(db.orders) && db.orders.length)
+      || (Array.isArray(db.adminLogs) && db.adminLogs.length)
+      || (Array.isArray(db.users) && db.users.length)
+  );
+  const hasIncomingCatalog = Boolean(
+    (Array.isArray(snapshot.categories) && snapshot.categories.length)
+      || Object.keys(snapshot.games || {}).length
+      || Object.keys(snapshot.products || {}).length
+  );
+  return hasIncomingCatalog && !hasServerCatalog && !hasServerHistory;
+}
+
 function importSnapshot(db, snapshot = {}) {
   const inputStorage = dbStorage(db);
   const inputPrimaryError = dbPrimaryStorageError(db);
+  const importCatalog = shouldImportCatalogSnapshot(db, snapshot);
   const mergedUsers = mergeArrayBy(db.users, snapshot.users, (user) => normalize(user?.username || user?.email), (existing, user) => ({
     ...existing,
     ...user,
@@ -1348,9 +1369,9 @@ function importSnapshot(db, snapshot = {}) {
     ...db,
     users: mergedUsers,
     profiles: mergeArrayBy(db.profiles, snapshot.profiles, (profile) => profile?.id || normalize(profile?.username)),
-    categories: mergeArrayBy(db.categories, snapshot.categories, (category) => category?.id),
-    games: mergeRecordLists(db.games, snapshot.games, (game) => game?.id),
-    products: mergeRecordLists(db.products, stripProductSquadBindings(snapshot.products), (product) => product?.id),
+    categories: importCatalog ? mergeArrayBy(db.categories, snapshot.categories, (category) => category?.id) : db.categories,
+    games: importCatalog ? mergeRecordLists(db.games, snapshot.games, (game) => game?.id) : db.games,
+    products: importCatalog ? mergeRecordLists(db.products, stripProductSquadBindings(snapshot.products), (product) => product?.id) : db.products,
     orders: mergeOrders(db.orders, Array.isArray(snapshot.orders) ? snapshot.orders.map(stripOrderSquadRouting) : []),
     squads: db.squads,
     squadRouting: db.squadRouting,
