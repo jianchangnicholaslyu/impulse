@@ -2912,6 +2912,109 @@ function saveProductSquadsOnBackend(db, payload = {}, actor) {
   return { ok: true, product: nextProduct, products: db.products };
 }
 
+function saveCatalogItemOnBackend(db, payload = {}, actor) {
+  const type = String(payload.type || "").trim();
+  const item = payload.item && typeof payload.item === "object" && !Array.isArray(payload.item) ? payload.item : null;
+  const categoryId = String(payload.categoryId || "").trim();
+  const gameId = String(payload.gameId || "").trim();
+  if (!item || !item.id || !["category", "game", "product"].includes(type)) {
+    return { ok: false, status: 400, message: "保存参数无效。" };
+  }
+  const now = nowIso();
+  const nextItem = {
+    ...item,
+    updatedAt: now,
+    updatedBy: actor.username
+  };
+  if (type === "category") {
+    const exists = db.categories.some((category) => category.id === nextItem.id);
+    db.categories = exists
+      ? db.categories.map((category) => (category.id === nextItem.id ? nextItem : category))
+      : [...db.categories, { ...nextItem, createdAt: nextItem.createdAt || now, createdBy: nextItem.createdBy || actor.username }];
+    db.games[nextItem.id] = Array.isArray(db.games[nextItem.id]) ? db.games[nextItem.id] : [];
+    log(db, exists ? "编辑分类" : "新增分类", `${nextItem.title || nextItem.id}`, actor.username);
+    return { ok: true, item: nextItem };
+  }
+  if (type === "game") {
+    if (!categoryId || !db.categories.some((category) => category.id === categoryId)) {
+      return { ok: false, status: 404, message: "分类不存在。" };
+    }
+    const list = Array.isArray(db.games[categoryId]) ? db.games[categoryId] : [];
+    const exists = list.some((game) => game.id === nextItem.id);
+    db.games[categoryId] = exists
+      ? list.map((game) => (game.id === nextItem.id ? nextItem : game))
+      : [...list, { ...nextItem, createdAt: nextItem.createdAt || now, createdBy: nextItem.createdBy || actor.username }];
+    db.products[nextItem.id] = Array.isArray(db.products[nextItem.id]) ? db.products[nextItem.id] : [];
+    log(db, exists ? "编辑游戏分区" : "新增游戏分区", `${nextItem.title || nextItem.id} / ${categoryId}`, actor.username);
+    return { ok: true, item: nextItem };
+  }
+  if (!gameId) {
+    return { ok: false, status: 400, message: "缺少分区参数。" };
+  }
+  const gameExists = Object.values(db.games || {}).some((list) => (
+    Array.isArray(list) && list.some((game) => game.id === gameId)
+  ));
+  if (!gameExists) {
+    return { ok: false, status: 404, message: "游戏分区不存在。" };
+  }
+  const list = Array.isArray(db.products[gameId]) ? db.products[gameId] : [];
+  const exists = list.some((product) => product.id === nextItem.id);
+  db.products[gameId] = exists
+    ? list.map((product) => (product.id === nextItem.id ? nextItem : product))
+    : [...list, { ...nextItem, createdAt: nextItem.createdAt || now, createdBy: nextItem.createdBy || actor.username }];
+  log(db, exists ? "编辑商品" : "新增商品", `${nextItem.title || nextItem.id} / ${gameId}`, actor.username);
+  return { ok: true, item: nextItem };
+}
+
+function deleteCatalogItemOnBackend(db, payload = {}, actor) {
+  const type = String(payload.type || "").trim();
+  const id = String(payload.id || "").trim();
+  const categoryId = String(payload.categoryId || "").trim();
+  const gameId = String(payload.gameId || "").trim();
+  if (!id || !["category", "game", "product"].includes(type)) {
+    return { ok: false, status: 400, message: "删除参数无效。" };
+  }
+  if (type === "category") {
+    const category = db.categories.find((item) => item.id === id);
+    if (!category) {
+      return { ok: false, status: 404, message: "分类不存在。" };
+    }
+    const removedGames = Array.isArray(db.games[id]) ? db.games[id] : [];
+    removedGames.forEach((game) => {
+      delete db.products[game.id];
+    });
+    delete db.games[id];
+    db.categories = db.categories.filter((item) => item.id !== id);
+    log(db, "删除分类", `${category.title || id} / 分区 ${removedGames.length} 个`, actor.username);
+    return { ok: true };
+  }
+  if (type === "game") {
+    if (!categoryId) {
+      return { ok: false, status: 400, message: "缺少分类参数。" };
+    }
+    const list = Array.isArray(db.games[categoryId]) ? db.games[categoryId] : [];
+    const game = list.find((item) => item.id === id);
+    if (!game) {
+      return { ok: false, status: 404, message: "游戏分区不存在。" };
+    }
+    db.games[categoryId] = list.filter((item) => item.id !== id);
+    delete db.products[id];
+    log(db, "删除游戏分区", `${game.title || id} / ${categoryId}`, actor.username);
+    return { ok: true };
+  }
+  if (!gameId) {
+    return { ok: false, status: 400, message: "缺少分区参数。" };
+  }
+  const list = Array.isArray(db.products[gameId]) ? db.products[gameId] : [];
+  const product = list.find((item) => item.id === id);
+  if (!product) {
+    return { ok: false, status: 404, message: "商品不存在。" };
+  }
+  db.products[gameId] = list.filter((item) => item.id !== id);
+  log(db, "删除商品", `${product.title || id} / ${gameId}`, actor.username);
+  return { ok: true };
+}
+
 function eligibleSquadIdsForProduct(db, product = {}) {
   return productEligibleSquadIds(product);
 }
@@ -3418,6 +3521,38 @@ async function handleAction(action, payload = {}, request = {}) {
       return unavailable;
     }
     return { ok: true, product: result.product, products: db.products, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "saveCatalogItem") {
+    const admin = requireAdmin(request.user);
+    if (!admin.ok) {
+      return admin;
+    }
+    const result = saveCatalogItemOnBackend(db, payload || {}, request.user);
+    if (!result.ok) {
+      return result;
+    }
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
+    return { ok: true, item: result.item, snapshot: sanitizeSnapshot(db) };
+  }
+
+  if (action === "deleteCatalogItem") {
+    const admin = requireAdmin(request.user);
+    if (!admin.ok) {
+      return admin;
+    }
+    const result = deleteCatalogItemOnBackend(db, payload || {}, request.user);
+    if (!result.ok) {
+      return result;
+    }
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
+    return { ok: true, snapshot: sanitizeSnapshot(db) };
   }
 
   if (action === "createRoutedOrder") {

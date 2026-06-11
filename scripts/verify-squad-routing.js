@@ -187,6 +187,84 @@ function snapshotSeed() {
   assert.equal(result.reason, "feature-paused");
   assert.equal(result.feature, "points");
 
+  result = await action("saveCatalogItem", {
+    type: "category",
+    item: {
+      id: "cat-user",
+      title: "用户分类",
+      titleI18n: { en: "User Category", "zh-CN": "用户分类" },
+      description: "用户分类",
+      descriptionI18n: { en: "User Category", "zh-CN": "用户分类" },
+      icon: "fa-solid fa-star"
+    }
+  }, customer);
+  assert.equal(result.ok, false, "customer cannot save catalog items");
+  assert.equal(result.status, 403);
+
+  result = await action("saveCatalogItem", {
+    type: "category",
+    item: {
+      id: "cat-new",
+      title: "新分类",
+      titleI18n: { en: "New Category", "zh-CN": "新分类" },
+      description: "新分类",
+      descriptionI18n: { en: "New Category", "zh-CN": "新分类" },
+      icon: "fa-solid fa-star"
+    }
+  }, admin);
+  assert.equal(result.ok, true, "admin can save category durably");
+
+  result = await action("saveCatalogItem", {
+    type: "game",
+    categoryId: "cat-new",
+    item: {
+      id: "game-new",
+      title: "新分区",
+      titleI18n: { en: "New Game", "zh-CN": "新分区" },
+      description: "新分区",
+      descriptionI18n: { en: "New Game", "zh-CN": "新分区" },
+      platform: "PC",
+      platformI18n: { en: "PC", "zh-CN": "端游" },
+      icon: "fa-solid fa-gamepad"
+    }
+  }, admin);
+  assert.equal(result.ok, true, "admin can save game section durably");
+
+  result = await action("saveCatalogItem", {
+    type: "product",
+    gameId: "game-new",
+    item: {
+      id: "prod-new",
+      title: "新商品",
+      titleI18n: { en: "New Product", "zh-CN": "新商品" },
+      description: "新商品",
+      descriptionI18n: { en: "New Product", "zh-CN": "新商品" },
+      price: 123
+    }
+  }, admin);
+  assert.equal(result.ok, true, "admin can save product durably");
+
+  db = await readDb();
+  assert.equal(db.categories.some((category) => category.id === "cat-new"), true, "saved category is durable");
+  assert.equal((db.games["cat-new"] || []).some((game) => game.id === "game-new"), true, "saved game section is durable");
+  assert.equal((db.products["game-new"] || []).some((product) => product.id === "prod-new"), true, "saved product is durable");
+
+  result = await action("bootstrap", {}, customer);
+  assert.equal(result.ok, true, "customer bootstrap after admin catalog save");
+  assert.equal(result.snapshot.categories.some((category) => category.id === "cat-new"), true, "customer sees saved category");
+  assert.equal((result.snapshot.games["cat-new"] || []).some((game) => game.id === "game-new"), true, "customer sees saved game section");
+  assert.equal((result.snapshot.products["game-new"] || []).some((product) => product.id === "prod-new"), true, "customer sees saved product");
+
+  result = await action("deleteCatalogItem", { type: "game", categoryId: "cat", id: "game" }, customer);
+  assert.equal(result.ok, false, "customer cannot delete catalog items");
+  assert.equal(result.status, 403);
+
+  result = await action("deleteCatalogItem", { type: "game", categoryId: "cat", id: "game" }, admin);
+  assert.equal(result.ok, true, "admin can delete game section durably");
+  db = await readDb();
+  assert.equal((db.games.cat || []).some((game) => game.id === "game"), false, "deleted game section is removed from durable games");
+  assert.equal(Boolean(db.products.game), false, "deleted game section removes child products");
+
   console.log("Squad routing backend fixture passed");
 })().catch((error) => {
   console.error(error);

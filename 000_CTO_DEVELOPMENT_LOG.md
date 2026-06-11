@@ -880,6 +880,32 @@ Large update no-upload gate:
 
 ## Active Local Tasks
 
+### Admin Catalog Persistence Fix
+
+- Date requested: 2026-06-11.
+- Requested by user.
+- Release version: `v0.20.15`.
+- Version title: `Admin Catalog Persistence Fix / 管理目录持久化修复`.
+- Status: `Uploaded to production / 已上传生产环境`.
+- Reported issue:
+  - In Admin mode, deleting an entire game section appeared to work, but refreshing restored the section.
+  - Follow-up report: Admin edits to categories, game sections, and products were not visible to other users after save; other users continued seeing the previous catalog state.
+  - The `可用小队` Admin section should no longer require the secondary password.
+- Root cause:
+  - Catalog create/edit/delete operations were performed through frontend local data helpers or generic snapshot sync, then later backend bootstrap/snapshot merge could keep or restore the durable server copy instead of publishing the Admin change to all users.
+  - The Squad admin section used the same secondary password gate as other Admin sections.
+- Local implementation summary:
+  - Added an admin-only backend `saveCatalogItem` action for categories, game sections, and products.
+  - Saving a category, game section, or product now persists durably before the Admin UI reports success.
+  - Added an admin-only backend `deleteCatalogItem` action for categories, game sections, and products.
+  - Deleting a game section also deletes its child product list durably.
+  - Frontend Admin save, delete, and batch-delete flows now call backend actions and do not claim local success if durable persistence fails.
+  - `可用小队` is marked as no-secondary-password and opens directly; other Admin sections keep their password gate.
+  - `scripts/verify-squad-routing.js` now covers non-admin save/delete rejection, durable category/game/product saving visible through another user bootstrap, and durable game-section deletion.
+- Release gate:
+  - User clarified this was a hotfix and should be completed automatically after repair.
+  - The hotfix upload gate was lifted for `v0.20.15` on 2026-06-11.
+
 ### Chinese-Only Light Edition Branding
 
 - Date requested: 2026-06-11.

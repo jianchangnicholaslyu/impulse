@@ -32,7 +32,7 @@
   const AdminSections = [
     { id: "users", title: "用户", password: "yonghu", icon: "fa-solid fa-users", description: "Gamer / Vector 账户、资金、封禁与注销管理。" },
     { id: "orders", title: "订单", password: "dingdan", icon: "fa-solid fa-receipt", description: "统一检索充值单、消费单与兑现单。" },
-    { id: "squads", title: "可用小队", password: "xiaodui", icon: "fa-solid fa-people-group", description: "维护接单小队、群号、状态与每日停单恢复。" },
+    { id: "squads", title: "可用小队", password: "", requiresPassword: false, icon: "fa-solid fa-people-group", description: "维护接单小队、群号、状态与每日停单恢复。" },
     { id: "ledger", title: "账本", password: "zhangben", icon: "fa-solid fa-chart-line", description: "实时资金流水与统计参考。" },
     { id: "logs", title: "日志", password: "rizhi", icon: "fa-solid fa-clipboard-list", description: "记录后台与关键业务操作。" }
   ];
@@ -223,6 +223,22 @@
 
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
+    {
+      version: "v0.20.15",
+      releasedAt: "2026-06-11",
+      nameI18n: localizedPair("Admin Catalog Persistence Fix", "管理目录持久化修复"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Persists Admin catalog creates, edits, and deletions through the backend and lets Admin open the available squads panel without the secondary password.",
+        "将管理员目录新增、编辑和删除写入后端持久层，并允许管理员免二级密码直接打开可用小队面板。"
+      ),
+      itemsI18n: [
+        localizedPair("Saving categories, game sections, and products now uses an admin-only backend action so other users can see catalog changes after refresh.", "保存分类、游戏分区和商品现在走仅管理员可用的后端操作，其他用户刷新后可看到目录变更。"),
+        localizedPair("Deleting a category, game section, or product now uses an admin-only backend action so refreshes do not restore removed sections.", "删除分类、游戏分区或商品现在走仅管理员可用的后端操作，刷新后不会恢复已删除分区。"),
+        localizedPair("Save and delete failures no longer show local success; the UI reports backend errors and leaves durable data unchanged.", "保存和删除失败不再显示本地成功；界面会提示后端错误，并保持持久数据不变。"),
+        localizedPair("The available squads admin section opens directly from the console while other protected admin sections keep their secondary password gates.", "管理控制台的可用小队分区可直接打开，其它受保护管理分区继续保留二级密码。")
+      ]
+    },
     {
       version: "v0.20.14",
       releasedAt: "2026-06-11",
@@ -3660,6 +3676,12 @@ function mailboxHasClaim(message) {
     },
     async saveProductSquads(productId, eligibleSquadIds = []) {
       return this.applyMutationResult(await this.request("saveProductSquads", { productId, eligibleSquadIds }));
+    },
+    async saveCatalogItem(type, payload = {}) {
+      return this.applyMutationResult(await this.request("saveCatalogItem", { ...(payload || {}), type }));
+    },
+    async deleteCatalogItem(type, payload = {}) {
+      return this.applyMutationResult(await this.request("deleteCatalogItem", { ...(payload || {}), type }));
     },
     async createRoutedOrder(payload) {
       return this.applyMutationResult(await this.request("createRoutedOrder", { order: payload }));
@@ -7254,7 +7276,7 @@ function mailboxHasClaim(message) {
               descriptionI18n: localizedPair(staticPhraseIn(item.description, "en"), item.description)
             },
             action: "request-admin-section",
-            buttonText: "输入二级密码",
+            buttonText: item.requiresPassword === false ? "打开" : "输入二级密码",
             dataset: { section: item.id }
           }))
         );
@@ -7264,7 +7286,7 @@ function mailboxHasClaim(message) {
       if (!meta) {
         return Components.empty("管理分区不存在。");
       }
-      if (!State.adminUnlocked[section]) {
+      if (!State.adminUnlocked[section] && meta.requiresPassword !== false) {
         return h("section", { className: "panel gate-panel" },
           h("div", { className: "card-icon" }, icon(meta.icon)),
           h("h2", { text: meta.title }),
@@ -9653,6 +9675,15 @@ function mailboxHasClaim(message) {
       if (!meta) {
         return;
       }
+      if (meta.requiresPassword === false) {
+        State.adminUnlocked[section] = true;
+        Data.log("打开管理分区", meta.title);
+        Router.go("admin", { section });
+        if (section === "squads") {
+          this.refreshSquads({ silent: true });
+        }
+        return;
+      }
       UI.openPasswordPrompt({
         title: `打开${meta.title}分区`,
         body: "请输入该分区的二级密码。",
@@ -9836,6 +9867,14 @@ function mailboxHasClaim(message) {
       State.adminBatch = { ...batch, selected: [] };
       App.render();
     },
+    async deleteCatalogItem(type, payload) {
+      const result = await Backend.deleteCatalogItem(type, payload);
+      if (!result.ok) {
+        UI.toast("删除失败", result.message || "后端暂不可用，删除未完成。");
+        return false;
+      }
+      return true;
+    },
     deleteAdminBatchSelected() {
       const context = adminEditContext();
       const batch = ensureAdminBatch(context);
@@ -9843,22 +9882,35 @@ function mailboxHasClaim(message) {
         UI.toast("请选择要删除的内容。");
         return;
       }
-      UI.openConfirm("批量删除？", "将删除已选内容，并同步删除其下级关联内容。", () => {
+      UI.openConfirm("批量删除？", "将删除已选内容，并同步删除其下级关联内容。", async () => {
         const selected = new Set(batch.selected);
+        let okCount = 0;
         if (context.type === "category") {
-          selected.forEach((id) => Data.deleteCategory(id));
+          for (const id of selected) {
+            if (await this.deleteCatalogItem("category", { id })) {
+              okCount += 1;
+            }
+          }
           Router.go("home");
         }
         if (context.type === "game") {
-          selected.forEach((id) => Data.deleteGame(context.categoryId, id));
+          for (const id of selected) {
+            if (await this.deleteCatalogItem("game", { id, categoryId: context.categoryId })) {
+              okCount += 1;
+            }
+          }
           Router.go("category", { categoryId: context.categoryId });
         }
         if (context.type === "product") {
-          selected.forEach((id) => Data.deleteProduct(context.gameId, id));
+          for (const id of selected) {
+            if (await this.deleteCatalogItem("product", { id, gameId: context.gameId })) {
+              okCount += 1;
+            }
+          }
         }
         State.adminBatch = { active: false, type: context.type, routeKey: context.routeKey, selected: [] };
-        Data.log("批量删除内容", `${context.title} ${selected.size} 项`);
-        UI.toast("已删除选中内容", `${selected.size} ${localizeStaticPhrase("项")}`);
+        Data.log("批量删除内容", `${context.title} ${okCount}/${selected.size} 项`);
+        UI.toast(okCount === selected.size ? "已删除选中内容" : "部分删除完成", `${okCount}/${selected.size} ${localizeStaticPhrase("项")}`);
         App.render();
       });
     },
@@ -9903,17 +9955,23 @@ function mailboxHasClaim(message) {
             { name: "descriptionZh", label: "中文描述", type: "textarea", value: description["zh-CN"] },
             { name: "icon", label: "图标 class", value: item.icon || "fa-solid fa-star", required: true }
           ],
-          onSubmit: (values) => {
-            Data.upsertCategory({
+          onSubmit: async (values) => {
+            const result = await Backend.saveCatalogItem("category", {
+              item: {
               ...item,
               title: values.titleZh.trim(),
               description: values.descriptionZh.trim(),
               titleI18n: localizedPair(values.titleEn, values.titleZh),
               descriptionI18n: localizedPair(values.descriptionEn, values.descriptionZh),
               icon: values.icon.trim()
+              }
             });
+            if (!result.ok) {
+              return { error: result.message || "分类同步后端失败，保存未完成。" };
+            }
             UI.toast("分类已保存");
             App.render();
+            return null;
           }
         });
       }
@@ -9936,8 +9994,10 @@ function mailboxHasClaim(message) {
             { name: "platformZh", label: "中文平台", value: platform["zh-CN"] || "" },
             { name: "icon", label: "图标 class", value: item.icon || "fa-solid fa-star", required: true }
           ],
-          onSubmit: (values) => {
-            Data.upsertGame(categoryId, {
+          onSubmit: async (values) => {
+            const result = await Backend.saveCatalogItem("game", {
+              categoryId,
+              item: {
               ...item,
               title: values.titleZh.trim(),
               description: values.descriptionZh.trim(),
@@ -9947,9 +10007,14 @@ function mailboxHasClaim(message) {
               platformI18n: localizedPair(values.platformEn, values.platformZh),
               imageData: values.imageData || "",
               icon: values.icon.trim()
+              }
             });
+            if (!result.ok) {
+              return { error: result.message || "分区同步后端失败，保存未完成。" };
+            }
             UI.toast("分区已保存");
             App.render();
+            return null;
           }
         });
       }
@@ -9997,10 +10062,9 @@ function mailboxHasClaim(message) {
             delete nextProduct.eligibleSquadIds;
             delete nextProduct.availableSquadIds;
             delete nextProduct.supportedSquadIds;
-            Data.upsertProduct(gameId, nextProduct);
-            const synced = await Backend.syncNow("product-save");
-            if (!synced.ok) {
-              return { error: synced.message || "商品同步后端失败，小队绑定未保存。" };
+            const saved = await Backend.saveCatalogItem("product", { gameId, item: nextProduct });
+            if (!saved.ok) {
+              return { error: saved.message || "商品同步后端失败，小队绑定未保存。" };
             }
             const bound = await Backend.saveProductSquads(nextProduct.id, selectedSquadIds);
             if (!bound.ok) {
@@ -10016,20 +10080,23 @@ function mailboxHasClaim(message) {
     },
     deleteItem(type, id, explicitGameId) {
       const labels = { category: "删除分类？", game: "删除游戏分区？", product: "删除商品？" };
-      UI.openConfirm(labels[type] || "删除内容？", "删除后会立即更新本地数据。", () => {
+      UI.openConfirm(labels[type] || "删除内容？", "删除后会写入后端并同步更新。", async () => {
         if (type === "category") {
-          Data.deleteCategory(id);
-          Router.go("home");
+          if (await this.deleteCatalogItem("category", { id })) {
+            Router.go("home");
+          }
           return;
         }
         if (type === "game") {
-          Data.deleteGame(State.route.params.categoryId, id);
-          Router.go("category", { categoryId: State.route.params.categoryId });
+          if (await this.deleteCatalogItem("game", { id, categoryId: State.route.params.categoryId })) {
+            Router.go("category", { categoryId: State.route.params.categoryId });
+          }
           return;
         }
         if (type === "product") {
-          Data.deleteProduct(explicitGameId || State.route.params.gameId, id);
-          App.render();
+          if (await this.deleteCatalogItem("product", { id, gameId: explicitGameId || State.route.params.gameId })) {
+            App.render();
+          }
         }
       });
     }
