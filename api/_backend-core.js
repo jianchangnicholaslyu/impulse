@@ -26,6 +26,7 @@ const DayMs = 24 * 60 * 60 * 1000;
 const ChatRetentionMs = 7 * DayMs;
 const ArchiveRetentionMs = 30 * DayMs;
 const AssetMaxBytes = Number(process.env.MAX_ASSET_BYTES || 5 * 1024 * 1024);
+const CatalogImageMaxBytes = 2 * 1024 * 1024;
 const BuiltInUsers = [
   { username: "ADMIN", email: "admin@impulse.local", password: "********", role: "admin" },
   { username: "EMPL001", email: "empl001@impulse.local", password: "12345678", role: "staff" }
@@ -372,7 +373,7 @@ function assetExtension(mimeType, filename = "") {
   return match ? match[1] : "img";
 }
 
-function parseImageDataUrl(dataUrl, filename = "") {
+function parseImageDataUrl(dataUrl, filename = "", maxBytes = AssetMaxBytes) {
   const match = String(dataUrl || "").match(/^data:([^;,]+);base64,(.+)$/);
   if (!match) {
     return { ok: false, message: "Invalid image data." };
@@ -385,8 +386,8 @@ function parseImageDataUrl(dataUrl, filename = "") {
   if (!buffer.length) {
     return { ok: false, message: "Image data is empty." };
   }
-  if (buffer.length > AssetMaxBytes) {
-    return { ok: false, message: `Image is larger than ${Math.round(AssetMaxBytes / 1024 / 1024)}MB.` };
+  if (buffer.length > maxBytes) {
+    return { ok: false, message: `图片不能大于 ${Math.round(maxBytes / 1024 / 1024)}MB。` };
   }
   return {
     ok: true,
@@ -404,6 +405,27 @@ function encodeStoragePath(pathname) {
 }
 
 async function uploadSupabaseAsset(payload, actor) {
+  const maxBytes = Number(payload.maxBytes || 0) > 0 ? Math.min(Number(payload.maxBytes), AssetMaxBytes) : CatalogImageMaxBytes;
+  const testMode = !isProductionRuntime() ? String(process.env.IMPULSE_ASSET_UPLOAD_TEST_MODE || "").toLowerCase() : "";
+  if (testMode) {
+    const parsed = parseImageDataUrl(payload.dataUrl, payload.filename, maxBytes);
+    if (!parsed.ok) {
+      return parsed;
+    }
+    if (testMode === "fail") {
+      return { ok: false, message: "图片上传失败，请稍后重试。" };
+    }
+    const scope = safeAssetSegment(payload.scope || "content", "content");
+    const owner = safeAssetSegment(actor?.username || "system", "system");
+    const basename = safeAssetSegment(payload.filename || "image", "image").replace(/\.[a-z0-9]{2,5}$/i, "");
+    const objectPath = `${scope}/${owner}/test-${basename}.${parsed.extension}`;
+    return {
+      ok: true,
+      bucket: "test-assets",
+      path: objectPath,
+      url: `https://assets.test/${encodeStoragePath(objectPath)}`
+    };
+  }
   if (!hasSupabaseStorage()) {
     return { ok: false, configured: false, message: "Supabase storage is not configured." };
   }
@@ -411,7 +433,7 @@ async function uploadSupabaseAsset(payload, actor) {
   if (!bucket) {
     return { ok: false, configured: false, message: "SUPABASE_STORAGE_BUCKET is not configured." };
   }
-  const parsed = parseImageDataUrl(payload.dataUrl, payload.filename);
+  const parsed = parseImageDataUrl(payload.dataUrl, payload.filename, maxBytes);
   if (!parsed.ok) {
     return parsed;
   }
@@ -2947,6 +2969,9 @@ function saveCatalogItemOnBackend(db, payload = {}, actor) {
     updatedAt: now,
     updatedBy: actor.username
   };
+  if (String(nextItem.imageData || "").trim().startsWith("data:")) {
+    return { ok: false, status: 400, message: "图片必须先上传成功后再保存。" };
+  }
   if (type === "category") {
     const exists = db.categories.some((category) => category.id === nextItem.id);
     db.categories = exists
@@ -3421,15 +3446,19 @@ async function handleAction(action, payload = {}, request = {}) {
   }
 
   if (action === "uploadAsset") {
-    if (!request.user) {
-      return { ok: false, message: "请先登录" };
+    const admin = requireAdmin(request.user);
+    if (!admin.ok) {
+      return admin;
     }
     const uploaded = await uploadSupabaseAsset(payload || {}, request.user);
     if (!uploaded.ok) {
       return uploaded;
     }
     log(db, "上传资产", `${uploaded.bucket}/${uploaded.path}`, request.user.username);
-    await writeDb(db);
+    const unavailable = await persistDurable();
+    if (unavailable) {
+      return unavailable;
+    }
     return uploaded;
   }
 

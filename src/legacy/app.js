@@ -224,6 +224,36 @@
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
     {
+      version: "v0.20.20",
+      releasedAt: "2026-06-12",
+      nameI18n: localizedPair("Homepage Promo Image Refresh", "首页宣传图更新"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Replaces the homepage promo banner image and reduces the promo display height to three quarters of the previous size.",
+        "替换首页宣传位横幅图片，并将宣传展示区高度调整为原尺寸的四分之三。"
+      ),
+      itemsI18n: [
+        localizedPair("Homepage promo uses the newly supplied banner asset.", "首页宣传位改用最新提供的横幅图片。"),
+        localizedPair("The promo slot height now uses 75% of the previous responsive size.", "宣传位高度现在使用此前响应式尺寸的 75%。"),
+        localizedPair("Catalog, order, and paused feature behavior are unchanged.", "目录、订单和 paused 功能行为均未变更。")
+      ]
+    },
+    {
+      version: "v0.20.19",
+      releasedAt: "2026-06-11",
+      nameI18n: localizedPair("Catalog Image Upload Fix", "目录图片上传修复"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Fixes Admin catalog display-image uploads so category and game-section images save only after durable backend upload succeeds.",
+        "修复管理员目录展示图片上传：分类和分区图片只有在后端持久上传成功后才允许保存。"
+      ),
+      itemsI18n: [
+        localizedPair("Category editing now supports adding, replacing, and removing display images.", "分类编辑现在支持添加、替换和移除展示图片。"),
+        localizedPair("Catalog image uploads fail closed instead of keeping base64 local data as a successful save.", "目录图片上传失败时会关闭保存路径，不再把 base64 本地数据当作成功保存。"),
+        localizedPair("The Admin catalog form no longer double-submits the save handler, reducing stuck loading and duplicate write risk.", "管理员目录表单不再重复触发保存回调，降低按钮卡住和重复写入风险。")
+      ]
+    },
+    {
       version: "v0.20.18",
       releasedAt: "2026-06-11",
       nameI18n: localizedPair("Homepage Promo Image", "首页宣传图上线"),
@@ -1402,6 +1432,8 @@
     "正在上传图片...": { en: "Uploading image..." },
     "图片已保存为本地数据。": { en: "Image saved as local data." },
     "图片上传失败，已保留为本地数据。": { en: "Image upload failed. Local data was kept." },
+    "图片上传失败，请稍后重试。": { en: "Image upload failed. Please try again later." },
+    "当前图片是旧本地数据，请移除并重新上传后再保存。": { en: "This image is old local data. Remove it and upload again before saving." },
     "Image upload is temporarily unavailable.": { "zh-CN": "图片上传暂未开放。", "zh-TW": "圖片上傳暫未開放。", en: "Image upload is temporarily unavailable.", fr: "Le televersement d'image est temporairement indisponible.", ja: "画像のアップロードは現在利用できません。", ko: "이미지 업로드는 현재 사용할 수 없습니다.", es: "La carga de imagenes no esta disponible temporalmente." },
     "头像保存失败，请换用更小的图片。": { en: "Avatar saving failed. Please use a smaller image." },
     "头像已更新": { en: "Avatar Updated" },
@@ -6351,6 +6383,7 @@ function mailboxHasClaim(message) {
         } else if (field.type === "image") {
           const hiddenInput = h("input", { name: field.name, type: "hidden", value: field.value ?? "" });
           const preview = h("div", { className: "content-image-preview" });
+          let committedValue = hiddenInput.value;
           const renderPreview = (value) => {
             clear(preview);
             if (value) {
@@ -6375,25 +6408,29 @@ function mailboxHasClaim(message) {
             }
             try {
               const result = await readDisplayImageFile(file, field.maxSize || DisplayImageMaxBytes);
-              hiddenInput.value = result.image;
               renderPreview(result.image);
               message.textContent = "";
-              if (Backend.online && Backend.token()) {
-                message.textContent = localizeStaticPhrase("正在上传图片...");
-                const uploaded = await Backend.uploadAsset({
-                  dataUrl: result.image,
-                  filename: result.name || file.name,
-                  scope: field.assetScope || "content"
-                });
-                if (uploaded?.ok && uploaded.url) {
-                  hiddenInput.value = uploaded.url;
-                  renderPreview(uploaded.url);
-                  message.textContent = "";
-                } else if (uploaded && uploaded.configured !== false) {
-                  message.textContent = localizeStaticPhrase("图片上传失败，已保留为本地数据。");
-                } else {
-                  message.textContent = localizeStaticPhrase("图片已保存为本地数据。");
-                }
+              if (!Backend.online || !Backend.token()) {
+                renderPreview(committedValue);
+                message.textContent = localizeStaticPhrase("图片上传失败，请稍后重试。");
+                fileInput.value = "";
+                return;
+              }
+              message.textContent = localizeStaticPhrase("正在上传图片...");
+              const uploaded = await Backend.uploadAsset({
+                dataUrl: result.image,
+                filename: result.name || file.name,
+                scope: field.assetScope || "content",
+                maxBytes: field.maxSize || DisplayImageMaxBytes
+              });
+              if (uploaded?.ok && uploaded.url) {
+                hiddenInput.value = uploaded.url;
+                committedValue = uploaded.url;
+                renderPreview(uploaded.url);
+                message.textContent = "";
+              } else {
+                renderPreview(committedValue);
+                message.textContent = uploaded?.message || localizeStaticPhrase("图片上传失败，请稍后重试。");
               }
             } catch (error) {
               message.textContent = localizeStaticPhrase(error.message);
@@ -6401,6 +6438,9 @@ function mailboxHasClaim(message) {
             }
           });
           renderPreview(hiddenInput.value);
+          if (String(committedValue || "").trim().startsWith("data:")) {
+            message.textContent = localizeStaticPhrase("当前图片是旧本地数据，请移除并重新上传后再保存。");
+          }
           input = h("div", { className: "image-upload-field" },
             hiddenInput,
             preview,
@@ -6415,6 +6455,7 @@ function mailboxHasClaim(message) {
                 type: "button",
                 onClick: () => {
                   hiddenInput.value = "";
+                  committedValue = "";
                   fileInput.value = "";
                   renderPreview("");
                   message.textContent = "";
@@ -10012,7 +10053,7 @@ function mailboxHasClaim(message) {
     },
     editItem(type, id, explicitGameId) {
       if (type === "category") {
-        const item = id ? clone(Data.category(id)) : { id: createId("category"), title: "", description: "", icon: "fa-solid fa-star" };
+        const item = id ? clone(Data.category(id)) : { id: createId("category"), title: "", description: "", imageData: "", icon: "fa-solid fa-star" };
         const title = contentValues(item, "title");
         const description = contentValues(item, "description");
         UI.openFormModal({
@@ -10022,6 +10063,7 @@ function mailboxHasClaim(message) {
             { name: "titleZh", label: "中文名称", value: title["zh-CN"], required: true },
             { name: "descriptionEn", label: "英文描述", type: "textarea", value: description.en },
             { name: "descriptionZh", label: "中文描述", type: "textarea", value: description["zh-CN"] },
+            { name: "imageData", label: "展示图片", type: "image", value: item.imageData || "", maxSize: DisplayImageMaxBytes, assetScope: "categories" },
             { name: "icon", label: "图标 class", value: item.icon || "fa-solid fa-star", required: true }
           ],
           onSubmit: async (values) => {
@@ -10032,6 +10074,7 @@ function mailboxHasClaim(message) {
               description: values.descriptionZh.trim(),
               titleI18n: localizedPair(values.titleEn, values.titleZh),
               descriptionI18n: localizedPair(values.descriptionEn, values.descriptionZh),
+              imageData: values.imageData || "",
               icon: values.icon.trim()
               }
             });

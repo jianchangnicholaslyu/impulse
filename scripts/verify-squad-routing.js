@@ -11,11 +11,14 @@ process.env.KV_REST_API_URL = "";
 process.env.KV_REST_API_TOKEN = "";
 process.env.IMPULSE_SQUAD_EMAIL_TEST_MODE = "success";
 process.env.IMPULSE_SQUAD_TEST_NOW = "2026-06-10T01:00:00+08:00";
+process.env.IMPULSE_ASSET_UPLOAD_TEST_MODE = "success";
 
 const { handleAction, readDb } = require("../api/_backend-core");
 
 const admin = { username: "ADMIN", role: "admin" };
 const customer = { username: "NICK", role: "customer" };
+const tinyImageDataUrl = "data:image/png;base64,iVBORw0KGgo=";
+const oversizedImageDataUrl = `data:image/png;base64,${Buffer.alloc((2 * 1024 * 1024) + 1).toString("base64")}`;
 
 async function action(name, payload = {}, user = admin) {
   return handleAction(name, payload, { user, request: { headers: {}, socket: {} } });
@@ -201,6 +204,86 @@ function snapshotSeed() {
   assert.equal(result.ok, false, "customer cannot save catalog items");
   assert.equal(result.status, 403);
 
+  result = await action("uploadAsset", {
+    dataUrl: tinyImageDataUrl,
+    filename: "customer.png",
+    scope: "categories",
+    maxBytes: 2 * 1024 * 1024
+  }, customer);
+  assert.equal(result.ok, false, "customer cannot upload catalog images");
+  assert.equal(result.status, 403);
+
+  result = await action("uploadAsset", {
+    dataUrl: oversizedImageDataUrl,
+    filename: "too-large.png",
+    scope: "categories",
+    maxBytes: 2 * 1024 * 1024
+  }, admin);
+  assert.equal(result.ok, false, "oversized catalog image upload fails");
+  assert.match(result.message, /2MB/);
+
+  result = await action("saveCatalogItem", {
+    type: "category",
+    item: {
+      id: "cat-local-image",
+      title: "本地图分类",
+      titleI18n: { en: "Local Image Category", "zh-CN": "本地图分类" },
+      description: "本地图分类",
+      descriptionI18n: { en: "Local Image Category", "zh-CN": "本地图分类" },
+      imageData: tinyImageDataUrl,
+      icon: "fa-solid fa-star"
+    }
+  }, admin);
+  assert.equal(result.ok, false, "catalog image base64 is rejected instead of saved locally");
+  assert.equal(result.status, 400);
+
+  process.env.IMPULSE_ASSET_UPLOAD_TEST_MODE = "fail";
+  result = await action("uploadAsset", {
+    dataUrl: tinyImageDataUrl,
+    filename: "failed.png",
+    scope: "game-sections",
+    maxBytes: 2 * 1024 * 1024
+  }, admin);
+  assert.equal(result.ok, false, "asset upload failure is reported");
+  process.env.IMPULSE_ASSET_UPLOAD_TEST_MODE = "success";
+
+  process.env.IMPULSE_SQUAD_TEST_DURABLE_FAIL_ONCE = "1";
+  result = await action("uploadAsset", {
+    dataUrl: tinyImageDataUrl,
+    filename: "durable-fail.png",
+    scope: "game-sections",
+    maxBytes: 2 * 1024 * 1024
+  }, admin);
+  assert.equal(result.ok, false, "asset upload durable failure is not reported as success");
+  assert.equal(result.status, 503);
+
+  result = await action("uploadAsset", {
+    dataUrl: tinyImageDataUrl,
+    filename: "catalog.png",
+    scope: "categories",
+    maxBytes: 2 * 1024 * 1024
+  }, admin);
+  assert.equal(result.ok, true, "admin can upload catalog image");
+  const categoryImageUrl = result.url;
+
+  result = await action("uploadAsset", {
+    dataUrl: tinyImageDataUrl,
+    filename: "game.png",
+    scope: "game-sections",
+    maxBytes: 2 * 1024 * 1024
+  }, admin);
+  assert.equal(result.ok, true, "admin can upload game section image");
+  const gameImageUrl = result.url;
+
+  result = await action("uploadAsset", {
+    dataUrl: tinyImageDataUrl,
+    filename: "product.png",
+    scope: "products",
+    maxBytes: 2 * 1024 * 1024
+  }, admin);
+  assert.equal(result.ok, true, "admin can upload product image");
+  const productImageUrl = result.url;
+
   result = await action("saveCatalogItem", {
     type: "category",
     item: {
@@ -209,6 +292,7 @@ function snapshotSeed() {
       titleI18n: { en: "New Category", "zh-CN": "新分类" },
       description: "新分类",
       descriptionI18n: { en: "New Category", "zh-CN": "新分类" },
+      imageData: categoryImageUrl,
       icon: "fa-solid fa-star"
     }
   }, admin);
@@ -223,6 +307,7 @@ function snapshotSeed() {
       titleI18n: { en: "New Game", "zh-CN": "新分区" },
       description: "新分区",
       descriptionI18n: { en: "New Game", "zh-CN": "新分区" },
+      imageData: gameImageUrl,
       platform: "PC",
       platformI18n: { en: "PC", "zh-CN": "端游" },
       icon: "fa-solid fa-gamepad"
@@ -239,6 +324,7 @@ function snapshotSeed() {
       titleI18n: { en: "New Product", "zh-CN": "新商品" },
       description: "新商品",
       descriptionI18n: { en: "New Product", "zh-CN": "新商品" },
+      imageData: productImageUrl,
       price: 123
     }
   }, admin);
@@ -246,14 +332,21 @@ function snapshotSeed() {
 
   db = await readDb();
   assert.equal(db.categories.some((category) => category.id === "cat-new"), true, "saved category is durable");
+  assert.equal(db.categories.find((category) => category.id === "cat-new").imageData, categoryImageUrl, "saved category image is durable");
+  assert.equal(db.categories.some((category) => category.id === "cat-local-image"), false, "base64 catalog image is not saved");
   assert.equal((db.games["cat-new"] || []).some((game) => game.id === "game-new"), true, "saved game section is durable");
+  assert.equal((db.games["cat-new"] || []).find((game) => game.id === "game-new").imageData, gameImageUrl, "saved game section image is durable");
   assert.equal((db.products["game-new"] || []).some((product) => product.id === "prod-new"), true, "saved product is durable");
+  assert.equal((db.products["game-new"] || []).find((product) => product.id === "prod-new").imageData, productImageUrl, "saved product image is durable");
 
   result = await action("bootstrap", {}, customer);
   assert.equal(result.ok, true, "customer bootstrap after admin catalog save");
   assert.equal(result.snapshot.categories.some((category) => category.id === "cat-new"), true, "customer sees saved category");
+  assert.equal(result.snapshot.categories.find((category) => category.id === "cat-new").imageData, categoryImageUrl, "customer sees saved category image");
   assert.equal((result.snapshot.games["cat-new"] || []).some((game) => game.id === "game-new"), true, "customer sees saved game section");
+  assert.equal((result.snapshot.games["cat-new"] || []).find((game) => game.id === "game-new").imageData, gameImageUrl, "customer sees saved game section image");
   assert.equal((result.snapshot.products["game-new"] || []).some((product) => product.id === "prod-new"), true, "customer sees saved product");
+  assert.equal((result.snapshot.products["game-new"] || []).find((product) => product.id === "prod-new").imageData, productImageUrl, "customer sees saved product image");
 
   result = await action("bootstrap", {
     snapshot: {

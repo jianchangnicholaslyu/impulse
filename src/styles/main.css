@@ -503,7 +503,7 @@ p {
 }
 
 .hero-panel.promo-slot {
-  min-height: clamp(220px, 30vw, 360px);
+  min-height: clamp(165px, 22.5vw, 270px);
   padding: 0;
   overflow: hidden;
 }
