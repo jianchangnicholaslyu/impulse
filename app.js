@@ -2171,7 +2171,7 @@
   }
 
   function catalogDisplayImage(item, type) {
-    return item?.imageData || catalogDefaultImage(type);
+    return catalogDefaultImage(type) || item?.imageData || "";
   }
 
   function timestampMs(value) {
@@ -8100,7 +8100,7 @@ function mailboxHasClaim(message) {
         return;
       }
       const { product, game, category } = found;
-      const displayImage = product.imageData || catalogDefaultImage("product") || game.imageData || catalogDefaultImage("game");
+      const displayImage = catalogDisplayImage(product, "product");
       UI.openModal(
         h("div", { className: "modal-card modal-wide slide-up" },
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
