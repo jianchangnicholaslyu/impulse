@@ -65,6 +65,11 @@
   const DisplayImageMaxBytes = 2 * 1024 * 1024;
   const DisplayImageMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
   const DisplayImageAccept = DisplayImageMimeTypes.join(",");
+  const CatalogDefaultImages = {
+    category: "/assets/catalog/default-category.jpg",
+    game: "/assets/catalog/default-game-section.jpg",
+    product: "/assets/catalog/default-product.jpg"
+  };
   const UserIdPattern = /^\d{18}$/;
   const DefaultLanguage = "zh-CN";
   const LocalLanguageCodes = ["zh-CN"];
@@ -225,6 +230,21 @@
 
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
+    {
+      version: "v0.21",
+      releasedAt: "2026-06-12",
+      nameI18n: localizedPair("Catalog Default Image Refresh", "目录默认图片更新"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Refreshes the default catalog display images so categories, game sections, and products each use the newly supplied unified image.",
+        "更新目录默认展示图片，使分类、分区和商品分别使用最新提供的统一图片。"
+      ),
+      itemsI18n: [
+        localizedPair("Categories now use the first supplied image as their shared display default.", "分类现在统一使用第一张提供的图片作为默认展示图。"),
+        localizedPair("Game sections now use the second supplied image as their shared display default.", "分区现在统一使用第二张提供的图片作为默认展示图。"),
+        localizedPair("Products now use the third supplied image as their shared display default.", "商品现在统一使用第三张提供的图片作为默认展示图。")
+      ]
+    },
     {
       version: "v0.20.22",
       releasedAt: "2026-06-12",
@@ -2146,6 +2166,14 @@
     return JSON.parse(JSON.stringify(value));
   }
 
+  function catalogDefaultImage(type) {
+    return CatalogDefaultImages[type] || "";
+  }
+
+  function catalogDisplayImage(item, type) {
+    return item?.imageData || catalogDefaultImage(type);
+  }
+
   function timestampMs(value) {
     const time = new Date(value || "").getTime();
     return Number.isFinite(time) ? time : 0;
@@ -3887,6 +3915,7 @@ function mailboxHasClaim(message) {
           description: "职业思路、地图理解、枪法细节与排位规划一站提升。",
           titleI18n: localizedPair("Professional Coaching", "专业教练"),
           descriptionI18n: localizedPair("Improve professional decision-making, map knowledge, aim details, and ranked planning in one place.", "职业思路、地图理解、枪法细节与排位规划一站提升。"),
+          imageData: catalogDefaultImage("category"),
           icon: "fa-solid fa-chalkboard-user"
         },
         {
@@ -3895,6 +3924,7 @@ function mailboxHasClaim(message) {
           description: "高质量语音陪伴，轻松开黑、上分、娱乐局都能安排。",
           titleI18n: localizedPair("Voice Companion", "语音陪玩"),
           descriptionI18n: localizedPair("High-quality voice companionship for relaxed team play, climbing, and casual matches.", "高质量语音陪伴，轻松开黑、上分、娱乐局都能安排。"),
+          imageData: catalogDefaultImage("category"),
           icon: "fa-solid fa-headset"
         },
         {
@@ -3903,6 +3933,7 @@ function mailboxHasClaim(message) {
           description: "强力队友即时支援，攻坚、护航、目标执行更稳定。",
           titleI18n: localizedPair("Mercenary", "雇佣兵"),
           descriptionI18n: localizedPair("High-skill teammates on demand for pushes, escorting, and reliable objective execution.", "强力队友即时支援，攻坚、护航、目标执行更稳定。"),
+          imageData: catalogDefaultImage("category"),
           icon: "fa-solid fa-helmet-battle"
         },
         {
@@ -3911,6 +3942,7 @@ function mailboxHasClaim(message) {
           description: "精选游戏账号展示，信息清晰，交易流程可继续扩展。",
           titleI18n: localizedPair("Account Trading", "账号交易"),
           descriptionI18n: localizedPair("Curated game accounts with clear information and room to expand the transaction flow.", "精选游戏账号展示，信息清晰，交易流程可继续扩展。"),
+          imageData: catalogDefaultImage("category"),
           icon: "fa-solid fa-id-card"
         }
       ];
@@ -3923,6 +3955,7 @@ function mailboxHasClaim(message) {
           description: "手游端摸金、撤离、物资规划与战术协作服务。",
           titleI18n: localizedPair("Arena Breakout Mobile", "《暗区突围》手游"),
           descriptionI18n: localizedPair("Mobile extraction, loot planning, evacuation routes, and tactical coordination services.", "手游端摸金、撤离、物资规划与战术协作服务。"),
+          imageData: catalogDefaultImage("game"),
           icon: "fa-solid fa-mobile-screen-button",
           platform: "手游",
           platformI18n: localizedPair("Mobile", "手游")
@@ -3933,6 +3966,7 @@ function mailboxHasClaim(message) {
           description: "端游射击节奏、装备配置、地图路线与组队服务。",
           titleI18n: localizedPair("Arena Breakout PC", "《暗区突围》端游"),
           descriptionI18n: localizedPair("PC shooting tempo, gear setup, map routing, and squad services.", "端游射击节奏、装备配置、地图路线与组队服务。"),
+          imageData: catalogDefaultImage("game"),
           icon: "fa-solid fa-desktop",
           platform: "端游",
           platformI18n: localizedPair("PC", "端游")
@@ -3943,6 +3977,7 @@ function mailboxHasClaim(message) {
           description: "移动端战场协同、干员搭配、任务推进与段位服务。",
           titleI18n: localizedPair("Delta Force Mobile", "《三角洲行动》手游"),
           descriptionI18n: localizedPair("Mobile battlefield coordination, operator pairing, mission progress, and rank services.", "移动端战场协同、干员搭配、任务推进与段位服务。"),
+          imageData: catalogDefaultImage("game"),
           icon: "fa-solid fa-crosshairs",
           platform: "手游",
           platformI18n: localizedPair("Mobile", "手游")
@@ -3953,6 +3988,7 @@ function mailboxHasClaim(message) {
           description: "端游攻防、载具配合、战术突破和高强度陪练。",
           titleI18n: localizedPair("Delta Force PC", "《三角洲行动》端游"),
           descriptionI18n: localizedPair("PC attack and defense, vehicle teamwork, tactical breakthroughs, and high-intensity practice.", "端游攻防、载具配合、战术突破和高强度陪练。"),
+          imageData: catalogDefaultImage("game"),
           icon: "fa-solid fa-computer",
           platform: "端游",
           platformI18n: localizedPair("PC", "端游")
@@ -4001,6 +4037,7 @@ function mailboxHasClaim(message) {
           description: game.description,
           titleI18n: game.titleI18n,
           descriptionI18n: game.descriptionI18n,
+          imageData: game.imageData || catalogDefaultImage("game"),
           icon: game.icon,
           platform: game.platform,
           platformI18n: game.platformI18n
@@ -4018,6 +4055,7 @@ function mailboxHasClaim(message) {
             durationI18n: localizedPair(durationEn, durationZh),
             badge: badgeZh,
             badgeI18n: localizedPair(badgeEn, badgeZh),
+            imageData: catalogDefaultImage("product"),
             icon: category.icon
           }));
         });
@@ -6985,6 +7023,7 @@ function mailboxHasClaim(message) {
       const cardTitle = localizedContent(item, "title");
       const cardDescription = localizedContent(item, "description", "暂无描述。") || "暂无描述。";
       const cardButton = localizeStaticPhrase(buttonText);
+      const displayImage = catalogDisplayImage(item, dataset.manageType);
       return h("article", {
         className: `card ${dataset.manageType === "game" ? "game-card" : ""} ${batchActive ? "admin-selectable" : ""} ${selected ? "selected" : ""}`,
         role: "button",
@@ -6992,8 +7031,8 @@ function mailboxHasClaim(message) {
         dataset: batchActive ? { action: "toggle-admin-batch-item", ...dataset } : { action, ...dataset }
       },
         batchActive ? h("span", { className: "batch-check" }, selected ? icon("fa-solid fa-check") : null) : null,
-        item.imageData
-          ? h("div", { className: "card-image" }, h("img", { src: item.imageData, alt: cardTitle || "展示图片" }))
+        displayImage
+          ? h("div", { className: "card-image" }, h("img", { src: displayImage, alt: cardTitle || "展示图片" }))
           : h("div", { className: "card-icon" }, icon(item.icon || "fa-solid fa-star")),
         h("div", {},
           h("h2", { className: hasProtectedRoleTerm(cardTitle) ? "notranslate" : "", translate: hasProtectedRoleTerm(cardTitle) ? "no" : null, text: cardTitle }),
@@ -8061,7 +8100,7 @@ function mailboxHasClaim(message) {
         return;
       }
       const { product, game, category } = found;
-      const displayImage = product.imageData || game.imageData || "";
+      const displayImage = product.imageData || catalogDefaultImage("product") || game.imageData || catalogDefaultImage("game");
       UI.openModal(
         h("div", { className: "modal-card modal-wide slide-up" },
           h("button", { className: "icon-button square modal-close", type: "button", dataset: { action: "close-modal" }, ariaLabel: "关闭" }, icon("fa-solid fa-xmark")),
@@ -10092,7 +10131,7 @@ function mailboxHasClaim(message) {
     },
     editItem(type, id, explicitGameId) {
       if (type === "category") {
-        const item = id ? clone(Data.category(id)) : { id: createId("category"), title: "", description: "", imageData: "", icon: "fa-solid fa-star" };
+        const item = id ? clone(Data.category(id)) : { id: createId("category"), title: "", description: "", imageData: catalogDefaultImage("category"), icon: "fa-solid fa-star" };
         const title = contentValues(item, "title");
         const description = contentValues(item, "description");
         UI.openFormModal({
@@ -10102,7 +10141,7 @@ function mailboxHasClaim(message) {
             { name: "titleZh", label: "中文名称", value: title["zh-CN"], required: true },
             { name: "descriptionEn", label: "英文描述", type: "textarea", value: description.en },
             { name: "descriptionZh", label: "中文描述", type: "textarea", value: description["zh-CN"] },
-            { name: "imageData", label: "展示图片", type: "image", value: item.imageData || "", maxSize: DisplayImageMaxBytes, assetScope: "categories" },
+            { name: "imageData", label: "展示图片", type: "image", value: catalogDisplayImage(item, "category"), maxSize: DisplayImageMaxBytes, assetScope: "categories" },
             { name: "icon", label: "图标 class", value: item.icon || "fa-solid fa-star", required: true }
           ],
           onSubmit: async (values) => {
@@ -10113,7 +10152,7 @@ function mailboxHasClaim(message) {
               description: values.descriptionZh.trim(),
               titleI18n: localizedPair(values.titleEn, values.titleZh),
               descriptionI18n: localizedPair(values.descriptionEn, values.descriptionZh),
-              imageData: values.imageData || "",
+              imageData: values.imageData || catalogDefaultImage("category"),
               icon: values.icon.trim()
               }
             });
@@ -10129,7 +10168,7 @@ function mailboxHasClaim(message) {
 
       if (type === "game") {
         const categoryId = State.route.params.categoryId;
-        const item = id ? clone(Data.game(categoryId, id)) : { id: createId("game"), title: "", description: "", imageData: "", icon: "fa-solid fa-star", platform: "" };
+        const item = id ? clone(Data.game(categoryId, id)) : { id: createId("game"), title: "", description: "", imageData: catalogDefaultImage("game"), icon: "fa-solid fa-star", platform: "" };
         const title = contentValues(item, "title");
         const description = contentValues(item, "description");
         const platform = contentValues(item, "platform");
@@ -10140,7 +10179,7 @@ function mailboxHasClaim(message) {
             { name: "titleZh", label: "中文名称", value: title["zh-CN"], required: true },
             { name: "descriptionEn", label: "英文描述", type: "textarea", value: description.en },
             { name: "descriptionZh", label: "中文描述", type: "textarea", value: description["zh-CN"] },
-            { name: "imageData", label: "展示图片", type: "image", value: item.imageData || "", maxSize: DisplayImageMaxBytes, assetScope: "game-sections" },
+            { name: "imageData", label: "展示图片", type: "image", value: catalogDisplayImage(item, "game"), maxSize: DisplayImageMaxBytes, assetScope: "game-sections" },
             { name: "platformEn", label: "英文平台", value: platform.en || "" },
             { name: "platformZh", label: "中文平台", value: platform["zh-CN"] || "" },
             { name: "icon", label: "图标 class", value: item.icon || "fa-solid fa-star", required: true }
@@ -10156,7 +10195,7 @@ function mailboxHasClaim(message) {
               titleI18n: localizedPair(values.titleEn, values.titleZh),
               descriptionI18n: localizedPair(values.descriptionEn, values.descriptionZh),
               platformI18n: localizedPair(values.platformEn, values.platformZh),
-              imageData: values.imageData || "",
+              imageData: values.imageData || catalogDefaultImage("game"),
               icon: values.icon.trim()
               }
             });
@@ -10172,7 +10211,7 @@ function mailboxHasClaim(message) {
 
       if (type === "product") {
         const gameId = explicitGameId || State.route.params.gameId;
-        const item = id ? clone(Data.product(gameId, id)) : { id: createId("product"), title: "", description: "", imageData: "", price: 0, duration: "", badge: "", icon: "fa-solid fa-gamepad" };
+        const item = id ? clone(Data.product(gameId, id)) : { id: createId("product"), title: "", description: "", imageData: catalogDefaultImage("product"), price: 0, duration: "", badge: "", icon: "fa-solid fa-gamepad" };
         const title = contentValues(item, "title");
         const description = contentValues(item, "description");
         const duration = contentValues(item, "duration");
@@ -10185,7 +10224,7 @@ function mailboxHasClaim(message) {
             { name: "titleZh", label: "中文名称", value: title["zh-CN"], required: true },
             { name: "descriptionEn", label: "英文描述", type: "textarea", value: description.en },
             { name: "descriptionZh", label: "中文描述", type: "textarea", value: description["zh-CN"] },
-            { name: "imageData", label: "展示图片", type: "image", value: item.imageData || "", maxSize: DisplayImageMaxBytes, assetScope: "products" },
+            { name: "imageData", label: "展示图片", type: "image", value: catalogDisplayImage(item, "product"), maxSize: DisplayImageMaxBytes, assetScope: "products" },
             { name: "price", label: "价格", type: "number", min: "0", step: "1", value: item.price, required: true },
             { name: "durationEn", label: "英文服务时长", value: duration.en || "" },
             { name: "durationZh", label: "中文服务时长", value: duration["zh-CN"] || "" },
@@ -10202,7 +10241,7 @@ function mailboxHasClaim(message) {
               description: values.descriptionZh.trim(),
               titleI18n: localizedPair(values.titleEn, values.titleZh),
               descriptionI18n: localizedPair(values.descriptionEn, values.descriptionZh),
-              imageData: values.imageData || "",
+              imageData: values.imageData || catalogDefaultImage("product"),
               price: Number(values.price) || 0,
               duration: values.durationZh.trim(),
               durationI18n: localizedPair(values.durationEn, values.durationZh),
