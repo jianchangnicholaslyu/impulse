@@ -226,6 +226,21 @@
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
     {
+      version: "v0.20.22",
+      releasedAt: "2026-06-12",
+      nameI18n: localizedPair("Storage Bucket API Payload Fix", "存储桶 API 参数修复"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Fixes the Supabase Storage bucket auto-repair request format so catalog image uploads can recover from invalid bucket configuration.",
+        "修复 Supabase Storage 存储桶自动修复请求参数，使目录图片上传能从无效存储桶配置中恢复。"
+      ),
+      itemsI18n: [
+        localizedPair("Bucket create and update requests now use Storage API-compatible fileSizeLimit and allowedMimeTypes fields.", "存储桶创建和更新请求现在使用 Storage API 兼容的 fileSizeLimit 与 allowedMimeTypes 字段。"),
+        localizedPair("Existing bucket repairs no longer send immutable bucket id/name fields during update.", "修复已有存储桶时不再在更新请求中发送不可变的 id/name 字段。"),
+        localizedPair("Regression coverage now checks create/update payloads so storage configuration errors do not collapse back into upload failures.", "回归现在检查创建和更新请求参数，避免存储配置错误再次转化为上传失败。")
+      ]
+    },
+    {
       version: "v0.20.21",
       releasedAt: "2026-06-12",
       nameI18n: localizedPair("Storage Diagnostic and Bucket Auto Repair", "存储诊断与存储桶自动修复"),

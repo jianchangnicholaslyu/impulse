@@ -460,13 +460,43 @@ function classifyAssetStorageStatus(statusCode = 0) {
   return statusCode ? `storage_http_${statusCode}` : "storage_unreachable";
 }
 
+function parseAssetFileSizeLimit(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) {
+    return null;
+  }
+  const numeric = Number(text);
+  if (Number.isFinite(numeric)) {
+    return numeric;
+  }
+  const match = text.match(/^(\d+(?:\.\d+)?)\s*(b|kb|kib|mb|mib|gb|gib)?$/);
+  if (!match) {
+    return null;
+  }
+  const amount = Number(match[1]);
+  const unit = match[2] || "b";
+  const multipliers = {
+    b: 1,
+    kb: 1000,
+    kib: 1024,
+    mb: 1000 * 1000,
+    mib: 1024 * 1024,
+    gb: 1000 * 1000 * 1000,
+    gib: 1024 * 1024 * 1024
+  };
+  return Math.floor(amount * (multipliers[unit] || 1));
+}
+
 function normalizeAssetBucketMetadata(raw = {}) {
   const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   const rawMimeTypes = source.allowed_mime_types || source.allowedMimeTypes || source.allowed_mimeTypes;
   return {
     exists: Boolean(source.id || source.name || Object.keys(source).length),
     public: typeof source.public === "boolean" ? source.public : null,
-    fileSizeLimit: Number(source.file_size_limit || source.fileSizeLimit || 0) || null,
+    fileSizeLimit: parseAssetFileSizeLimit(source.file_size_limit || source.fileSizeLimit),
     allowedMimeTypes: Array.isArray(rawMimeTypes) ? rawMimeTypes.map((item) => String(item || "").toLowerCase()).filter(Boolean) : null
   };
 }
@@ -487,10 +517,12 @@ function assetBucketPayloadFrom(metadata = {}) {
   const currentLimit = Number(normalized.fileSizeLimit || 0);
   const payload = {
     public: true,
-    file_size_limit: Math.max(currentLimit || 0, CatalogImageBucketFileLimitBytes)
+    fileSizeLimit: currentLimit && currentLimit > CatalogImageBucketFileLimitBytes
+      ? currentLimit
+      : CatalogImageBucketFileLimitBytes
   };
   if (!normalized.exists || normalized.allowedMimeTypes !== null) {
-    payload.allowed_mime_types = currentMime.length
+    payload.allowedMimeTypes = currentMime.length
       ? Array.from(new Set([...currentMime, ...CatalogImageMimeTypes]))
       : CatalogImageMimeTypes.slice();
   }
@@ -586,14 +618,16 @@ function testAssetBucketResponse(method, body = null) {
   }
   if (method === "POST" || method === "PUT") {
     const payload = body && typeof body === "object" ? body : {};
+    state.lastRequest = { method, body: payload };
     state.metadata = {
       id: "test-assets",
       name: "test-assets",
       public: payload.public === true,
-      file_size_limit: Number(payload.file_size_limit || CatalogImageBucketFileLimitBytes)
+      file_size_limit: parseAssetFileSizeLimit(payload.file_size_limit || payload.fileSizeLimit) || CatalogImageBucketFileLimitBytes
     };
-    if (Object.prototype.hasOwnProperty.call(payload, "allowed_mime_types")) {
-      state.metadata.allowed_mime_types = Array.isArray(payload.allowed_mime_types) ? payload.allowed_mime_types : CatalogImageMimeTypes.slice();
+    if (Object.prototype.hasOwnProperty.call(payload, "allowed_mime_types") || Object.prototype.hasOwnProperty.call(payload, "allowedMimeTypes")) {
+      const payloadMimeTypes = payload.allowed_mime_types || payload.allowedMimeTypes;
+      state.metadata.allowed_mime_types = Array.isArray(payloadMimeTypes) ? payloadMimeTypes : CatalogImageMimeTypes.slice();
     }
     return { ok: true, statusCode: method === "POST" ? 201 : 200, metadata: state.metadata };
   }
@@ -680,13 +714,12 @@ async function ensureSupabaseAssetBucket() {
     return { ...assetStorageFailure(current.classification || "storage_unreachable", current.statusCode || 0), assetStorage: current.assetStorage };
   }
   const bucket = supabaseAssetBucket();
-  const payload = {
-    id: bucket,
-    name: bucket,
-    ...assetBucketPayloadFrom(current.metadata || {})
-  };
+  const bucketOptions = assetBucketPayloadFrom(current.metadata || {});
   const method = current.classification === "bucket_missing" ? "POST" : "PUT";
   const path = method === "POST" ? "/storage/v1/bucket" : `/storage/v1/bucket/${encodeURIComponent(bucket)}`;
+  const payload = method === "POST"
+    ? { id: bucket, name: bucket, ...bucketOptions }
+    : bucketOptions;
   const repaired = await supabaseStorageJsonRequest(path, { method, bodyObject: payload });
   if (!repaired.ok && !(method === "POST" && repaired.statusCode === 409)) {
     return assetStorageFailure(repaired.classification || classifyAssetStorageStatus(repaired.statusCode), repaired.statusCode || 0);

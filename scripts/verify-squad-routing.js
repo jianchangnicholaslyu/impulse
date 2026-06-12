@@ -250,6 +250,10 @@ function snapshotSeed() {
   assert.equal(result.ok, true, "missing asset bucket is auto-created before upload");
   assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.metadata.public, true, "created bucket is public");
   assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.metadata.file_size_limit, 5 * 1024 * 1024, "created bucket has 5MB limit");
+  assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.lastRequest.method, "POST", "missing bucket uses create endpoint");
+  assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.lastRequest.body.id, "impulse-assets", "create bucket payload includes id");
+  assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.lastRequest.body.fileSizeLimit, 5 * 1024 * 1024, "create bucket payload uses Storage API fileSizeLimit");
+  assert.equal(Array.isArray(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.lastRequest.body.allowedMimeTypes), true, "create bucket payload uses Storage API allowedMimeTypes");
 
   globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE = {};
   process.env.IMPULSE_ASSET_BUCKET_TEST_MODE = "private";
@@ -263,6 +267,11 @@ function snapshotSeed() {
   assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.metadata.public, true, "repaired bucket is public");
   assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.metadata.allowed_mime_types.includes("image/jpeg"), true, "repaired bucket allows jpeg");
   assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.metadata.allowed_mime_types.includes("image/png"), true, "repaired bucket keeps png");
+  assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.lastRequest.method, "PUT", "existing bucket uses update endpoint");
+  assert.equal(Object.prototype.hasOwnProperty.call(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.lastRequest.body, "id"), false, "update bucket payload does not include id");
+  assert.equal(Object.prototype.hasOwnProperty.call(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.lastRequest.body, "name"), false, "update bucket payload does not include name");
+  assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.lastRequest.body.fileSizeLimit, 5 * 1024 * 1024, "update bucket payload uses Storage API fileSizeLimit");
+  assert.equal(Array.isArray(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.lastRequest.body.allowedMimeTypes), true, "update bucket payload uses Storage API allowedMimeTypes");
 
   globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE = {};
   process.env.IMPULSE_ASSET_BUCKET_TEST_MODE = "open-mime";
@@ -275,6 +284,7 @@ function snapshotSeed() {
   assert.equal(result.ok, true, "open-mime bucket is repaired without narrowing mime policy");
   assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.metadata.public, true, "open-mime bucket is made public");
   assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.metadata.allowed_mime_types, undefined, "open-mime bucket keeps unrestricted mime policy");
+  assert.equal(Object.prototype.hasOwnProperty.call(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.lastRequest.body, "allowedMimeTypes"), false, "open-mime update does not narrow unrestricted mime policy");
 
   globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE = {};
   process.env.IMPULSE_ASSET_BUCKET_TEST_MODE = "forbidden";
