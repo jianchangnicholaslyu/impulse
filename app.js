@@ -63,6 +63,8 @@
   const OnlineWindowMs = 5 * 60 * 1000;
   const ChatRetentionMs = 7 * 24 * 60 * 60 * 1000;
   const DisplayImageMaxBytes = 2 * 1024 * 1024;
+  const DisplayImageMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+  const DisplayImageAccept = DisplayImageMimeTypes.join(",");
   const UserIdPattern = /^\d{18}$/;
   const DefaultLanguage = "zh-CN";
   const LocalLanguageCodes = ["zh-CN"];
@@ -223,6 +225,21 @@
 
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
+    {
+      version: "v0.20.21",
+      releasedAt: "2026-06-12",
+      nameI18n: localizedPair("Storage Diagnostic and Bucket Auto Repair", "存储诊断与存储桶自动修复"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Adds admin-only Supabase Storage diagnostics and automatically repairs the catalog image bucket before uploads.",
+        "新增仅管理员可用的 Supabase Storage 诊断，并在目录图片上传前自动修复图片存储桶。"
+      ),
+      itemsI18n: [
+        localizedPair("Catalog image uploads now ensure the asset bucket exists, is public, allows image MIME types, and supports a 5MB object limit.", "目录图片上传现在会确保资源存储桶存在、公开、允许图片 MIME，并支持 5MB 对象限制。"),
+        localizedPair("Storage failures return non-sensitive classifications such as bucket missing, forbidden, unauthorized, or unreachable.", "存储失败会返回不泄密的分类，例如存储桶缺失、权限不足、认证失败或暂不可达。"),
+        localizedPair("Catalog images still save only as durable Storage URLs; base64/local fallbacks remain blocked.", "目录图片仍只保存持久 Storage URL，继续禁止 base64 或本地兜底成为事实来源。")
+      ]
+    },
     {
       version: "v0.20.20",
       releasedAt: "2026-06-12",
@@ -1433,6 +1450,7 @@
     "图片已保存为本地数据。": { en: "Image saved as local data." },
     "图片上传失败，已保留为本地数据。": { en: "Image upload failed. Local data was kept." },
     "图片上传失败，请稍后重试。": { en: "Image upload failed. Please try again later." },
+    "仅支持 JPG、PNG、WebP 或 GIF 图片。": { en: "Only JPG, PNG, WebP, or GIF images are supported." },
     "当前图片是旧本地数据，请移除并重新上传后再保存。": { en: "This image is old local data. Remove it and upload again before saving." },
     "Image upload is temporarily unavailable.": { "zh-CN": "图片上传暂未开放。", "zh-TW": "圖片上傳暫未開放。", en: "Image upload is temporarily unavailable.", fr: "Le televersement d'image est temporairement indisponible.", ja: "画像のアップロードは現在利用できません。", ko: "이미지 업로드는 현재 사용할 수 없습니다.", es: "La carga de imagenes no esta disponible temporalmente." },
     "头像保存失败，请换用更小的图片。": { en: "Avatar saving failed. Please use a smaller image." },
@@ -2053,8 +2071,8 @@
         resolve({ image: "", name: "" });
         return;
       }
-      if (!file.type.startsWith("image/")) {
-        reject(new Error("请选择图像文件。"));
+      if (!DisplayImageMimeTypes.includes(file.type)) {
+        reject(new Error("仅支持 JPG、PNG、WebP 或 GIF 图片。"));
         return;
       }
       if (file.size > 5 * 1024 * 1024) {
@@ -2090,8 +2108,8 @@
         resolve({ image: "", name: "" });
         return;
       }
-      if (!file.type.startsWith("image/")) {
-        reject(new Error("请选择图像文件。"));
+      if (!DisplayImageMimeTypes.includes(file.type)) {
+        reject(new Error("仅支持 JPG、PNG、WebP 或 GIF 图片。"));
         return;
       }
       if (file.size > maxBytes) {
@@ -3799,6 +3817,12 @@ function mailboxHasClaim(message) {
     },
     async uploadAsset(payload) {
       return this.request("uploadAsset", payload);
+    },
+    async assetStorageHealth() {
+      return this.request("assetStorageHealth", {});
+    },
+    async assetUploadProbe() {
+      return this.request("assetUploadProbe", {});
     },
     async setBackupEmail(email) {
       return this.applyMutationResult(await this.request("setBackupEmail", { email }));
@@ -6400,7 +6424,7 @@ function mailboxHasClaim(message) {
             );
             Translation.localizeStaticUi(preview);
           };
-          const fileInput = h("input", { className: "image-file-input", type: "file", accept: field.accept || "image/*" });
+          const fileInput = h("input", { className: "image-file-input", type: "file", accept: field.accept || DisplayImageAccept });
           fileInput.addEventListener("change", async () => {
             const file = fileInput.files?.[0];
             if (!file) {

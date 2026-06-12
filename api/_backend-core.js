@@ -27,6 +27,8 @@ const ChatRetentionMs = 7 * DayMs;
 const ArchiveRetentionMs = 30 * DayMs;
 const AssetMaxBytes = Number(process.env.MAX_ASSET_BYTES || 5 * 1024 * 1024);
 const CatalogImageMaxBytes = 2 * 1024 * 1024;
+const CatalogImageBucketFileLimitBytes = 5 * 1024 * 1024;
+const CatalogImageMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const BuiltInUsers = [
   { username: "ADMIN", email: "admin@impulse.local", password: "********", role: "admin" },
   { username: "EMPL001", email: "empl001@impulse.local", password: "12345678", role: "staff" }
@@ -382,6 +384,9 @@ function parseImageDataUrl(dataUrl, filename = "", maxBytes = AssetMaxBytes) {
   if (!mimeType.startsWith("image/")) {
     return { ok: false, message: "Only image uploads are supported." };
   }
+  if (!CatalogImageMimeTypes.includes(mimeType)) {
+    return { ok: false, status: 415, classification: "storage_bad_request", message: "仅支持 JPG、PNG、WebP 或 GIF 图片。" };
+  }
   const buffer = Buffer.from(match[2], "base64");
   if (!buffer.length) {
     return { ok: false, message: "Image data is empty." };
@@ -404,13 +409,338 @@ function encodeStoragePath(pathname) {
     .join("/");
 }
 
+function assetStorageConfiguredInfo() {
+  return {
+    supabaseUrl: Boolean(supabaseUrl()),
+    supabaseKey: Boolean(supabaseKey()),
+    bucket: Boolean(supabaseAssetBucket())
+  };
+}
+
+function assetStorageMessage(classification = "storage_unreachable") {
+  const messages = {
+    ok: "图片存储可用。",
+    repaired: "图片存储已自动修复，请重试上传。",
+    not_configured: "图片存储未配置，请联系管理员。",
+    bucket_missing: "图片存储桶不存在，请联系管理员检查配置。",
+    bucket_forbidden: "图片存储权限不足，请联系管理员。",
+    storage_unauthorized: "图片存储认证失败，请联系管理员。",
+    storage_bad_request: "图片存储配置无效，请联系管理员。",
+    quota_or_limit: "图片存储容量或大小限制不足，请联系管理员。",
+    storage_unreachable: "图片存储暂不可用，请稍后重试。"
+  };
+  if (classification.startsWith("storage_http_")) {
+    return "图片存储暂不可用，请稍后重试。";
+  }
+  return messages[classification] || messages.storage_unreachable;
+}
+
+function assetStorageFailure(classification, statusCode = 0) {
+  return {
+    ok: false,
+    status: statusCode >= 500 || statusCode === 0 ? 503 : statusCode,
+    classification,
+    message: assetStorageMessage(classification),
+    assetStorage: {
+      configured: assetStorageConfiguredInfo(),
+      statusCode,
+      classification
+    }
+  };
+}
+
+function classifyAssetStorageStatus(statusCode = 0) {
+  if (statusCode === 401) return "storage_unauthorized";
+  if (statusCode === 403) return "bucket_forbidden";
+  if (statusCode === 404) return "bucket_missing";
+  if (statusCode === 400) return "storage_bad_request";
+  if (statusCode === 413) return "quota_or_limit";
+  if (statusCode === 415) return "storage_bad_request";
+  if (statusCode >= 500) return `storage_http_${statusCode}`;
+  return statusCode ? `storage_http_${statusCode}` : "storage_unreachable";
+}
+
+function normalizeAssetBucketMetadata(raw = {}) {
+  const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const rawMimeTypes = source.allowed_mime_types || source.allowedMimeTypes || source.allowed_mimeTypes;
+  return {
+    exists: Boolean(source.id || source.name || Object.keys(source).length),
+    public: typeof source.public === "boolean" ? source.public : null,
+    fileSizeLimit: Number(source.file_size_limit || source.fileSizeLimit || 0) || null,
+    allowedMimeTypes: Array.isArray(rawMimeTypes) ? rawMimeTypes.map((item) => String(item || "").toLowerCase()).filter(Boolean) : null
+  };
+}
+
+function publicAssetBucketMetadata(metadata = {}) {
+  const normalized = normalizeAssetBucketMetadata(metadata);
+  return {
+    exists: normalized.exists,
+    public: normalized.public,
+    fileSizeLimit: normalized.fileSizeLimit,
+    allowedMimeTypes: normalized.allowedMimeTypes
+  };
+}
+
+function assetBucketPayloadFrom(metadata = {}) {
+  const normalized = normalizeAssetBucketMetadata(metadata);
+  const currentMime = Array.isArray(normalized.allowedMimeTypes) ? normalized.allowedMimeTypes : [];
+  const currentLimit = Number(normalized.fileSizeLimit || 0);
+  const payload = {
+    public: true,
+    file_size_limit: Math.max(currentLimit || 0, CatalogImageBucketFileLimitBytes)
+  };
+  if (!normalized.exists || normalized.allowedMimeTypes !== null) {
+    payload.allowed_mime_types = currentMime.length
+      ? Array.from(new Set([...currentMime, ...CatalogImageMimeTypes]))
+      : CatalogImageMimeTypes.slice();
+  }
+  return payload;
+}
+
+function assetBucketNeedsRepair(metadata = {}) {
+  const normalized = normalizeAssetBucketMetadata(metadata);
+  const mimeTypes = Array.isArray(normalized.allowedMimeTypes) ? normalized.allowedMimeTypes : [];
+  const mimeNeedsRepair = mimeTypes.length ? CatalogImageMimeTypes.some((item) => !mimeTypes.includes(item)) : false;
+  return normalized.public !== true
+    || !normalized.fileSizeLimit
+    || normalized.fileSizeLimit < CatalogImageBucketFileLimitBytes
+    || mimeNeedsRepair;
+}
+
+function testAssetBucketState() {
+  globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE = globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE || {};
+  return globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE;
+}
+
+function testAssetBucketResponse(method, body = null) {
+  if (isProductionRuntime()) {
+    return null;
+  }
+  const mode = String(process.env.IMPULSE_ASSET_BUCKET_TEST_MODE || "").toLowerCase();
+  if (!mode) {
+    return null;
+  }
+  const state = testAssetBucketState();
+  if (method === "GET") {
+    if (state.metadata) {
+      return { ok: true, statusCode: 200, metadata: state.metadata };
+    }
+    if (mode === "missing") {
+      return { ok: false, statusCode: 404, classification: "bucket_missing" };
+    }
+    if (mode === "private") {
+      return {
+        ok: true,
+        statusCode: 200,
+        metadata: {
+          id: "test-assets",
+          name: "test-assets",
+          public: false,
+          file_size_limit: 1024,
+          allowed_mime_types: ["image/png"]
+        }
+      };
+    }
+    if (mode === "open-mime") {
+      return {
+        ok: true,
+        statusCode: 200,
+        metadata: {
+          id: "test-assets",
+          name: "test-assets",
+          public: false,
+          file_size_limit: 1024
+        }
+      };
+    }
+    if (mode === "forbidden") {
+      return { ok: false, statusCode: 403, classification: "bucket_forbidden" };
+    }
+    if (mode === "unauthorized") {
+      return { ok: false, statusCode: 401, classification: "storage_unauthorized" };
+    }
+    if (mode === "http500") {
+      return { ok: false, statusCode: 500, classification: "storage_http_500" };
+    }
+    return {
+      ok: true,
+      statusCode: 200,
+      metadata: {
+        id: "test-assets",
+        name: "test-assets",
+        public: true,
+        file_size_limit: CatalogImageBucketFileLimitBytes,
+        allowed_mime_types: CatalogImageMimeTypes.slice()
+      }
+    };
+  }
+  if (method === "POST" && mode === "already-exists") {
+    state.metadata = {
+      id: "test-assets",
+      name: "test-assets",
+      public: true,
+      file_size_limit: CatalogImageBucketFileLimitBytes,
+      allowed_mime_types: CatalogImageMimeTypes.slice()
+    };
+    return { ok: false, statusCode: 409, classification: "storage_http_409" };
+  }
+  if (method === "POST" || method === "PUT") {
+    const payload = body && typeof body === "object" ? body : {};
+    state.metadata = {
+      id: "test-assets",
+      name: "test-assets",
+      public: payload.public === true,
+      file_size_limit: Number(payload.file_size_limit || CatalogImageBucketFileLimitBytes)
+    };
+    if (Object.prototype.hasOwnProperty.call(payload, "allowed_mime_types")) {
+      state.metadata.allowed_mime_types = Array.isArray(payload.allowed_mime_types) ? payload.allowed_mime_types : CatalogImageMimeTypes.slice();
+    }
+    return { ok: true, statusCode: method === "POST" ? 201 : 200, metadata: state.metadata };
+  }
+  return null;
+}
+
+async function supabaseStorageJsonRequest(pathname, options = {}) {
+  const method = String(options.method || "GET").toUpperCase();
+  const body = options.bodyObject || null;
+  const testResponse = testAssetBucketResponse(method, body);
+  if (testResponse) {
+    return testResponse;
+  }
+  try {
+    const response = await fetch(`${supabaseUrl()}${pathname}`, {
+      method,
+      headers: {
+        ...supabaseAuthHeaders(),
+        "Content-Type": "application/json",
+        ...(options.headers || {})
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const json = await response.json().catch(() => null);
+    if (!response.ok) {
+      const classification = classifyAssetStorageStatus(response.status);
+      return { ok: false, statusCode: response.status, classification };
+    }
+    return { ok: true, statusCode: response.status, metadata: json || {} };
+  } catch {
+    return { ok: false, statusCode: 0, classification: "storage_unreachable" };
+  }
+}
+
+async function readSupabaseAssetBucket() {
+  const bucketTestMode = !isProductionRuntime() && Boolean(process.env.IMPULSE_ASSET_BUCKET_TEST_MODE);
+  if ((!hasSupabaseStorage() || !supabaseAssetBucket()) && !bucketTestMode) {
+    return {
+      ok: false,
+      statusCode: 0,
+      classification: "not_configured",
+      assetStorage: {
+        configured: assetStorageConfiguredInfo(),
+        bucket: { exists: false, public: null, fileSizeLimit: null, allowedMimeTypes: null },
+        statusCode: 0,
+        classification: "not_configured"
+      }
+    };
+  }
+  const result = await supabaseStorageJsonRequest(`/storage/v1/bucket/${encodeURIComponent(supabaseAssetBucket())}`);
+  if (!result.ok) {
+    return {
+      ok: false,
+      statusCode: result.statusCode || 0,
+      classification: result.classification || classifyAssetStorageStatus(result.statusCode),
+      assetStorage: {
+        configured: assetStorageConfiguredInfo(),
+        bucket: { exists: false, public: null, fileSizeLimit: null, allowedMimeTypes: null },
+        statusCode: result.statusCode || 0,
+        classification: result.classification || classifyAssetStorageStatus(result.statusCode)
+      }
+    };
+  }
+  const metadata = normalizeAssetBucketMetadata(result.metadata);
+  return {
+    ok: true,
+    statusCode: result.statusCode || 200,
+    metadata,
+    assetStorage: {
+      configured: assetStorageConfiguredInfo(),
+      bucket: publicAssetBucketMetadata(metadata),
+      statusCode: result.statusCode || 200,
+      classification: "ok"
+    }
+  };
+}
+
+async function ensureSupabaseAssetBucket() {
+  const current = await readSupabaseAssetBucket();
+  if (current.ok && !assetBucketNeedsRepair(current.metadata)) {
+    return { ok: true, repaired: false, classification: "ok", assetStorage: current.assetStorage };
+  }
+  if (!current.ok && current.classification !== "bucket_missing") {
+    return { ...assetStorageFailure(current.classification || "storage_unreachable", current.statusCode || 0), assetStorage: current.assetStorage };
+  }
+  const bucket = supabaseAssetBucket();
+  const payload = {
+    id: bucket,
+    name: bucket,
+    ...assetBucketPayloadFrom(current.metadata || {})
+  };
+  const method = current.classification === "bucket_missing" ? "POST" : "PUT";
+  const path = method === "POST" ? "/storage/v1/bucket" : `/storage/v1/bucket/${encodeURIComponent(bucket)}`;
+  const repaired = await supabaseStorageJsonRequest(path, { method, bodyObject: payload });
+  if (!repaired.ok && !(method === "POST" && repaired.statusCode === 409)) {
+    return assetStorageFailure(repaired.classification || classifyAssetStorageStatus(repaired.statusCode), repaired.statusCode || 0);
+  }
+  const refreshed = await readSupabaseAssetBucket();
+  if (!refreshed.ok) {
+    return { ...assetStorageFailure(refreshed.classification || "storage_unreachable", refreshed.statusCode || 0), assetStorage: refreshed.assetStorage };
+  }
+  if (assetBucketNeedsRepair(refreshed.metadata)) {
+    return assetStorageFailure("storage_bad_request", refreshed.statusCode || 0);
+  }
+  return {
+    ok: true,
+    repaired: true,
+    classification: "repaired",
+    assetStorage: {
+      ...refreshed.assetStorage,
+      classification: "repaired"
+    }
+  };
+}
+
+async function assetStorageHealth() {
+  const current = await readSupabaseAssetBucket();
+  if (!current.ok) {
+    return {
+      ok: false,
+      message: assetStorageMessage(current.classification),
+      assetStorage: current.assetStorage
+    };
+  }
+  return {
+    ok: true,
+    message: assetStorageMessage(assetBucketNeedsRepair(current.metadata) ? "storage_bad_request" : "ok"),
+    assetStorage: {
+      ...current.assetStorage,
+      classification: assetBucketNeedsRepair(current.metadata) ? "storage_bad_request" : "ok"
+    }
+  };
+}
+
 async function uploadSupabaseAsset(payload, actor) {
   const maxBytes = Number(payload.maxBytes || 0) > 0 ? Math.min(Number(payload.maxBytes), AssetMaxBytes) : CatalogImageMaxBytes;
+  const parsed = parseImageDataUrl(payload.dataUrl, payload.filename, maxBytes);
+  if (!parsed.ok) {
+    return parsed;
+  }
   const testMode = !isProductionRuntime() ? String(process.env.IMPULSE_ASSET_UPLOAD_TEST_MODE || "").toLowerCase() : "";
   if (testMode) {
-    const parsed = parseImageDataUrl(payload.dataUrl, payload.filename, maxBytes);
-    if (!parsed.ok) {
-      return parsed;
+    if (process.env.IMPULSE_ASSET_BUCKET_TEST_MODE) {
+      const ensured = await ensureSupabaseAssetBucket();
+      if (!ensured.ok) {
+        return ensured;
+      }
     }
     if (testMode === "fail") {
       return { ok: false, message: "图片上传失败，请稍后重试。" };
@@ -421,21 +751,20 @@ async function uploadSupabaseAsset(payload, actor) {
     const objectPath = `${scope}/${owner}/test-${basename}.${parsed.extension}`;
     return {
       ok: true,
-      bucket: "test-assets",
-      path: objectPath,
+      auditLabel: scope,
       url: `https://assets.test/${encodeStoragePath(objectPath)}`
     };
   }
   if (!hasSupabaseStorage()) {
-    return { ok: false, configured: false, message: "Supabase storage is not configured." };
+    return assetStorageFailure("not_configured", 0);
   }
   const bucket = supabaseAssetBucket();
   if (!bucket) {
-    return { ok: false, configured: false, message: "SUPABASE_STORAGE_BUCKET is not configured." };
+    return assetStorageFailure("not_configured", 0);
   }
-  const parsed = parseImageDataUrl(payload.dataUrl, payload.filename, maxBytes);
-  if (!parsed.ok) {
-    return parsed;
+  const ensured = await ensureSupabaseAssetBucket();
+  if (!ensured.ok) {
+    return ensured;
   }
   const scope = safeAssetSegment(payload.scope || "content", "content");
   const owner = safeAssetSegment(actor?.username || "system", "system");
@@ -443,20 +772,106 @@ async function uploadSupabaseAsset(payload, actor) {
   const objectPath = `${scope}/${owner}/${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}-${basename}.${parsed.extension}`;
   const encodedBucket = encodeURIComponent(bucket);
   const encodedPath = encodeStoragePath(objectPath);
-  await supabaseRequest(`/storage/v1/object/${encodedBucket}/${encodedPath}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": parsed.mimeType,
-      "Cache-Control": "3600",
-      "x-upsert": "true"
-    },
-    body: parsed.buffer
-  });
+  let response;
+  try {
+    response = await fetch(`${supabaseUrl()}/storage/v1/object/${encodedBucket}/${encodedPath}`, {
+      method: "POST",
+      headers: {
+        ...supabaseAuthHeaders(),
+        "Content-Type": parsed.mimeType,
+        "Cache-Control": "3600",
+        "x-upsert": "true"
+      },
+      body: parsed.buffer
+    });
+  } catch {
+    return assetStorageFailure("storage_unreachable", 0);
+  }
+  if (!response.ok) {
+    return assetStorageFailure(classifyAssetStorageStatus(response.status), response.status);
+  }
   return {
     ok: true,
-    bucket,
-    path: objectPath,
-    url: `${supabaseUrl()}/storage/v1/object/public/${encodedBucket}/${encodedPath}`
+    auditLabel: scope,
+    url: `${supabaseUrl()}/storage/v1/object/public/${encodedBucket}/${encodedPath}`,
+    assetStorage: ensured.assetStorage
+  };
+}
+
+async function deleteSupabaseAsset(objectPath = "") {
+  const bucket = supabaseAssetBucket();
+  if (!hasSupabaseStorage() || !bucket || !objectPath) {
+    return { ok: false, classification: "not_configured" };
+  }
+  try {
+    const response = await fetch(`${supabaseUrl()}/storage/v1/object/${encodeURIComponent(bucket)}/${encodeStoragePath(objectPath)}`, {
+      method: "DELETE",
+      headers: supabaseAuthHeaders()
+    });
+    if (!response.ok && response.status !== 404) {
+      return { ok: false, classification: classifyAssetStorageStatus(response.status), statusCode: response.status };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, classification: "storage_unreachable", statusCode: 0 };
+  }
+}
+
+async function assetUploadProbe() {
+  const ensured = await ensureSupabaseAssetBucket();
+  if (!ensured.ok) {
+    return ensured;
+  }
+  if (!isProductionRuntime() && process.env.IMPULSE_ASSET_BUCKET_TEST_MODE) {
+    return {
+      ok: true,
+      message: "图片存储写入探针通过。",
+      assetStorage: {
+        ...(ensured.assetStorage || {}),
+        classification: "ok",
+        probeDeleteOk: true
+      }
+    };
+  }
+  const payload = {
+    dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+    filename: "probe.png",
+    scope: "diagnostics",
+    maxBytes: CatalogImageMaxBytes
+  };
+  const parsed = parseImageDataUrl(payload.dataUrl, payload.filename, payload.maxBytes);
+  if (!parsed.ok) {
+    return parsed;
+  }
+  const objectPath = `diagnostics/${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}-probe.png`;
+  const encodedBucket = encodeURIComponent(supabaseAssetBucket());
+  const encodedPath = encodeStoragePath(objectPath);
+  try {
+    const response = await fetch(`${supabaseUrl()}/storage/v1/object/${encodedBucket}/${encodedPath}`, {
+      method: "POST",
+      headers: {
+        ...supabaseAuthHeaders(),
+        "Content-Type": parsed.mimeType,
+        "Cache-Control": "60",
+        "x-upsert": "true"
+      },
+      body: parsed.buffer
+    });
+    if (!response.ok) {
+      return assetStorageFailure(classifyAssetStorageStatus(response.status), response.status);
+    }
+  } catch {
+    return assetStorageFailure("storage_unreachable", 0);
+  }
+  const deleted = await deleteSupabaseAsset(objectPath);
+  return {
+    ok: true,
+    message: "图片存储写入探针通过。",
+    assetStorage: {
+      ...(ensured.assetStorage || {}),
+      classification: deleted.ok ? "ok" : "probe_delete_failed",
+      probeDeleteOk: Boolean(deleted.ok)
+    }
   };
 }
 
@@ -3454,12 +3869,28 @@ async function handleAction(action, payload = {}, request = {}) {
     if (!uploaded.ok) {
       return uploaded;
     }
-    log(db, "上传资产", `${uploaded.bucket}/${uploaded.path}`, request.user.username);
+    log(db, "上传资产", uploaded.auditLabel || "catalog-image", request.user.username);
     const unavailable = await persistDurable();
     if (unavailable) {
       return unavailable;
     }
     return uploaded;
+  }
+
+  if (action === "assetStorageHealth") {
+    const admin = requireAdmin(request.user);
+    if (!admin.ok) {
+      return admin;
+    }
+    return assetStorageHealth();
+  }
+
+  if (action === "assetUploadProbe") {
+    const admin = requireAdmin(request.user);
+    if (!admin.ok) {
+      return admin;
+    }
+    return assetUploadProbe();
   }
 
   if (action === "setBackupEmail") {

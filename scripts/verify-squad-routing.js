@@ -18,6 +18,7 @@ const { handleAction, readDb } = require("../api/_backend-core");
 const admin = { username: "ADMIN", role: "admin" };
 const customer = { username: "NICK", role: "customer" };
 const tinyImageDataUrl = "data:image/png;base64,iVBORw0KGgo=";
+const unsupportedImageDataUrl = "data:image/svg+xml;base64,PHN2Zy8+";
 const oversizedImageDataUrl = `data:image/png;base64,${Buffer.alloc((2 * 1024 * 1024) + 1).toString("base64")}`;
 
 async function action(name, payload = {}, user = admin) {
@@ -213,6 +214,10 @@ function snapshotSeed() {
   assert.equal(result.ok, false, "customer cannot upload catalog images");
   assert.equal(result.status, 403);
 
+  result = await action("assetStorageHealth", {}, customer);
+  assert.equal(result.ok, false, "customer cannot inspect asset storage health");
+  assert.equal(result.status, 403);
+
   result = await action("uploadAsset", {
     dataUrl: oversizedImageDataUrl,
     filename: "too-large.png",
@@ -221,6 +226,76 @@ function snapshotSeed() {
   }, admin);
   assert.equal(result.ok, false, "oversized catalog image upload fails");
   assert.match(result.message, /2MB/);
+
+  result = await action("uploadAsset", {
+    dataUrl: unsupportedImageDataUrl,
+    filename: "unsupported.svg",
+    scope: "categories",
+    maxBytes: 2 * 1024 * 1024
+  }, admin);
+  assert.equal(result.ok, false, "unsupported catalog image mime fails before storage upload");
+  assert.equal(result.status, 415);
+
+  globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE = {};
+  process.env.IMPULSE_ASSET_BUCKET_TEST_MODE = "missing";
+  result = await action("assetStorageHealth", {}, admin);
+  assert.equal(result.ok, false, "missing asset bucket is diagnosed");
+  assert.equal(result.assetStorage.classification, "bucket_missing");
+  result = await action("uploadAsset", {
+    dataUrl: tinyImageDataUrl,
+    filename: "created.png",
+    scope: "categories",
+    maxBytes: 2 * 1024 * 1024
+  }, admin);
+  assert.equal(result.ok, true, "missing asset bucket is auto-created before upload");
+  assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.metadata.public, true, "created bucket is public");
+  assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.metadata.file_size_limit, 5 * 1024 * 1024, "created bucket has 5MB limit");
+
+  globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE = {};
+  process.env.IMPULSE_ASSET_BUCKET_TEST_MODE = "private";
+  result = await action("uploadAsset", {
+    dataUrl: tinyImageDataUrl,
+    filename: "repaired.png",
+    scope: "game-sections",
+    maxBytes: 2 * 1024 * 1024
+  }, admin);
+  assert.equal(result.ok, true, "private asset bucket is auto-repaired before upload");
+  assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.metadata.public, true, "repaired bucket is public");
+  assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.metadata.allowed_mime_types.includes("image/jpeg"), true, "repaired bucket allows jpeg");
+  assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.metadata.allowed_mime_types.includes("image/png"), true, "repaired bucket keeps png");
+
+  globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE = {};
+  process.env.IMPULSE_ASSET_BUCKET_TEST_MODE = "open-mime";
+  result = await action("uploadAsset", {
+    dataUrl: tinyImageDataUrl,
+    filename: "open-mime.png",
+    scope: "game-sections",
+    maxBytes: 2 * 1024 * 1024
+  }, admin);
+  assert.equal(result.ok, true, "open-mime bucket is repaired without narrowing mime policy");
+  assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.metadata.public, true, "open-mime bucket is made public");
+  assert.equal(globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE.metadata.allowed_mime_types, undefined, "open-mime bucket keeps unrestricted mime policy");
+
+  globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE = {};
+  process.env.IMPULSE_ASSET_BUCKET_TEST_MODE = "forbidden";
+  result = await action("uploadAsset", {
+    dataUrl: tinyImageDataUrl,
+    filename: "forbidden.png",
+    scope: "products",
+    maxBytes: 2 * 1024 * 1024
+  }, admin);
+  assert.equal(result.ok, false, "forbidden asset bucket is classified");
+  assert.equal(result.classification, "bucket_forbidden");
+
+  globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE = {};
+  process.env.IMPULSE_ASSET_BUCKET_TEST_MODE = "ok";
+  result = await action("assetUploadProbe", {}, customer);
+  assert.equal(result.ok, false, "customer cannot run asset upload probe");
+  assert.equal(result.status, 403);
+  result = await action("assetUploadProbe", {}, admin);
+  assert.equal(result.ok, true, "admin asset upload probe can pass in test mode");
+  process.env.IMPULSE_ASSET_BUCKET_TEST_MODE = "";
+  globalThis.__IMPULSE_ASSET_BUCKET_TEST_STATE = {};
 
   result = await action("saveCatalogItem", {
     type: "category",
