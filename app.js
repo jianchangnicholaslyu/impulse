@@ -231,6 +231,20 @@
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
     {
+      version: "v0.22",
+      releasedAt: "2026-06-13",
+      nameI18n: localizedPair("Decimal Price Editing", "价格小数编辑支持"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Allows Admin catalog product prices to be edited with decimal values such as 18.8.",
+        "支持管理员在商品价格编辑中填写 18.8 等小数价格。"
+      ),
+      itemsI18n: [
+        localizedPair("Product price inputs now accept decimal steps instead of whole-number-only editing.", "商品价格输入现在支持小数步进，不再只能按整数编辑。"),
+        localizedPair("Saved catalog prices are normalized as non-negative decimal values for order display and checkout.", "保存的目录价格会规范为非负小数，供订单展示与下单使用。")
+      ]
+    },
+    {
       version: "v0.21",
       releasedAt: "2026-06-12",
       nameI18n: localizedPair("Catalog Default Image Refresh", "目录默认图片更新"),
@@ -2183,7 +2197,15 @@
     const number = Number(value) || 0;
     const locale = contentLanguage() === "zh-CN" ? "zh-CN" : "en-US";
     const unit = contentLanguage() === "zh-CN" ? "积分" : "pts";
-    return `${number.toLocaleString(locale, { minimumFractionDigits: 0 })} ${unit}`;
+    return `${number.toLocaleString(locale, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${unit}`;
+  }
+
+  function normalizeCatalogPrice(value) {
+    const number = Number(String(value ?? "").trim());
+    if (!Number.isFinite(number)) {
+      return 0;
+    }
+    return Math.max(0, Math.round(number * 100) / 100);
   }
 
   function formatDate(value) {
@@ -10225,7 +10247,7 @@ function mailboxHasClaim(message) {
             { name: "descriptionEn", label: "英文描述", type: "textarea", value: description.en },
             { name: "descriptionZh", label: "中文描述", type: "textarea", value: description["zh-CN"] },
             { name: "imageData", label: "展示图片", type: "image", value: catalogDisplayImage(item, "product"), maxSize: DisplayImageMaxBytes, assetScope: "products" },
-            { name: "price", label: "价格", type: "number", min: "0", step: "1", value: item.price, required: true },
+            { name: "price", label: "价格", type: "number", min: "0", step: "0.01", value: item.price, required: true },
             { name: "durationEn", label: "英文服务时长", value: duration.en || "" },
             { name: "durationZh", label: "中文服务时长", value: duration["zh-CN"] || "" },
             { name: "badgeEn", label: "英文标签", value: badge.en || "" },
@@ -10242,7 +10264,7 @@ function mailboxHasClaim(message) {
               titleI18n: localizedPair(values.titleEn, values.titleZh),
               descriptionI18n: localizedPair(values.descriptionEn, values.descriptionZh),
               imageData: values.imageData || catalogDefaultImage("product"),
-              price: Number(values.price) || 0,
+              price: normalizeCatalogPrice(values.price),
               duration: values.durationZh.trim(),
               durationI18n: localizedPair(values.durationEn, values.durationZh),
               badge: values.badgeZh.trim(),
