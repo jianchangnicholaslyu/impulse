@@ -1183,6 +1183,18 @@ button.admin-table-row:hover {
   margin-top: -8px;
 }
 
+.auth-email-help {
+  margin: -4px 0 2px;
+  padding: 10px 12px;
+  color: #344054;
+  border: 1px solid #d0d5dd;
+  border-radius: var(--radius);
+  background: #f8fafc;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
 .auth-intro {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

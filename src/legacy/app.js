@@ -231,6 +231,20 @@
   const DevelopmentRecords = [
     // AI: top item = current production release. Create the next draft above this entry before new work.
     {
+      version: "v0.23",
+      releasedAt: "2026-06-13",
+      nameI18n: localizedPair("QQ Email Registration Hint", "QQ 邮箱注册提示"),
+      statusI18n: localizedPair("Uploaded to production", "已上传生产环境"),
+      summaryI18n: localizedPair(
+        "Adds a clear QQ email helper note under the registration email field for users who do not know how to fill in an email address.",
+        "在注册邮箱输入框下方新增 QQ 邮箱填写提示，帮助不知道邮箱是什么的用户完成注册。"
+      ),
+      itemsI18n: [
+        localizedPair("The registration form now explains how to turn a QQ number into a QQ email address.", "注册表单现在说明如何把 QQ 号填写成 QQ 邮箱地址。"),
+        localizedPair("The hint also tells users to check the QQ Mail reminder message after sending the verification code.", "提示也说明发送验证码后可在 QQ 邮箱提醒消息里查看验证码。")
+      ]
+    },
+    {
       version: "v0.22",
       releasedAt: "2026-06-13",
       nameI18n: localizedPair("Decimal Price Editing", "价格小数编辑支持"),
@@ -7990,6 +8004,10 @@ function mailboxHasClaim(message) {
               ])
           : [
               h("label", { className: "field" }, "邮箱", emailInput),
+              h("p", {
+                className: "auth-email-help",
+                text: "不知道什么叫做邮箱的看过来。打开你的QQ，点击你的头像，找到你昵称下面的那一串数字（你的QQ号），复制下来输入到上面，然后加上“@qq.com”，然后继续你的注册，最后一行点击“发送验证码”后，你的QQ会弹出一条来自“QQ邮箱提醒”的消息，点进去查看，里面那一串数字就是你的验证码。"
+              }),
               h("label", { className: "field" }, "用户名", h("input", { name: "username", type: "text", autocomplete: "username", required: true })),
               h("label", { className: "field" }, "国家或地区 *", h("input", { name: "countryRegion", type: "text", autocomplete: "country-name", required: true, placeholder: "中国 / United States" })),
               h("label", { className: "field" }, "生日 *", h("input", { name: "birthday", type: "date", required: true })),
